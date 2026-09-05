@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OCEAN-SHIELD &bull; Satellite SAR & AIS Maritime Oil Spill Attribution System (SIH26143)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+
+  <!-- Top Tactical Navigation Bar -->
+  <header class="top-nav">
+    <div class="brand-section">
+      <div class="icg-insignia" title="Indian Coast Guard & NTRO Environmental Security">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 2L2 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V13H5V8.26l7-3.5 7 3.5V12h-7v.99z"/>
+        </svg>
+      </div>
+      <div class="brand-titles">
+        <h1>OCEAN-SHIELD <span class="badge">SIH26143</span></h1>
+        <div class="brand-sub">NTRO &bull; INDIAN COAST GUARD MARITIME ENVIRONMENTAL ATTRIBUTION</div>
+      </div>
+    </div>
+
+    <!-- Scenario Selector -->
+    <div class="scenario-controls">
+      <span style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--text-mono);">ACTIVE SECTOR:</span>
+      <div class="select-wrapper">
+        <select id="scenarioSelector" class="styled-select">
+          <option value="gulf_of_kachchh" selected>Gulf of Kachchh (Vadinar SPM Corridor)</option>
+          <option value="mumbai_high">Mumbai High Offshore Sector (Arabian Sea)</option>
+          <option value="great_nicobar">Great Nicobar Channel (Malacca Chokepoint)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Step Progression Actions -->
+    <div class="nav-actions">
+      <button id="btnDetectSAR" class="btn-tactical btn-outline">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/></svg>
+        1. Detect SAR Slick
+      </button>
+      <button id="btnRunDrift" class="btn-tactical btn-outline">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        2. Hindcast Origin (t₀)
+      </button>
+      <button id="btnCorrelateAIS" class="btn-tactical btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        3. Attribute Culprit
+      </button>
+      <button id="btnDownloadDossier" class="btn-tactical btn-hazard">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Export Legal Notice (PDF)
+      </button>
+      <div class="badge-status">
+        <span class="pulse-dot"></span>
+        <span id="systemStatusText">SURVEILLANCE ACTIVE</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Multi-Panel Workspace -->
+  <main class="workspace">
+
+    <!-- Left Panel: Satellite Remote Sensing & Met-Ocean -->
+    <aside class="side-panel panel-left">
+      <!-- Remote Sensing Acquisition Card (Dual SAR + Optical EO) -->
+      <section class="panel-card">
+        <div class="card-title">
+          <div style="display:flex; gap:6px;">
+            <button id="btnSensorSAR" class="tag active" style="cursor:pointer; background:rgba(0,242,254,0.2); border:1px solid var(--accent-cyan); color:var(--accent-cyan);">SAR RADAR</button>
+            <button id="btnSensorEO" class="tag" style="cursor:pointer; background:transparent; border:1px solid var(--border-subtle); color:var(--text-muted);">OPTICAL EO</button>
+          </div>
+          <span class="tag" id="sarMissionTag">SENTINEL-1A VV</span>
+        </div>
+
+        <div class="sar-view-container">
+          <img id="sarPreviewImg" class="sar-img" src="" alt="Satellite Remote Sensing Feed">
+          <span id="srActiveBadge" class="sr-badge" style="display:none;">SUPER-RESOLUTION 2X</span>
+          <span id="eoActiveBadge" class="sr-badge" style="display:none; background:rgba(245,158,11,0.25); border-color:#f59e0b; color:#f59e0b;">NDOI MULTI-SPECTRAL</span>
+        </div>
+
+        <!-- SAR Controls -->
+        <div id="sarControlsGroup" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem;">
+            <span style="color: var(--text-secondary);">Detection Engine</span>
+            <select id="modelSelect" style="background:#0f172a; color:#38bdf8; border:1px solid #334155; border-radius:4px; padding:3px 6px; font-size:0.75rem; font-family:var(--font-mono); outline:none;">
+              <option value="unet" selected>PyTorch U-Net (Deep Learning)</option>
+              <option value="cfar_edge">Adaptive CFAR (Tactical Edge)</option>
+            </select>
+          </div>
+          <div class="toggle-group" style="margin-bottom: 0;">
+            <span>Super-Resolution ML Model</span>
+            <label class="switch">
+              <input type="checkbox" id="srToggle" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Optical EO Controls (Hidden by default, shown when EO active) -->
+        <div id="eoControlsGroup" style="display: none; flex-direction: column; gap: 6px; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem;">
+            <span style="color: var(--text-secondary);">EO Optical Layer</span>
+            <select id="eoLayerSelect" style="background:#0f172a; color:#f59e0b; border:1px solid #334155; border-radius:4px; padding:3px 6px; font-size:0.75rem; font-family:var(--font-mono); outline:none;">
+              <option value="ndoi_heatmap" selected>NDOI Index Heatmap (Inferno)</option>
+              <option value="true_color">Sentinel-2 True Color (RGB)</option>
+              <option value="overlay">Multi-Spectral Slick Overlay</option>
+            </select>
+          </div>
+          <div style="font-size: 0.70rem; color: var(--text-muted); font-family: var(--text-mono);">
+            Bands: B4 (665nm), B8 (842nm NIR), B11 (1610nm SWIR)
+          </div>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric-item">
+            <div class="metric-label" id="labelArea">Spill Area</div>
+            <div id="metricArea" class="metric-value cyan">-- km²</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label" id="labelMass">Estimated Mass</div>
+            <div id="metricMass" class="metric-value amber">-- Tonnes</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label" id="labelElongation">Elongation / NDOI</div>
+            <div id="metricElongation" class="metric-value">--</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label" id="labelConfidence">Oil Confidence</div>
+            <div id="metricConfidence" class="metric-value emerald">-- %</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Ocean Hydrodynamics Card -->
+      <section class="panel-card">
+        <div class="card-title">
+          <span>Hydrodynamics & Drift</span>
+          <span class="tag">LAGRANGIAN RUNGE-KUTTA</span>
+        </div>
+
+        <div class="metric-grid" style="margin-bottom: 10px;">
+          <div class="metric-item">
+            <div class="metric-label">Ocean Current</div>
+            <div id="metricCurrent" class="metric-value cyan">-- m/s</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Surface Wind</div>
+            <div id="metricWind" class="metric-value">-- m/s</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Calculated Slick Age</div>
+            <div id="metricAge" class="metric-value crimson">-- Hours</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Drift Distance</div>
+            <div id="metricDriftDist" class="metric-value">-- km</div>
+          </div>
+        </div>
+
+        <div style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--text-mono); line-height: 1.4;">
+          Origin Epicenter (x₀, y₀): <span id="metricOriginCoords" style="color: var(--accent-cyan);">Resolving...</span>
+        </div>
+      </section>
+
+      <!-- ADIOS Physical Oil Weathering Card -->
+      <section class="panel-card">
+        <div class="card-title">
+          <span>ADIOS Oil Weathering</span>
+          <span class="tag" style="color: var(--accent-emerald);">MACKAY MODEL</span>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric-item">
+            <div class="metric-label">Evaporated Volatiles</div>
+            <div id="metricEvap" class="metric-value amber">28.4%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Mousse Water Uptake</div>
+            <div id="metricMousse" class="metric-value cyan">62.1%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Bulk Viscosity</div>
+            <div id="metricViscosity" class="metric-value">480 cP</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Volume Expansion</div>
+            <div id="metricVolExp" class="metric-value">1.88x</div>
+          </div>
+        </div>
+        <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px;">
+          State: <span id="metricWeatheringState" style="color:#e2e8f0;">Heavy Chocolate Mousse Emulsion</span>
+        </div>
+      </section>
+
+      <!-- Shoreline & Marine Sanctuary Threat Card -->
+      <section class="panel-card">
+        <div class="card-title">
+          <span>Coastal Impact Hazard</span>
+          <span class="tag" style="color: var(--accent-amber);">WARNING</span>
+        </div>
+
+        <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 8px;" id="hazardZoneName">
+          Evaluating coastal trajectory...
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric-item">
+            <div class="metric-label">Beaching Alert</div>
+            <div id="metricBeachingStatus" class="metric-value crimson">IMMINENT</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Est. Time of Beaching</div>
+            <div id="metricETB" class="metric-value amber">-- h</div>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <!-- Center Panel: Interactive Tactical GIS Map & Particle Swarm Canvas -->
+    <section class="map-viewport">
+      <div id="tacticalMap"></div>
+
+      <!-- Map HUD Chip Overlay -->
+      <div class="map-hud-top">
+        <div class="hud-chip">
+          <span>SECTOR:</span>
+          <b id="hudSectorName">Gulf of Kachchh</b>
+        </div>
+        <div class="hud-chip">
+          <span>COORDINATES:</span>
+          <b id="hudCoords">22.4650° N, 69.2150° E</b>
+        </div>
+        <div class="hud-chip">
+          <span>PARTICLES:</span>
+          <b style="color: var(--accent-cyan);">500 SWARM</b>
+        </div>
+      </div>
+
+      <!-- Bottom Interactive Time Scrubber -->
+      <div class="timeline-scrubber">
+        <div class="timeline-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="timePhaseBadge" class="timeline-badge detect">T = 0.0h (SATELLITE PASS)</span>
+            <span style="color: var(--text-muted);">Timestamp:</span>
+            <span id="timeDateDisplay" style="color: var(--text-primary); font-weight: 600;">2026-09-04 18:40 IST</span>
+          </div>
+          <div style="color: var(--text-secondary);">
+            Range: <span style="color: var(--accent-crimson); font-weight: 600;">-18.0h Hindcast</span> &rarr; <span style="color: var(--accent-amber); font-weight: 600;">+24.0h Forecast</span>
+          </div>
+        </div>
+
+        <div class="slider-container">
+          <button id="btnPlayPause" class="btn-play" title="Play / Pause Simulation Animation">
+            <svg id="playIcon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </button>
+          <input type="range" id="timeSlider" class="timeline-slider" min="-18" max="24" step="0.5" value="0">
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Panel: AIS Vessel Correlation & Culprit Attribution -->
+    <aside class="side-panel panel-right">
+      <!-- Primary Suspect Dossier Card -->
+      <section class="panel-card">
+        <div class="card-title">
+          <span>Culprit Vessel Dossier</span>
+          <span class="tag" style="color: var(--accent-crimson);">STATUTORY NOTICE</span>
+        </div>
+
+        <div class="suspect-banner" id="suspectBanner">
+          <div class="suspect-header">
+            <div>
+              <div class="suspect-name" id="suspectVesselName">ANALYZING AIS...</div>
+              <div class="suspect-meta">
+                IMO: <span id="suspectIMO" style="color: white;">--</span> &bull; MMSI: <span id="suspectMMSI" style="color: white;">--</span><br>
+                Flag: <span id="suspectFlag">--</span> &bull; Type: <span id="suspectType">--</span>
+              </div>
+            </div>
+            <div class="score-badge">
+              <div class="score-num" id="suspectScore">--%</div>
+              <div class="score-label">Culprit Score</div>
+            </div>
+          </div>
+          <div style="font-size: 0.72rem; color: #fecdd3; font-family: var(--text-mono); line-height: 1.3;" id="suspectSummary">
+            Run step 3 to correlate AIS transponders against release point (x₀, y₀, t₀).
+          </div>
+        </div>
+
+        <!-- Kinematic Anomaly Breakdown -->
+        <div id="anomalyBreakdownContainer">
+          <div class="anomaly-item">
+            <div class="anomaly-title">
+              <span>Spatial Proximity (CPA Distance)</span>
+              <span id="scoreProx">-- / 100</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div id="barProx" class="progress-bar-fill bg-cyan" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <div class="anomaly-item">
+            <div class="anomaly-title">
+              <span>Temporal Coincidence (&Delta;t at t₀)</span>
+              <span id="scoreTime">-- / 100</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div id="barTime" class="progress-bar-fill bg-cyan" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <div class="anomaly-item">
+            <div class="anomaly-title">
+              <span>Kinematic Speed Drop Anomaly (Discharge Profile)</span>
+              <span id="scoreSpeed">-- / 100</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div id="barSpeed" class="progress-bar-fill bg-crimson" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <div class="anomaly-item">
+            <div class="anomaly-title">
+              <span>Vessel Risk Class & Slop Capacity Prior</span>
+              <span id="scoreType">-- / 100</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div id="barType" class="progress-bar-fill bg-amber" style="width: 0%;"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Maritime Traffic Corridor Table -->
+      <section class="panel-card" style="flex: 1;">
+        <div class="card-title">
+          <span>Corridor Maritime Traffic</span>
+          <span class="tag" id="vesselCountTag">0 VESSELS</span>
+        </div>
+
+        <div style="display: flex; gap: 8px; margin-top: 6px; margin-bottom: 8px;">
+          <button id="btnUploadAIS" class="btn-tactical btn-outline" style="width: 100%; font-size: 0.72rem; padding: 6px 10px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            📂 Ingest NOAA/MarineCadastre CSV
+          </button>
+          <input type="file" id="aisFileInput" accept=".csv" style="display: none;">
+        </div>
+
+        <div style="overflow-x: auto;">
+          <table class="vessel-table">
+            <thead>
+              <tr>
+                <th>Vessel Name</th>
+                <th>Type</th>
+                <th>CPA (NM)</th>
+                <th>Speed Drop</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody id="vesselTableBody">
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 16px;">
+                  Awaiting attribution pipeline execution...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </aside>
+
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
