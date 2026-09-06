@@ -137,31 +137,34 @@ class OceanShieldApp {
 
     L.control.zoom({ position: 'topright' }).addTo(this.map);
 
-    // Multiple basemap layers for judge inspection
+    // REAL Satellite Imagery: Google Earth Satellite Hybrid (Real Earth photography + Coastlines)
+    const realSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+      maxZoom: 20,
+      maxNativeZoom: 11,
+      attribution: '&copy; Google Satellite Imagery'
+    });
+
+    // Pure Optical Satellite Imagery (No boundary lines or labels)
+    const pureSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+      maxZoom: 20,
+      maxNativeZoom: 11,
+      attribution: '&copy; Google Earth Imagery'
+    });
+
     const darkTactical = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
       subdomains: 'abcd',
       attribution: '&copy; CARTO &copy; OpenStreetMap'
     });
 
-    const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 18,
-      attribution: 'Esri World Imagery'
-    });
-
-    const osmSea = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: 'OpenStreetMap'
-    });
-
-    // Default to Dark Tactical: seamless deep-ocean navy with glowing coastlines, no missing tile watermarks
-    darkTactical.addTo(this.map);
+    // DEFAULT TO REAL SATELLITE MAP
+    realSatellite.addTo(this.map);
 
     // Layer control switcher
     const baseMaps = {
-      '🌑 Dark Tactical (C2 Navy)': darkTactical,
-      '🛰️ Satellite Imagery': satellite,
-      '🗺️ OpenStreetMap': osmSea
+      '🛰️ Real Satellite Imagery': realSatellite,
+      '🌍 Pure Satellite (No Labels)': pureSatellite,
+      '🌑 Dark Tactical (C2 Navy)': darkTactical
     };
     L.control.layers(baseMaps, null, { position: 'topright', collapsed: true }).addTo(this.map);
 
