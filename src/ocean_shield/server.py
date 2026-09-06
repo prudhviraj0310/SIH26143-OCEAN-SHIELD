@@ -21,16 +21,33 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from .sar_engine import SAREngine
-from .drift_engine import DriftEngine, OceanCurrentField
-from .ais_engine import AISEngine
-from .eo_engine import EOEngine
-from .scenarios import (
-    get_all_scenarios, get_scenario_sar_and_currents, get_scenario_eo_data,
-    image_to_base64_png, generate_synthetic_sar_image
-)
-from .report_generator import DossierReportGenerator
-from .ais_ingestion import MAX_AIS_UPLOAD_BYTES, parse_marinecadastre_csv
+if __package__ is None or __package__ == "":
+    import sys
+    from pathlib import Path
+    _pkg_root = str(Path(__file__).resolve().parent.parent.parent)
+    if _pkg_root not in sys.path:
+        sys.path.insert(0, _pkg_root)
+    from src.ocean_shield.sar_engine import SAREngine
+    from src.ocean_shield.drift_engine import DriftEngine, OceanCurrentField
+    from src.ocean_shield.ais_engine import AISEngine
+    from src.ocean_shield.eo_engine import EOEngine
+    from src.ocean_shield.scenarios import (
+        get_all_scenarios, get_scenario_sar_and_currents, get_scenario_eo_data,
+        image_to_base64_png, generate_synthetic_sar_image
+    )
+    from src.ocean_shield.report_generator import DossierReportGenerator
+    from src.ocean_shield.ais_ingestion import MAX_AIS_UPLOAD_BYTES, parse_marinecadastre_csv
+else:
+    from .sar_engine import SAREngine
+    from .drift_engine import DriftEngine, OceanCurrentField
+    from .ais_engine import AISEngine
+    from .eo_engine import EOEngine
+    from .scenarios import (
+        get_all_scenarios, get_scenario_sar_and_currents, get_scenario_eo_data,
+        image_to_base64_png, generate_synthetic_sar_image
+    )
+    from .report_generator import DossierReportGenerator
+    from .ais_ingestion import MAX_AIS_UPLOAD_BYTES, parse_marinecadastre_csv
 
 logger = logging.getLogger("ocean_shield.keep_alive")
 
@@ -635,3 +652,12 @@ async def upload_ais_csv(request: Request):
         "provenance": parsed["provenance"],
         "screening_notice": "AIS is used only for this browser session. Time alignment is recorded in provenance and must be checked before ranking.",
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8090))
+    host = os.environ.get("HOST", "0.0.0.0")
+    print(f"Starting OCEAN-SHIELD on http://{host}:{port}")
+    uvicorn.run(app, host=host, port=port)
+
