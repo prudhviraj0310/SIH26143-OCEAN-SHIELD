@@ -144,14 +144,12 @@ class OceanShieldApp {
     });
 
     const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 19,
-      maxNativeZoom: 8,
+      maxZoom: 18,
       attribution: 'Esri World Imagery'
     });
 
     const googleSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
       maxZoom: 20,
-      maxNativeZoom: 11,
       attribution: 'Google Satellite'
     });
 
@@ -620,7 +618,7 @@ class OceanShieldApp {
           }
         }).addTo(this.map);
 
-        this.map.fitBounds(this.slickLayer.getBounds(), { padding: [60, 60], maxZoom: 10 });
+        this.map.fitBounds(this.slickLayer.getBounds(), { padding: [50, 50] });
 
         // Add slick label
         L.popup({ autoClose: false, closeOnClick: false, className: 'slick-tactical-popup' })
