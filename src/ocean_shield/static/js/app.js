@@ -231,6 +231,37 @@ class OceanShieldApp {
     });
 
     this.btnPlayPause.addEventListener('click', () => this.togglePlayback());
+
+    // ── C2 Modern UX: Segmented Tab Switching ──────────────────────────────
+    document.querySelectorAll('.dock-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabTarget = tab.dataset.tab;
+        document.querySelectorAll('.dock-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tabTarget)?.classList.add('active');
+      });
+    });
+
+    // ── C2 Modern UX: Dock Panel Collapse / Expand ─────────────────────────
+    const btnToggleLeft = document.getElementById('btnToggleLeftPanel');
+    const panelLeft = document.getElementById('panelLeft');
+    if (btnToggleLeft && panelLeft) {
+      btnToggleLeft.addEventListener('click', () => {
+        panelLeft.classList.toggle('collapsed');
+        setTimeout(() => this.map.invalidateSize(), 360);
+      });
+    }
+
+    const btnToggleRight = document.getElementById('btnToggleRightPanel');
+    const panelRight = document.getElementById('panelRight');
+    if (btnToggleRight && panelRight) {
+      btnToggleRight.addEventListener('click', () => {
+        panelRight.classList.toggle('collapsed');
+        document.body.classList.toggle('right-collapsed');
+        setTimeout(() => this.map.invalidateSize(), 360);
+      });
+    }
   }
 
   async loadScenario(scenarioId) {
@@ -274,10 +305,18 @@ class OceanShieldApp {
       // SAR Preview
       this.toggleSuperResolution(data);
 
-      // Automatically trigger end-to-end processing
-      await this.runSARAnalysis();
-      await this.runDriftSimulation();
-      await this.runAISCorrelation();
+      // Automatically trigger end-to-end processing so screen is never blank!
+      try {
+        await this.runSARAnalysis();
+        await this.runDriftSimulation();
+        await this.runAISCorrelation();
+        if (this.btnDetectSAR) this.btnDetectSAR.classList.add('active');
+        if (this.btnRunDrift) this.btnRunDrift.classList.add('active');
+        if (this.btnCorrelateAIS) this.btnCorrelateAIS.classList.add('active');
+        document.getElementById('systemStatusText').innerText = 'WORKSPACE ACTIVE • ALL LEADS RANKED';
+      } catch (pipeErr) {
+        console.warn('Auto-pipeline warning:', pipeErr);
+      }
 
     } catch (err) {
       console.error('Error loading scenario:', err);
@@ -305,41 +344,50 @@ class OceanShieldApp {
 
   setEvidenceState() {
     const hasFieldData = Boolean(this.sarProvenance || this.aisProvenance);
-    this.inputModeTag.className = `tag ${hasFieldData ? 'evidence-field' : 'evidence-demo'}`;
-    this.inputModeTag.innerText = hasFieldData ? 'FIELD INPUTS' : 'DEMO INPUTS';
-    this.inputModeCopy.innerText = hasFieldData
-      ? 'Uploaded inputs are provenance-labelled. Automated outputs remain analyst-review leads, not findings of liability.'
-      : 'This sector is a generated demonstration scenario. Rankings are investigative leads, not liability findings.';
+    if (this.inputModeTag) {
+      this.inputModeTag.className = `tag ${hasFieldData ? 'tag-field' : 'tag-demo'}`;
+      this.inputModeTag.innerText = hasFieldData ? 'FIELD INPUTS' : 'DEMO INPUTS';
+    }
+    if (this.inputModeCopy) {
+      this.inputModeCopy.innerText = hasFieldData
+        ? 'Uploaded inputs are provenance-labelled. Automated outputs remain analyst-review leads, not findings of liability.'
+        : 'This sector is an analyst screening simulation. All suspect rankings are investigative leads requiring official validation.';
+    }
     const scenarioSar = this.scenarioData?.satellite_metadata?.data_origin || 'scenario input';
     const sar = this.sarProvenance ? `SAR: ${this.sarProvenance.source_filename}` : `SAR: ${scenarioSar}`;
     const ais = this.aisProvenance ? `AIS: ${this.aisProvenance.source_filename}` : 'AIS: embedded tracks';
-    this.sourceSummary.innerText = `${sar} • ${ais}`;
+    if (this.sourceSummary) {
+      this.sourceSummary.innerText = `${sar} • ${ais}`;
+    }
 
-    // W3/W2: Populate ocean data source and AIS data origin provenance badges
+    // W3/W2: Safely populate ocean data source and AIS data origin provenance badges
     if (this.scenarioData?.ocean_data_source && this.oceanDataSourceEl) {
       const src = this.scenarioData.ocean_data_source;
       this.oceanDataSourceEl.innerText = `HYCOM: ${src}`;
       const isReal = src.includes('Real') || src.includes('NetCDF');
       this.oceanDataSourceEl.style.color = isReal ? 'var(--accent-emerald)' : 'var(--accent-amber)';
-      this.oceanDataSourceEl.parentElement.querySelector('.source-dot').style.background =
-        isReal ? 'var(--accent-emerald)' : 'var(--accent-amber)';
+      const dot = this.oceanDataSourceEl.parentElement?.querySelector('.source-dot, .dot-indicator');
+      if (dot) dot.style.background = isReal ? 'var(--accent-emerald)' : 'var(--accent-amber)';
     }
     if (this.scenarioData?.ais_data_origin && this.aisDataOriginEl) {
       const aisOrigin = this.scenarioData.ais_data_origin;
       this.aisDataOriginEl.innerText = `AIS: ${aisOrigin}`;
       const isReal = aisOrigin.includes('MarineCadastre') || aisOrigin.includes('real');
       this.aisDataOriginEl.style.color = isReal ? 'var(--accent-emerald)' : 'var(--accent-amber)';
-      this.aisDataOriginEl.parentElement.querySelector('.source-dot').style.background =
-        isReal ? 'var(--accent-emerald)' : 'var(--accent-amber)';
+      const dot = this.aisDataOriginEl.parentElement?.querySelector('.source-dot, .dot-indicator');
+      if (dot) dot.style.background = isReal ? 'var(--accent-emerald)' : 'var(--accent-amber)';
     }
   }
 
   toggleSuperResolution(preloadedData) {
-    const isSR = this.srToggle.checked;
-    this.srActiveBadge.style.display = isSR ? 'block' : 'none';
+    const isSR = this.srToggle ? this.srToggle.checked : true;
+    if (this.srActiveBadge) this.srActiveBadge.style.display = isSR ? 'block' : 'none';
 
-    if (preloadedData) {
-      this.sarPreviewImg.src = isSR ? preloadedData.sr_sar_image_base64 : preloadedData.sar_image_base64;
+    if (preloadedData && this.sarPreviewImg) {
+      const b64 = isSR ? preloadedData.sr_sar_image_base64 : preloadedData.sar_image_base64;
+      if (b64) {
+        this.sarPreviewImg.src = b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
+      }
     }
   }
 
@@ -562,8 +610,25 @@ class OceanShieldApp {
         // Add slick label
         L.popup({ autoClose: false, closeOnClick: false, className: 'slick-tactical-popup' })
           .setLatLng([slick.centroid.lat, slick.centroid.lon])
-          .setContent(`<b>${slick.slick_id}</b><br>Observed: ${slick.area_km2.toFixed(2)} km\u00b2 \u2022 ${slick.classification}`)
+          .setContent(`
+            <div style="font-size:0.80rem; font-weight:700; color:#00f2fe; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+              <span class="pulse-dot" style="background:#00f2fe;"></span> ${slick.slick_id}
+            </div>
+            <div style="font-size:0.75rem; color:#f8fafc; font-weight:600; margin-bottom:4px;">${slick.classification}</div>
+            <div style="font-size:0.70rem; color:#94a3b8; font-family:var(--font-mono); display:flex; gap:10px;">
+              <span>Area: <b style="color:#00f2fe;">${slick.area_km2.toFixed(2)} km²</b></span>
+              <span>Mass: <b style="color:#f59e0b;">${slick.estimated_mass_tonnes.toFixed(1)} T</b></span>
+            </div>
+          `)
           .addTo(this.map);
+      // Populate SAR preview image in Detection card
+      if (this.sarPreviewImg) {
+        const b64 = (this.srToggle && this.srToggle.checked && data.super_resolution_base64)
+          ? data.super_resolution_base64
+          : (data.segmentation_overlay_base64 || data.sar_image_base64);
+        if (b64) {
+          this.sarPreviewImg.src = b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
+        }
       }
 
       // Drape SAR imagery directly onto the map as a geo-referenced overlay
@@ -589,8 +654,9 @@ class OceanShieldApp {
     const west = sc.lon - halfExtentKm * degPerKmLon;
     const east = sc.lon + halfExtentKm * degPerKmLon;
 
-    const bounds = [[south, west], [north, east]];
-    this.sarOverlayLayer = L.imageOverlay(base64Img, bounds, {
+    const imageBounds = [[south, west], [north, east]];
+
+    this.sarOverlayLayer = L.imageOverlay(`data:image/png;base64,${base64Img}`, imageBounds, {
       opacity: 0.55,
       interactive: false
     }).addTo(this.map);
@@ -601,14 +667,14 @@ class OceanShieldApp {
 
   addSAROpacityControl() {
     // Only add once
-    if (document.getElementById('sarOpacitySlider')) return;
+    if (document.getElementById('sarOpacityCtrl')) return;
 
     const ctrl = document.createElement('div');
-    ctrl.className = 'leaflet-bar';
-    ctrl.style.cssText = 'position:absolute; bottom:80px; left:12px; z-index:1000; background:rgba(15,23,42,0.92); padding:8px 12px; border-radius:6px; border:1px solid rgba(51,65,85,0.6); backdrop-filter:blur(6px);';
+    ctrl.id = 'sarOpacityCtrl';
+    ctrl.style.cssText = 'position:absolute; bottom:84px; left:50%; transform:translateX(-50%); z-index:950; background:rgba(9,14,27,0.92); padding:6px 14px; border-radius:20px; border:1px solid rgba(0,242,254,0.35); backdrop-filter:blur(16px); display:flex; align-items:center; gap:10px; box-shadow:0 8px 24px rgba(0,0,0,0.6);';
     ctrl.innerHTML = `
-      <div style="font-size:0.68rem; color:#94a3b8; font-family:var(--text-mono); margin-bottom:4px;">SAR OVERLAY OPACITY</div>
-      <input type="range" id="sarOpacitySlider" min="0" max="100" value="55" style="width:120px; accent-color:#00f2fe; cursor:pointer;">
+      <span style="font-size:0.68rem; color:#00f2fe; font-family:var(--font-mono); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">SAR Opacity</span>
+      <input type="range" id="sarOpacitySlider" min="0" max="100" value="55" style="width:100px; accent-color:#00f2fe; cursor:pointer;">
     `;
     document.getElementById('tacticalMap').appendChild(ctrl);
 
@@ -691,7 +757,16 @@ class OceanShieldApp {
       });
 
       this.originMarker = L.marker([origin.lat, origin.lon], { icon: originIcon })
-        .bindPopup(`<b>MODELLED RELEASE CANDIDATE (x₀, y₀)</b><br>Time: T - ${origin.slick_age_hours}h<br>Coordinates: ${origin.lat.toFixed(4)}° N, ${origin.lon.toFixed(4)}° E`)
+        .bindPopup(`
+          <div style="font-size:0.75rem; font-weight:700; color:#ff3366; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+            <span class="pulse-dot" style="background:#ff3366;"></span> RELEASE CANDIDATE (x₀, y₀)
+          </div>
+          <div style="font-size:0.72rem; color:#f8fafc; font-weight:600;">Discharge Epicenter</div>
+          <div style="font-size:0.68rem; color:#94a3b8; font-family:var(--font-mono); margin-top:2px;">
+            Release: <span style="color:#ff3366; font-weight:700;">T - ${origin.slick_age_hours}h</span><br>
+            Coords: ${origin.lat.toFixed(4)}° N, ${origin.lon.toFixed(4)}° E
+          </div>
+        `)
         .addTo(this.map);
 
       // Update Beaching Hazards
@@ -962,7 +1037,17 @@ class OceanShieldApp {
         color: '#ffffff',
         weight: 1.5,
         fillOpacity: 1
-      }).bindPopup(`<b>${v.vessel_name}</b> (${v.vessel_type})<br>Score: ${v.composite_suspect_score}%<br>Speed: ${latestPt.sog_knots} kts \u2022 Heading: ${latestPt.cog_degrees}\u00b0`);
+      }).bindPopup(`
+        <div style="font-size:0.80rem; font-weight:700; color:#f8fafc; margin-bottom:2px;">${v.vessel_name}</div>
+        <div style="font-size:0.68rem; color:#94a3b8; margin-bottom:6px;">${v.vessel_type} &bull; MMSI: ${v.mmsi}</div>
+        <div style="display:flex; justify-content:space-between; font-size:0.70rem; font-family:var(--font-mono); background:rgba(0,0,0,0.3); padding:4px 6px; border-radius:4px; margin-bottom:3px;">
+          <span style="color:#94a3b8;">Lead Score:</span>
+          <b style="color:${v.composite_suspect_score > 60 ? '#ef4444' : '#00f2fe'}; font-weight:700;">${v.composite_suspect_score}%</b>
+        </div>
+        <div style="font-size:0.66rem; color:#64748b; font-family:var(--font-mono);">
+          Speed: ${latestPt.sog_knots} kts &bull; Heading: ${latestPt.cog_degrees}°
+        </div>
+      `);
 
       this.vesselsLayerGroup.addLayer(shipMarker);
     });
