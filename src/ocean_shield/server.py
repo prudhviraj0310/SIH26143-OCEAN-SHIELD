@@ -8,6 +8,9 @@ import os
 import io
 import hashlib
 import math
+import asyncio
+import urllib.request
+import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 import numpy as np
@@ -29,6 +32,7 @@ from .scenarios import (
 from .report_generator import DossierReportGenerator
 from .ais_ingestion import MAX_AIS_UPLOAD_BYTES, parse_marinecadastre_csv
 
+logger = logging.getLogger("ocean_shield.keep_alive")
 
 app = FastAPI(
     title="OCEAN-SHIELD Maritime Intelligence API",
@@ -38,10 +42,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:8090", "http://localhost:8090"],
+    allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "X-File-Name", "X-Center-Lat", "X-Center-Lon", "X-Pixel-Size-M", "X-Model-Type", "X-Threshold-Offset", "X-Reference-Time-UTC", "X-Acquisition-Time-UTC"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Base directories
@@ -156,6 +160,45 @@ async def health_check():
         "drift_engine": "online",
         "ais_engine": "online"
     }
+
+
+async def _keep_alive_pinger():
+    """
+    Automatic keep-alive loop to prevent cloud hosts (like Render free tier)
+    from spinning down after 15 minutes of idle time.
+    Pings every 10 minutes (600 seconds) via public HTTP.
+    """
+    url = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("SELF_PING_URL")
+    if not url:
+        logger.info("[KeepAlive] RENDER_EXTERNAL_URL / SELF_PING_URL not configured. Self-pinger idle.")
+        return
+
+    health_url = f"{url.rstrip('/')}/api/health"
+    logger.info(f"[KeepAlive] Zero-downtime self-pinger initialized for: {health_url}")
+
+    # Wait 30 seconds for the web server to fully bind
+    await asyncio.sleep(30)
+
+    while True:
+        try:
+            req = urllib.request.Request(
+                health_url,
+                headers={"User-Agent": "OCEAN-SHIELD-ZeroDowntime/1.0"}
+            )
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=15).read())
+            logger.info(f"[KeepAlive] Keep-alive ping dispatched successfully -> {health_url}")
+        except Exception as err:
+            logger.warning(f"[KeepAlive] Keep-alive ping attempt notice: {err}")
+
+        # Ping every 10 minutes (600s) - well below Render's 15-min idle spin-down threshold
+        await asyncio.sleep(600)
+
+
+@app.on_event("startup")
+async def start_background_keepalive():
+    asyncio.create_task(_keep_alive_pinger())
+
 
 
 @app.get("/api/scenarios")
