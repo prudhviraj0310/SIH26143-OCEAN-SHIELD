@@ -19,7 +19,7 @@
       </div>
       <div class="brand-titles">
         <h1>OCEAN-SHIELD <span class="badge">SIH26143</span></h1>
-        <div class="brand-sub">NTRO &bull; INDIAN COAST GUARD MARITIME ENVIRONMENTAL ATTRIBUTION</div>
+        <div class="brand-sub">SIH PROTOTYPE &bull; MARITIME ENVIRONMENTAL ANALYTICS</div>
       </div>
     </div>
 
@@ -31,6 +31,7 @@
           <option value="gulf_of_kachchh" selected>Gulf of Kachchh (Vadinar SPM Corridor)</option>
           <option value="mumbai_high">Mumbai High Offshore Sector (Arabian Sea)</option>
           <option value="great_nicobar">Great Nicobar Channel (Malacca Chokepoint)</option>
+          <option value="zenodo_sentinel1_real">Sentinel-1 benchmark scene (Gulf of Mexico)</option>
         </select>
       </div>
     </div>
@@ -128,7 +129,7 @@
             <div id="metricElongation" class="metric-value">--</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label" id="labelConfidence">Oil Confidence</div>
+            <div class="metric-label" id="labelConfidence">Screening Score</div>
             <div id="metricConfidence" class="metric-value emerald">-- %</div>
           </div>
         </div>
@@ -155,6 +156,7 @@
             <label>Center latitude<input id="sarCenterLat" type="number" step="0.0001" value="22.465"></label>
             <label>Center longitude<input id="sarCenterLon" type="number" step="0.0001" value="69.215"></label>
             <label>Pixel size (m)<input id="sarPixelSize" type="number" min="1" max="1000" step="0.1" value="10"></label>
+            <label>Acquisition UTC<input id="sarAcquisitionUtc" type="datetime-local"></label>
           </div>
           <button id="btnRunUploadedSAR" class="btn-tactical btn-primary drawer-cta">Analyze uploaded scene</button>
         </div>
@@ -187,7 +189,7 @@
             <div id="metricWind" class="metric-value">-- m/s</div>
           </div>
           <div class="metric-item">
-            <div class="metric-label">Calculated Slick Age</div>
+            <div class="metric-label">Estimated Slick Age</div>
             <div id="metricAge" class="metric-value crimson">-- Hours</div>
           </div>
           <div class="metric-item">
@@ -271,7 +273,7 @@
         </div>
         <div class="hud-chip">
           <span>PARTICLES:</span>
-          <b style="color: var(--accent-cyan);">500 SWARM</b>
+          <b style="color: var(--accent-cyan);">1,000 SWARM</b>
         </div>
       </div>
 
@@ -299,7 +301,7 @@
 
     <!-- Right Panel: AIS Vessel Correlation & Culprit Attribution -->
     <aside class="side-panel panel-right">
-      <!-- Primary Suspect Dossier Card -->
+      <!-- Lead-assessment card -->
       <section class="panel-card">
         <div class="card-title">
           <span>Vessel Lead Assessment</span>
@@ -349,7 +351,7 @@
 
           <div class="anomaly-item">
             <div class="anomaly-title">
-              <span>Kinematic Speed Drop Anomaly (Discharge Profile)</span>
+              <span>Kinematic Speed Variation</span>
               <span id="scoreSpeed">-- / 100</span>
             </div>
             <div class="progress-bar-bg">
@@ -359,7 +361,7 @@
 
           <div class="anomaly-item">
             <div class="anomaly-title">
-              <span>Vessel Risk Class & Slop Capacity Prior</span>
+              <span>Vessel Class Prior (Heuristic)</span>
               <span id="scoreType">-- / 100</span>
             </div>
             <div class="progress-bar-bg">

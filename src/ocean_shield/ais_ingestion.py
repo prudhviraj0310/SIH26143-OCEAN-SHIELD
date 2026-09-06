@@ -85,11 +85,16 @@ def _normalized_vessel_type(raw_type: str, cargo: str) -> str:
     return raw_type or "Other / Unclassified Vessel"
 
 
-def parse_marinecadastre_csv(content: bytes, filename: str = "ais.csv") -> Dict[str, Any]:
-    """Parse and time-normalize a CSV without inventing missing AIS telemetry.
+def parse_marinecadastre_csv(
+    content: bytes,
+    filename: str = "ais.csv",
+    reference_time_utc: str | None = None,
+) -> Dict[str, Any]:
+    """Parse a CSV without inventing missing AIS telemetry.
 
-    Relative time is referenced to the newest valid ping in the uploaded file, which
-    becomes T=0.  The caller can use this reference for transparent correlation.
+    If supplied, ``reference_time_utc`` is the SAR acquisition time used for AIS
+    correlation. Otherwise relative time is referenced to the newest valid ping;
+    the result is explicitly marked as not satellite-time-aligned.
     """
     if not content:
         raise ValueError("The AIS CSV is empty.")
@@ -153,7 +158,15 @@ def parse_marinecadastre_csv(content: bytes, filename: str = "ais.csv") -> Dict[
         raise ValueError("No valid, time-stamped AIS pings were found in the CSV.")
 
     all_timestamps = [pt["_observed_timestamp"] for vessel in vessel_rows.values() for pt in vessel["trajectory"]]
-    reference_timestamp = max(all_timestamps)
+    alignment_status = "aligned_to_supplied_satellite_acquisition"
+    if reference_time_utc:
+        try:
+            reference_timestamp = _parse_timestamp(reference_time_utc).timestamp()
+        except (TypeError, ValueError) as exc:
+            raise ValueError("X-Reference-Time-UTC must be an ISO-8601 UTC timestamp.") from exc
+    else:
+        reference_timestamp = max(all_timestamps)
+        alignment_status = "referenced_to_newest_ais_ping_not_satellite_aligned"
     for vessel in vessel_rows.values():
         vessel["trajectory"].sort(key=lambda pt: pt["_observed_timestamp"])
         for point in vessel["trajectory"]:
@@ -168,6 +181,7 @@ def parse_marinecadastre_csv(content: bytes, filename: str = "ais.csv") -> Dict[
             "source_filename": filename or "ais.csv",
             "sha256": hashlib.sha256(content).hexdigest(),
             "reference_time_utc": datetime.fromtimestamp(reference_timestamp, tz=timezone.utc).isoformat().replace("+00:00", "Z"),
+            "temporal_alignment": alignment_status,
             "valid_pings": valid_pings,
             "rejected_rows": rejected_rows,
             "vessels": len(vessels),

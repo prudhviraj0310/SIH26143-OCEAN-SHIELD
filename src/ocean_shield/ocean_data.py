@@ -13,7 +13,12 @@ import datetime
 from typing import Dict, List, Tuple, Any, Optional
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
-import netCDF4 as nc
+try:
+    import netCDF4 as nc
+    HAS_NETCDF4 = True
+except ImportError:
+    nc = None
+    HAS_NETCDF4 = False
 
 
 class OceanDataProvider:
@@ -40,6 +45,10 @@ class OceanDataProvider:
         self.interpolators: Dict[str, RegularGridInterpolator] = {}
         self.metadata: Dict[str, Any] = {}
         self.is_loaded = False
+
+        if not HAS_NETCDF4:
+            self._setup_analytical_fallback(center_lat, center_lon)
+            return
 
         if netcdf_path:
             if os.path.exists(netcdf_path):
@@ -390,4 +399,36 @@ class OceanDataProvider:
         ref_offset = 36  # Center of 72h window corresponds to T0 (detection)
         idx = int(np.clip(round(ref_offset + t_hours_relative), 0, len(self._openmeteo_wind) - 1))
         return self._openmeteo_wind[idx][0], self._openmeteo_wind[idx][1]
+
+    def _setup_analytical_fallback(self, center_lat: float, center_lon: float):
+        """Pure-Python / NumPy fallback when netCDF4 C-library is not installed."""
+        time_range = np.linspace(-36.0, 12.0, 49, dtype=np.float32)
+        lat_range = np.linspace(center_lat - 0.6, center_lat + 0.6, 25, dtype=np.float32)
+        lon_range = np.linspace(center_lon - 0.6, center_lon + 0.6, 25, dtype=np.float32)
+        T, LAT, LON = np.meshgrid(time_range, lat_range, lon_range, indexing="ij")
+        omega_m2 = 2.0 * math.pi / 12.42
+        tide_phase = omega_m2 * T
+        f_coriolis = 2.0 * 7.2921e-5 * np.sin(np.radians(LAT))
+        coriolis_scale = np.clip(f_coriolis / (2.0 * 7.2921e-5 * np.sin(np.radians(22.0))), 0.8, 1.2)
+        eddy_u = -0.06 * np.sin((LAT - center_lat) * 12.0) * np.cos((LON - center_lon) * 12.0)
+        eddy_v = 0.06 * np.cos((LAT - center_lat) * 12.0) * np.sin((LON - center_lon) * 12.0)
+        u_curr = (0.22 + 0.32 * np.cos(tide_phase) * coriolis_scale + eddy_u).astype(np.float32)
+        v_curr = (0.14 + 0.22 * np.sin(tide_phase) * coriolis_scale + eddy_v).astype(np.float32)
+        diurnal_factor = 1.0 + 0.18 * np.sin((2.0 * math.pi * T) / 24.0)
+        u_wind = ((4.8 + 0.6 * np.sin(LAT * 5.0)) * diurnal_factor).astype(np.float32)
+        v_wind = ((3.2 + 0.4 * np.cos(LON * 5.0)) * diurnal_factor).astype(np.float32)
+
+        grid = (time_range, lat_range, lon_range)
+        self.interpolators["water_u"] = RegularGridInterpolator(grid, u_curr, bounds_error=False, fill_value=None)
+        self.interpolators["water_v"] = RegularGridInterpolator(grid, v_curr, bounds_error=False, fill_value=None)
+        self.interpolators["wind_u"] = RegularGridInterpolator(grid, u_wind, bounds_error=False, fill_value=None)
+        self.interpolators["wind_v"] = RegularGridInterpolator(grid, v_wind, bounds_error=False, fill_value=None)
+        self.metadata = {
+            "title": "Analytical M2 Hydrodynamic Grid (netCDF4 fallback)",
+            "is_real_observed": False,
+            "fallback_mode": True,
+            "institution": "OCEAN-SHIELD Synthetic Engine"
+        }
+        self.is_loaded = True
+
 

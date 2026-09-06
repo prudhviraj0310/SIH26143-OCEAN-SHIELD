@@ -532,7 +532,7 @@ class SAREngine:
             )
             primary["estimated_age_hours"] = estimated_age_h
 
-        # 4. Extract radar metallic ship targets (for Dark Ship detection)
+        # 4. Extract radar metallic ship targets for later radar/AIS review.
         radar_ships = self.detect_radar_ship_targets(image, center_lat, center_lon, pixel_size_m)
 
         return {
@@ -650,4 +650,3 @@ class SAREngine:
             high_freq = cv2.subtract(upscaled, blurred)
             enhanced = cv2.addWeighted(upscaled, 1.25, high_freq, 0.75, 0)
             return cv2.bilateralFilter(enhanced, d=5, sigmaColor=35, sigmaSpace=35)
-

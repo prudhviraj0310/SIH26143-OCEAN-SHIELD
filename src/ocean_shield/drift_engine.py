@@ -82,7 +82,7 @@ class DriftEngine:
         wind_drift_factor: float = 0.032,     # Standard 3.0% - 3.5% wind drift
         deflection_angle_deg: float = 15.0,  # Ekman deflection (right of wind in Northern Hemisphere)
         diffusion_coeff: float = 2.5,        # Horizontal turbulent diffusion m^2/s
-        num_particles: int = 500
+        num_particles: int = 1000
     ):
         self.wind_drift_factor = wind_drift_factor
         self.deflection_angle_rad = math.radians(deflection_angle_deg)

@@ -639,8 +639,9 @@ def get_scenario_sar_and_currents(scenario_id: str) -> Tuple[np.ndarray, OceanCu
     cond = data["ocean_conditions"]
     center = data["center"]
 
-    # Ingest CF-1.8 NetCDF hydrodynamic currents and 10m wind fields
-    # Priority: real downloaded HYCOM > scenario-specific synthetic > default sample
+    # Ingest CF-1.8 NetCDF hydrodynamic currents and 10m wind fields.
+    # The downloaded HYCOM file covers only the Gulf of Kachchh: never silently
+    # apply it to another sector, and prefer it over a same-sector synthetic file.
     nc_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "datasets", "ocean_met"))
     real_nc = os.path.join(nc_dir, "hycom_real_gulf_kachchh.nc")
     nc_path = os.path.join(nc_dir, f"hycom_{scenario_id}.nc")
@@ -648,10 +649,10 @@ def get_scenario_sar_and_currents(scenario_id: str) -> Tuple[np.ndarray, OceanCu
 
     data_provider = None
     try:
-        if os.path.exists(nc_path):
-            data_provider = OceanDataProvider(nc_path, center_lat=center["lat"], center_lon=center["lon"])
-        elif scenario_id == "gulf_of_kachchh" and os.path.exists(real_nc):
+        if scenario_id == "gulf_of_kachchh" and os.path.exists(real_nc):
             data_provider = OceanDataProvider(real_nc, center_lat=center["lat"], center_lon=center["lon"])
+        elif os.path.exists(nc_path):
+            data_provider = OceanDataProvider(nc_path, center_lat=center["lat"], center_lon=center["lon"])
         elif os.path.exists(default_nc):
             data_provider = OceanDataProvider(default_nc, center_lat=center["lat"], center_lon=center["lon"])
     except Exception as e:
@@ -667,12 +668,12 @@ def get_scenario_sar_and_currents(scenario_id: str) -> Tuple[np.ndarray, OceanCu
         data_provider=data_provider
     )
 
-    # All scenarios attempt to load authentic Sentinel-1 SAR imagery first.
-    # Falls back to procedurally generated synthetic scenes only when real data is absent.
+    # The included real Sentinel-1 crop belongs to the dedicated Gulf-of-Mexico
+    # benchmark. It must never be geolocated as an Indian scenario.
     real_sar_path = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..", "datasets", "real_sar", "real_sentinel1_crop_512.png")
     )
-    if os.path.exists(real_sar_path):
+    if scenario_id == "zenodo_sentinel1_real" and os.path.exists(real_sar_path):
         sar_img = cv2.imread(real_sar_path, cv2.IMREAD_GRAYSCALE)
         if sar_img is not None:
             data["satellite_metadata"]["data_origin"] = "Authentic Sentinel-1 C-Band GRD (Copernicus/Zenodo)"
@@ -710,13 +711,9 @@ def get_scenario_sar_and_currents(scenario_id: str) -> Tuple[np.ndarray, OceanCu
         v.setdefault("data_origin", "Scenario Physics Simulation (Synthetic Trajectory)")
         v.setdefault("is_real_ais", False)
 
-    # Supplement scenario vessels with real MarineCadastre AIS data when available
-    real_ais = load_real_marinecadastre_ais(max_vessels=8)
-    if real_ais:
-        data["ais_vessels"] = existing + real_ais
-        data["ais_data_origin"] = f"Scenario fictional vessels ({len(existing)}) + MarineCadastre.gov real AIS ({len(real_ais)} vessels)"
-    else:
-        data["ais_data_origin"] = f"Scenario fictional vessels ({len(existing)})"
+    # Do not merge an unrelated historic export into scenario data. A separate AIS
+    # upload is required for source-, region-, and timestamp-aligned correlation.
+    data["ais_data_origin"] = f"Scenario fictional vessels ({len(existing)})"
 
     # Load real Open-Meteo wind data into the data provider if available
     if data_provider is not None:

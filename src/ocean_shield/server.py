@@ -8,6 +8,7 @@ import os
 import io
 import hashlib
 import math
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 import numpy as np
 import cv2
@@ -40,7 +41,7 @@ app.add_middleware(
     allow_origins=["http://127.0.0.1:8090", "http://localhost:8090"],
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "X-File-Name", "X-Center-Lat", "X-Center-Lon", "X-Pixel-Size-M", "X-Model-Type", "X-Threshold-Offset"],
+    allow_headers=["Content-Type", "X-File-Name", "X-Center-Lat", "X-Center-Lon", "X-Pixel-Size-M", "X-Model-Type", "X-Threshold-Offset", "X-Reference-Time-UTC", "X-Acquisition-Time-UTC"],
 )
 
 # Base directories
@@ -124,6 +125,15 @@ class CorrelateAISRequest(BaseModel):
     ais_provenance: Optional[Dict[str, Any]] = None
 
 
+class CaseSummaryRequest(BaseModel):
+    """The browser's current screening outputs, sent only to render a PDF."""
+    scenario_id: str = "gulf_of_kachchh"
+    sar_results: Dict[str, Any]
+    drift_results: Dict[str, Any]
+    ais_results: Dict[str, Any]
+    evidence_provenance: Optional[Dict[str, Any]] = None
+
+
 # --- Endpoints ---
 
 @app.get("/", response_class=HTMLResponse)
@@ -155,7 +165,7 @@ async def list_scenarios():
     summary_list = []
     for sid, sc in scenarios.items():
         is_real = sc.get("is_real_zenodo_dataset", False)
-        sat_origin = sc.get("satellite_metadata", {}).get("data_origin", "Authentic Sentinel-1 C-Band GRD (Copernicus/Zenodo)" if sid in ("gulf_of_kachchh", "zenodo_sentinel1_real") else "Procedurally Generated Synthetic SAR Scene")
+        sat_origin = sc.get("satellite_metadata", {}).get("data_origin", "Provenance resolved when the scenario scene is loaded")
         summary_list.append({
             "id": sc["id"],
             "title": sc["title"],
@@ -250,6 +260,12 @@ async def analyze_sar_upload(request: Request):
         raise HTTPException(status_code=422, detail="Valid X-Center-Lat and X-Center-Lon headers are required.") from exc
     model_type = request.headers.get("X-Model-Type", "unet")
     filename = request.headers.get("X-File-Name", "sar-raster")
+    acquisition_time_utc = request.headers.get("X-Acquisition-Time-UTC", "").strip()
+    if acquisition_time_utc:
+        try:
+            datetime.fromisoformat(acquisition_time_utc.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="X-Acquisition-Time-UTC must be an ISO-8601 timestamp.") from exc
 
     _validated_coordinate(center_lat, -90.0, 90.0, "center_lat")
     _validated_coordinate(center_lon, -180.0, 180.0, "center_lon")
@@ -286,6 +302,7 @@ async def analyze_sar_upload(request: Request):
             "image_shape_px": {"width": int(sar_image.shape[1]), "height": int(sar_image.shape[0])},
             "scene_center": {"lat": center_lat, "lon": center_lon},
             "pixel_size_m": pixel_size_m,
+            "acquisition_time_utc": acquisition_time_utc or None,
             "georeferencing": "user-supplied centre and pixel size; original GeoTIFF transform not retained",
         },
         "screening_notice": "Automated screening result. Analyst review and validated sensor calibration are required before operational or legal use.",
@@ -413,10 +430,7 @@ async def simulate_drift(req: SimulateDriftRequest):
 
 @app.post("/api/correlate-ais")
 async def correlate_ais(req: CorrelateAISRequest):
-    """
-    Reconstructs historical AIS maritime traffic, filters non-coincident vessels,
-    calculates kinematic behavioral anomaly scores, and flags non-cooperative DARK VESSELS.
-    """
+    """Ranks time-aligned AIS leads and emits radar/AIS review cues."""
     _, current_field, scenario_data = get_scenario_sar_and_currents(req.scenario_id)
     vessels = req.vessels if req.vessels is not None else scenario_data.get("ais_vessels", [])
 
@@ -436,6 +450,7 @@ async def correlate_ais(req: CorrelateAISRequest):
             sar_img, scenario_data["center"]["lat"], scenario_data["center"]["lon"],
             pixel_size_m=float(scenario_data.get("satellite_metadata", {}).get("pixel_spacing_m", 10.0))
         )
+    radar_tgts = [dict(target, relative_time_hours=target.get("relative_time_hours", 0.0)) for target in radar_tgts]
 
     results = ais_engine.attribute_oil_spill(
         vessels, req.origin_lat, req.origin_lon, req.origin_time_rel_h,
@@ -459,9 +474,7 @@ async def correlate_ais(req: CorrelateAISRequest):
 
 @app.get("/api/export-dossier/{scenario_id}")
 async def export_dossier(scenario_id: str):
-    """
-    Generates and downloads the court-admissible Indian Coast Guard Legal Violation Dossier PDF.
-    """
+    """Generates a demo case summary for the selected preconfigured scenario."""
     sar_img, current_field, scenario_data = get_scenario_sar_and_currents(scenario_id)
 
     # Run full pipeline to compile all legal facts
@@ -502,7 +515,7 @@ async def export_dossier(scenario_id: str):
     )
 
     if not os.path.exists(pdf_path):
-        raise HTTPException(status_code=500, detail="Failed to generate violation dossier PDF")
+        raise HTTPException(status_code=500, detail="Failed to generate case summary PDF")
 
     filename = os.path.basename(pdf_path)
     return FileResponse(
@@ -510,6 +523,48 @@ async def export_dossier(scenario_id: str):
         media_type="application/pdf",
         filename=filename,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@app.post("/api/export-case-summary")
+async def export_case_summary(req: CaseSummaryRequest):
+    """Render the browser's current screening state as an analyst-review PDF."""
+    scenario_data = get_all_scenarios().get(req.scenario_id)
+    if scenario_data is None:
+        raise HTTPException(status_code=422, detail="Unknown scenario_id.")
+    if not req.sar_results.get("primary_slick"):
+        raise HTTPException(status_code=422, detail="Run SAR screening before exporting a case summary.")
+
+    provenance = req.evidence_provenance or {}
+    sar_provenance = provenance.get("sar") or {}
+    if sar_provenance:
+        scenario_data = dict(scenario_data)
+        scenario_data["satellite_metadata"] = {
+            **scenario_data.get("satellite_metadata", {}),
+            "mission": "User-supplied SAR raster",
+            "acquisition_time_utc": sar_provenance.get("acquisition_time_utc") or "Not supplied",
+            "pixel_spacing_m": sar_provenance.get("pixel_size_m", "Not supplied"),
+            "data_origin": "User-uploaded raster; georeferencing supplied by operator",
+        }
+
+    drift_results = dict(req.drift_results)
+    if "forecast_warning" not in drift_results:
+        drift_results["forecast_warning"] = drift_results.get("beaching_warning", {})
+    pdf_path = report_gen.generate_pdf_dossier(
+        scenario_data,
+        req.sar_results,
+        drift_results,
+        req.ais_results,
+        evidence_provenance=provenance,
+    )
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=500, detail="Failed to generate case summary PDF")
+    filename = os.path.basename(pdf_path)
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=filename,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -526,7 +581,7 @@ async def upload_ais_csv(request: Request):
     if len(content) > MAX_AIS_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="AIS CSV exceeds the 25 MB upload limit.")
     try:
-        parsed = parse_marinecadastre_csv(content, filename)
+        parsed = parse_marinecadastre_csv(content, filename, request.headers.get("X-Reference-Time-UTC"))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -535,5 +590,5 @@ async def upload_ais_csv(request: Request):
         "vessels_parsed_count": len(parsed["vessels"]),
         "vessels": parsed["vessels"],
         "provenance": parsed["provenance"],
-        "screening_notice": "Uploaded AIS is time-normalized to its newest ping (T=0); it is used only for this browser session.",
+        "screening_notice": "AIS is used only for this browser session. Time alignment is recorded in provenance and must be checked before ranking.",
     }

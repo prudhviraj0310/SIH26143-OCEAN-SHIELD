@@ -283,15 +283,16 @@ class AISEngine:
             )
             composite_score = round(min(max(composite_score, 0.0), 99.8), 1)
 
-            # Attribution confidence tier
+            # Lead-priority tier. Scores are heuristic ranking signals, not a
+            # calibrated probability or a finding of responsibility.
             if composite_score >= 80.0:
-                attribution_tier = "PRIMARY SUSPECT (HIGH CERTAINTY)"
+                attribution_tier = "HIGH-PRIORITY LEAD (REVIEW REQUIRED)"
                 flag_color = "#ff3366"  # Red
             elif composite_score >= 60.0:
-                attribution_tier = "PERSON OF INTEREST (MODERATE)"
+                attribution_tier = "MEDIUM-PRIORITY LEAD (REVIEW REQUIRED)"
                 flag_color = "#ffaa00"  # Amber
             else:
-                attribution_tier = "UNLIKELY / INCIDENTAL TRAFFIC"
+                attribution_tier = "LOW-PRIORITY CORRIDOR TRAFFIC"
                 flag_color = "#05d6a0"  # Green
 
             v_result = {
@@ -333,36 +334,40 @@ class AISEngine:
         ais_vessels: List[Dict[str, Any]],
         origin_lat: float,
         origin_lon: float,
-        match_threshold_nm: float = 3.0
+        match_threshold_nm: float = 3.0,
+        max_time_difference_h: float = 1.0,
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Cross-correlates SAR radar metallic ship targets against AIS broadcast transponder pings.
-        Detects NON-COOPERATIVE / DARK VESSELS:
-        Ships that physically appear on radar (high backscatter metallic corner reflectors)
-        but broadcast ZERO AIS transponder telemetry within match_threshold_nm.
+        Produces radar/AIS correlation review cues. A no-match is never evidence
+        that a vessel disabled its transponder; AIS coverage and time alignment
+        must be verified independently.
         """
         dark_vessels = []
         matched_targets = []
 
-        # Gather all AIS latest/trajectory positions
-        ais_positions = []
-        for v in ais_vessels:
-            track = v.get("trajectory", [])
-            if track:
-                latest = track[-1]
-                ais_positions.append({
-                    "mmsi": v.get("mmsi"),
-                    "name": v.get("vessel_name", "UNKNOWN"),
-                    "lat": latest["lat"],
-                    "lon": latest["lon"]
-                })
-
         for tgt in radar_targets:
             tgt_copy = dict(tgt)
+            target_time = float(tgt_copy.get("relative_time_hours", 0.0))
             min_dist_nm = float("inf")
             matched_vessel = None
+            time_aligned_positions = []
+            for vessel in ais_vessels:
+                for point in vessel.get("trajectory", []):
+                    try:
+                        time_delta = abs(float(point.get("relative_time_hours")) - target_time)
+                    except (TypeError, ValueError):
+                        continue
+                    if time_delta <= max_time_difference_h:
+                        time_aligned_positions.append({
+                            "mmsi": vessel.get("mmsi"),
+                            "name": vessel.get("vessel_name", "UNKNOWN"),
+                            "lat": point["lat"],
+                            "lon": point["lon"],
+                            "time_difference_h": time_delta,
+                        })
 
-            for ap in ais_positions:
+            for ap in time_aligned_positions:
                 d_nm = self.haversine_distance_nm(tgt["lat"], tgt["lon"], ap["lat"], ap["lon"])
                 if d_nm < min_dist_nm:
                     min_dist_nm = d_nm
@@ -375,13 +380,16 @@ class AISEngine:
                 tgt_copy["status"] = "COOPERATIVE_AIS_VESSEL"
                 matched_targets.append(tgt_copy)
             else:
-                # Target appears on radar but NO AIS transponder signal found -> DARK VESSEL!
                 dist_to_origin_nm = self.haversine_distance_nm(tgt["lat"], tgt["lon"], origin_lat, origin_lon)
                 tgt_copy["has_matched_ais"] = False
-                tgt_copy["matched_mmsi"] = "NONE (TRANSPONDER DISABLED)"
-                tgt_copy["status"] = "DARK_VESSEL_NON_COOPERATIVE"
+                tgt_copy["matched_mmsi"] = "NONE (NO TIME-ALIGNED AIS POSITION)"
                 tgt_copy["distance_to_spill_origin_nm"] = round(dist_to_origin_nm, 2)
-                tgt_copy["threat_classification"] = "HIGH PRIORITY SUSPECT (COVERT DISCHARGE)" if dist_to_origin_nm < 12.0 else "UNREGISTERED MARITIME CONTACT"
+                if time_aligned_positions:
+                    tgt_copy["status"] = "RADAR_AIS_SPATIAL_MISMATCH_REVIEW"
+                    tgt_copy["threat_classification"] = "RADAR/AIS MISMATCH — VERIFY COVERAGE" 
+                else:
+                    tgt_copy["status"] = "AIS_TEMPORAL_COVERAGE_GAP"
+                    tgt_copy["threat_classification"] = "AIS TIME COVERAGE INSUFFICIENT"
                 dark_vessels.append(tgt_copy)
 
         return matched_targets, dark_vessels
@@ -402,8 +410,8 @@ class AISEngine:
         1. Filters out irrelevant traffic (using full trajectory matching if provided)
         2. Reconstructs space-time corridor
         3. Analyzes kinematic anomalies
-        4. Identifies and ranks culprit vessels
-        5. Cross-correlates radar ship targets to flag non-cooperative DARK VESSELS
+        4. Identifies and ranks investigative leads
+        5. Cross-correlates radar targets with time-aligned AIS positions
         """
         filtered = self.filter_vessel_traffic(
             raw_vessels, origin_lat, origin_lon, origin_time_relative_h,

@@ -18,6 +18,7 @@ class OceanShieldApp {
     this.pendingSarFile = null;
     this.sarProvenance = null;
     this.sceneGeometry = null;
+    this.sceneAcquisitionTime = null;
 
     // Simulation state
     this.currentRelativeTime = 0.0;
@@ -238,7 +239,19 @@ class OceanShieldApp {
       this.scenarioData = data.scenario;
       this.pendingSarFile = null;
       this.sarProvenance = null;
+      this.customAisVessels = null;
+      this.aisProvenance = null;
       this.sceneGeometry = { ...this.scenarioData.center, width: 512, height: 512, pixelSize: 50 };
+      this.sceneAcquisitionTime = (this.scenarioData.satellite_metadata.acquisition_time_utc || '')
+        .replace(' UTC', 'Z')
+        .replace(' ', 'T') || null;
+      const toDatetimeLocal = (timestamp) => timestamp ? timestamp.replace(' UTC', '').replace('Z', '').slice(0, 16) : '';
+      document.getElementById('sarCenterLat').value = this.scenarioData.center.lat;
+      document.getElementById('sarCenterLon').value = this.scenarioData.center.lon;
+      document.getElementById('sarPixelSize').value = this.scenarioData.satellite_metadata.pixel_spacing_m || 10;
+      document.getElementById('sarAcquisitionUtc').value = toDatetimeLocal(this.sceneAcquisitionTime);
+      document.getElementById('timeDateDisplay').innerText =
+        this.scenarioData.satellite_metadata.acquisition_time_ist || this.scenarioData.satellite_metadata.acquisition_time_utc || 'Not supplied';
       this.setEvidenceState();
 
       // Update HUD & Map
@@ -295,7 +308,8 @@ class OceanShieldApp {
     this.inputModeCopy.innerText = hasFieldData
       ? 'Uploaded inputs are provenance-labelled. Automated outputs remain analyst-review leads, not findings of liability.'
       : 'This sector is a generated demonstration scenario. Rankings are investigative leads, not liability findings.';
-    const sar = this.sarProvenance ? `SAR: ${this.sarProvenance.source_filename}` : 'SAR: synthetic scenario';
+    const scenarioSar = this.scenarioData?.satellite_metadata?.data_origin || 'scenario input';
+    const sar = this.sarProvenance ? `SAR: ${this.sarProvenance.source_filename}` : `SAR: ${scenarioSar}`;
     const ais = this.aisProvenance ? `AIS: ${this.aisProvenance.source_filename}` : 'AIS: embedded tracks';
     this.sourceSummary.innerText = `${sar} • ${ais}`;
   }
@@ -398,7 +412,10 @@ class OceanShieldApp {
     try {
       const resp = await fetch('/api/upload-ais-csv', {
         method: 'POST',
-        headers: { 'X-File-Name': file.name },
+        headers: {
+          'X-File-Name': file.name,
+          'X-Reference-Time-UTC': this.sceneAcquisitionTime || ''
+        },
         body: file
       });
       const data = await resp.json();
@@ -439,13 +456,17 @@ class OceanShieldApp {
           'X-Center-Lon': document.getElementById('sarCenterLon').value,
           'X-Pixel-Size-M': document.getElementById('sarPixelSize').value,
           'X-Model-Type': this.modelSelect?.value || 'unet',
-          'X-Threshold-Offset': '20'
+          'X-Threshold-Offset': '20',
+          'X-Acquisition-Time-UTC': document.getElementById('sarAcquisitionUtc').value
+            ? `${document.getElementById('sarAcquisitionUtc').value}Z`
+            : ''
         },
         body: this.pendingSarFile
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || 'Unable to analyse SAR raster.');
       this.sarProvenance = data.provenance;
+      this.sceneAcquisitionTime = data.provenance.acquisition_time_utc || null;
       this.sceneGeometry = {
         lat: data.provenance.scene_center.lat,
         lon: data.provenance.scene_center.lon,
@@ -766,7 +787,7 @@ class OceanShieldApp {
     const scaleX = (t) => padL + ((t - tMin) / (tMax - tMin || 1)) * plotW;
     const scaleY = (s) => padT + plotH - ((s - sMin) / (sMax - sMin || 1)) * plotH;
 
-    // Find discharge point (minimum speed)
+    // Highlight the minimum observed speed; this is a review cue, not discharge evidence.
     const minSpeedIdx = speeds.indexOf(Math.min(...speeds));
     const dischargePt = traj[minSpeedIdx];
 
@@ -801,9 +822,9 @@ class OceanShieldApp {
             return `<circle cx="${cx}" cy="${cy}" r="${isDischarge ? 5 : 2.5}" fill="${isDischarge ? '#ff3366' : '#38bdf8'}" stroke="${isDischarge ? '#fff' : 'none'}" stroke-width="${isDischarge ? 1.5 : 0}"/>` +
               (isDischarge ? `<text x="${cx}" y="${parseFloat(cy) - 8}" fill="#ff3366" font-size="7" text-anchor="middle" font-weight="bold">${p.sog_knots} kts</text>` : '');
           }).join('')}
-          <!-- Discharge annotation -->
+          <!-- Minimum-speed review cue -->
           <line x1="${scaleX(times[minSpeedIdx]).toFixed(1)}" y1="${padT}" x2="${scaleX(times[minSpeedIdx]).toFixed(1)}" y2="${padT + plotH}" stroke="#ff3366" stroke-width="1" stroke-dasharray="3,2" opacity="0.7"/>
-          <text x="${scaleX(times[minSpeedIdx]).toFixed(1)}" y="${padT - 1}" fill="#ff3366" font-size="6" text-anchor="middle">DISCHARGE</text>
+          <text x="${scaleX(times[minSpeedIdx]).toFixed(1)}" y="${padT - 1}" fill="#ff3366" font-size="6" text-anchor="middle">MIN SPEED</text>
         </svg>
       </div>
     `;
@@ -831,12 +852,12 @@ class OceanShieldApp {
       const m = L.marker([dv.lat, dv.lon], { icon: darkIcon }).addTo(this.darkVesselsLayerGroup);
       m.bindPopup(`
         <div style="font-family: var(--text-mono); font-size: 0.76rem; min-width: 210px;">
-          <b style="color: #ff0044;">⚠️ [DARK VESSEL DETECTED]</b><br>
+          <b style="color: #ff0044;">⚠️ [RADAR/AIS REVIEW CUE]</b><br>
           <b>Target ID:</b> ${dv.target_id}<br>
-          <b>Transponder:</b> <span style="color:#ff3366; font-weight:bold;">DISABLED (NO AIS)</span><br>
+          <b>AIS match:</b> <span style="color:#ff3366; font-weight:bold;">${dv.matched_mmsi}</span><br>
           <b>Radar Intensity:</b> ${dv.radar_rcs_mean_db} dB<br>
           <b>Distance to Origin:</b> ${dv.distance_to_spill_origin_nm !== undefined ? dv.distance_to_spill_origin_nm + ' NM' : 'Near Spill'}<br>
-          <div style="color: #f59e0b; margin-top: 4px; font-weight: 600;">${dv.threat_classification || 'UNREGISTERED CONTACT'}</div>
+          <div style="color: #f59e0b; margin-top: 4px; font-weight: 600;">${dv.threat_classification || 'VERIFY AIS COVERAGE'}</div>
         </div>
       `);
     });
@@ -845,7 +866,7 @@ class OceanShieldApp {
   renderVesselTable(suspects, darkVessels = []) {
     const totalCount = suspects.length + darkVessels.length;
     this.vesselCountTag.innerHTML = darkVessels.length > 0
-      ? `${suspects.length} AIS \u2022 ${darkVessels.length} DARK`
+      ? `${suspects.length} AIS \u2022 ${darkVessels.length} REVIEW`
       : `${suspects.length} VESSELS`;
 
     if (!suspects.length && !darkVessels.length) {
@@ -855,15 +876,15 @@ class OceanShieldApp {
 
     let rowsHtml = '';
 
-    // Dark vessels first with red alert row
+    // Radar/AIS review cues first; absence of a match is not a disabled transponder.
     darkVessels.forEach(dv => {
       rowsHtml += `
         <tr class="vessel-row dark-vessel-row" style="background: rgba(255, 0, 68, 0.14); border-left: 3px solid #ff0044;">
-          <td><b style="color:#ff0044;">⚡ ${dv.target_id}</b><br><span style="font-size:0.65rem; color:#ff6688;">DARK SHIP \u2022 NO AIS</span></td>
+          <td><b style="color:#ff0044;">⚡ ${dv.target_id}</b><br><span style="font-size:0.65rem; color:#ff6688;">RADAR/AIS REVIEW</span></td>
           <td>RADAR BLIP</td>
           <td>${dv.distance_to_spill_origin_nm !== undefined ? dv.distance_to_spill_origin_nm + ' NM' : 'Near origin'}</td>
-          <td style="color:#ff0044; font-weight:bold;">TRANSPONDER OFF</td>
-          <td><b style="color:#ff0044;">HIGH</b></td>
+          <td style="color:#ff0044; font-weight:bold;">VERIFY COVERAGE</td>
+          <td><b style="color:#ff0044;">REVIEW</b></td>
         </tr>
       `;
     });
@@ -1000,8 +1021,41 @@ class OceanShieldApp {
     this.playIcon.innerHTML = `<polygon points="5 3 19 12 5 21 5 3"/>`;
   }
 
-  downloadDossier() {
-    window.location.href = `/api/export-dossier/${this.activeScenarioId}`;
+  async downloadDossier() {
+    if (!this.sarResults || !this.driftResults || !this.aisResults) {
+      alert('Run SAR, drift, and AIS lead screening before exporting a case summary.');
+      return;
+    }
+    document.getElementById('systemStatusText').innerText = 'BUILDING CASE SUMMARY...';
+    try {
+      const response = await fetch('/api/export-case-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scenario_id: this.activeScenarioId,
+          sar_results: this.sarResults,
+          drift_results: this.driftResults,
+          ais_results: this.aisResults,
+          evidence_provenance: { sar: this.sarProvenance, ais: this.aisProvenance }
+        })
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Unable to generate case summary.');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'Ocean_Shield_Case_Summary.pdf';
+      anchor.click();
+      URL.revokeObjectURL(url);
+      document.getElementById('systemStatusText').innerText = 'CASE SUMMARY EXPORTED';
+    } catch (error) {
+      console.error('Case summary export failed:', error);
+      document.getElementById('systemStatusText').innerText = 'EXPORT FAILED';
+      alert(error.message || 'Unable to generate case summary.');
+    }
   }
 }
 
