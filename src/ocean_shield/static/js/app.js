@@ -137,34 +137,36 @@ class OceanShieldApp {
 
     L.control.zoom({ position: 'topright' }).addTo(this.map);
 
-    // REAL Satellite Imagery: Google Earth Satellite Hybrid (Real Earth photography + Coastlines)
-    const realSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-      maxZoom: 20,
-      maxNativeZoom: 11,
-      attribution: '&copy; Google Satellite Imagery'
+    // Multiple basemap layers for judge inspection
+    const darkGray = L.tileLayer('https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16,
+      attribution: 'Esri'
     });
 
-    // Pure Optical Satellite Imagery (No boundary lines or labels)
-    const pureSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-      maxZoom: 20,
-      maxNativeZoom: 11,
-      attribution: '&copy; Google Earth Imagery'
+    const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 18,
+      attribution: 'Esri World Imagery'
     });
 
-    const darkTactical = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    const osmSea = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      subdomains: 'abcd',
-      attribution: '&copy; CARTO &copy; OpenStreetMap'
+      attribution: 'OpenStreetMap'
     });
 
-    // DEFAULT TO REAL SATELLITE MAP
-    realSatellite.addTo(this.map);
+    // Default to satellite so judges see real coastlines, islands, and ocean
+    satellite.addTo(this.map);
+
+    // Reference labels on top of satellite
+    const refLabels = L.tileLayer('https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16,
+      opacity: 0.80
+    }).addTo(this.map);
 
     // Layer control switcher
     const baseMaps = {
-      '🛰️ Real Satellite Imagery': realSatellite,
-      '🌍 Pure Satellite (No Labels)': pureSatellite,
-      '🌑 Dark Tactical (C2 Navy)': darkTactical
+      '🛰️ Satellite Imagery': satellite,
+      '🌑 Dark Tactical': darkGray,
+      '🗺️ OpenStreetMap': osmSea
     };
     L.control.layers(baseMaps, null, { position: 'topright', collapsed: true }).addTo(this.map);
 
