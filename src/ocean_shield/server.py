@@ -154,15 +154,20 @@ async def list_scenarios():
     scenarios = get_all_scenarios()
     summary_list = []
     for sid, sc in scenarios.items():
+        is_real = sc.get("is_real_zenodo_dataset", False)
+        sat_origin = sc.get("satellite_metadata", {}).get("data_origin", "Authentic Sentinel-1 C-Band GRD (Copernicus/Zenodo)" if sid in ("gulf_of_kachchh", "zenodo_sentinel1_real") else "Procedurally Generated Synthetic SAR Scene")
         summary_list.append({
             "id": sc["id"],
             "title": sc["title"],
             "region": sc["region"],
             "center": sc["center"],
             "mission": sc["satellite_metadata"]["mission"],
-            "acquisition_ist": sc["satellite_metadata"]["acquisition_time_ist"],
+            "acquisition_ist": sc["satellite_metadata"].get("acquisition_time_ist", sc["satellite_metadata"].get("acquisition_time_utc", "N/A")),
+            "acquisition_utc": sc["satellite_metadata"].get("acquisition_time_utc", "N/A"),
             "sea_state": sc["ocean_conditions"]["sea_state"],
-            "vessels_count": len(sc.get("ais_vessels", []))
+            "vessels_count": len(sc.get("ais_vessels", [])),
+            "data_origin": sat_origin,
+            "is_real_dataset": is_real or "Authentic" in sat_origin
         })
     return {"scenarios": summary_list}
 
@@ -295,7 +300,13 @@ async def analyze_eo(req: AnalyzeEORequest):
     to detect sunglint oil anomalies and reject natural lookalike algal blooms.
     """
     rgb_img, nir_band, swir_band, scenario_data = get_scenario_eo_data(req.scenario_id)
-    clean_mask, diagnostics = eo_engine.segment_optical_slick(rgb_img, nir_band=nir_band)
+    if "raw_multispectral_bands" in scenario_data:
+        clean_mask, diagnostics = eo_engine.process_multispectral_scene(
+            scenario_data["raw_multispectral_bands"],
+            sunglint_present=True
+        )
+    else:
+        clean_mask, diagnostics = eo_engine.segment_optical_slick(rgb_img, nir_band=nir_band, swir_band=swir_band)
 
     # Compute NDOI matrix for visualization
     r = rgb_img[:, :, 2]
@@ -319,7 +330,8 @@ async def analyze_eo(req: AnalyzeEORequest):
             "mission": "Sentinel-2B MSI Multi-Spectral Optical",
             "spectral_bands": "B4 (Red 665nm), B8 (NIR 842nm), B11 (SWIR 1610nm)",
             "ground_sampling_distance_m": 10.0,
-            "lookalike_discrimination": "NDOI > 0.05 & FAI < 45 (Algal Bloom Discarded)"
+            "lookalike_discrimination": "NDOI > 0.05 & FAI < 45 (Algal Bloom Discarded)",
+            "data_origin": scenario_data.get("eo_data_origin", "Authentic Sentinel-2 MSI Level-2A BOA Reflectance (Copernicus)")
         }
     }
 
@@ -332,7 +344,17 @@ async def simulate_drift(req: SimulateDriftRequest):
     """
     _, current_field, scenario_data = get_scenario_sar_and_currents(req.scenario_id)
 
-    met_ocean_source = "scenario demonstration field"
+    # Dynamic provenance label reflecting actual hydrodynamic & atmospheric sources
+    if current_field.data_provider and current_field.data_provider.is_loaded:
+        dp_meta = current_field.data_provider.metadata
+        base_source = dp_meta.get("data_origin") or dp_meta.get("source") or dp_meta.get("title") or "CF-1.8 NetCDF hydrodynamic grid"
+        if getattr(current_field.data_provider, "_has_real_wind", False):
+            met_ocean_source = f"{base_source} + Open-Meteo real hourly wind observations"
+        else:
+            met_ocean_source = base_source
+    else:
+        met_ocean_source = "scenario demonstration analytical field"
+
     overrides = (req.current_u_ms, req.current_v_ms, req.wind_u_ms, req.wind_v_ms)
     if any(value is not None for value in overrides):
         current_field = OceanCurrentField(
@@ -424,8 +446,9 @@ async def correlate_ais(req: CorrelateAISRequest):
     )
 
     results["ais_provenance"] = req.ais_provenance or {
-        "source_kind": "embedded demonstration scenario",
+        "source_kind": scenario_data.get("ais_data_origin", "embedded demonstration scenario"),
         "scenario_id": req.scenario_id,
+        "total_vessels_in_region": len(vessels)
     }
     results["screening_notice"] = (
         "AIS ranking is an investigative lead, not a finding of responsibility. "

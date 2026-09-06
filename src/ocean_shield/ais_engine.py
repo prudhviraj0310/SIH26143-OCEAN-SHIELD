@@ -17,17 +17,22 @@ class AISEngine:
     Kinematic Anomaly Detection, and Culprit Vessel Attribution.
     """
 
+    # Baseline capacity priors: modest 10% weight so attribution is evidence-driven (CPA, time, kinematics)
+    # rather than predetermined by ship type.
     VESSEL_TYPE_WEIGHTS = {
-        "Crude Oil Tanker": 95.0,
-        "Chemical Tanker": 90.0,
-        "Product Tanker": 88.0,
-        "Bulk Carrier": 80.0,
-        "Container Ship": 65.0,
+        "Crude / Product Tanker": 65.0,
+        "Hazardous Category A Tanker": 70.0,
+        "Container / Bulk Cargo Carrier": 55.0,
+        "Tug / Towing / Offshore Support": 45.0,
+        "Commercial Fishing Vessel": 40.0,
+        "Passenger Ferry": 35.0,
+        "Crude Oil Tanker": 65.0,
+        "Product Tanker": 65.0,
         "General Cargo": 55.0,
-        "Offshore Supply Vessel": 30.0,
-        "Tug / Workboat": 20.0,
-        "Fishing Vessel": 10.0,
-        "Pleasure Craft": 5.0,
+        "Bulk Carrier": 55.0,
+        "Container Ship": 55.0,
+        "Fishing Vessel": 40.0,
+        "Other / Unclassified Vessel": 40.0,
         "Other / Unknown": 40.0
     }
 
@@ -35,11 +40,11 @@ class AISEngine:
         self,
         cpa_distance_sigma_nm: float = 1.8,   # Closest Point of Approach scale in Nautical Miles
         temporal_sigma_hours: float = 1.2,     # Time difference decay parameter
-        weight_proximity: float = 0.35,
-        weight_temporal: float = 0.25,
-        weight_speed_anomaly: float = 0.20,
-        weight_course_anomaly: float = 0.08,
-        weight_vessel_type: float = 0.12
+        weight_proximity: float = 0.40,        # 40% spatial CPA
+        weight_temporal: float = 0.30,         # 30% temporal coincidence
+        weight_speed_anomaly: float = 0.15,    # 15% speed drop / discharge profile
+        weight_course_anomaly: float = 0.05,   # 5% heading variance
+        weight_vessel_type: float = 0.10       # 10% baseline capacity prior
     ):
         self.cpa_sigma_nm = cpa_distance_sigma_nm
         self.temporal_sigma_hours = temporal_sigma_hours
@@ -89,10 +94,16 @@ class AISEngine:
 
             min_dist_nm = float("inf")
             best_point = None
-            best_origin_time = origin_time_relative_h
 
-            if hindcast_trajectory:
-                # Full space-time cross-correlation along the drift path
+            # 1. Primary correlation against the estimated release origin (x0, y0)
+            for pt in track:
+                d_nm = self.haversine_distance_nm(pt["lat"], pt["lon"], origin_lat, origin_lon)
+                if d_nm < min_dist_nm:
+                    min_dist_nm = d_nm
+                    best_point = pt
+
+            # 2. If trajectory provided and outside origin radius, check space-time match along drift path
+            if hindcast_trajectory and min_dist_nm > spatial_radius_nm:
                 for pt in track:
                     pt_t = pt.get("relative_time_hours", 0.0)
                     for step in hindcast_trajectory:
@@ -105,21 +116,11 @@ class AISEngine:
                             if d_nm < min_dist_nm:
                                 min_dist_nm = d_nm
                                 best_point = pt
-                                best_origin_time = step_t
 
-            # Fallback to single epicenter (origin_lat, origin_lon)
-            if best_point is None:
-                for pt in track:
-                    d_nm = self.haversine_distance_nm(pt["lat"], pt["lon"], origin_lat, origin_lon)
-                    if d_nm < min_dist_nm:
-                        min_dist_nm = d_nm
-                        best_point = pt
-                best_origin_time = origin_time_relative_h
-
-            # Check if vessel traversed within corridor
+            # Check if vessel traversed within corridor around the release event
             if min_dist_nm <= spatial_radius_nm and best_point is not None:
                 pt_rel_t = best_point.get("relative_time_hours", 0.0)
-                time_diff_h = abs(pt_rel_t - best_origin_time)
+                time_diff_h = abs(pt_rel_t - origin_time_relative_h)
 
                 if time_diff_h <= temporal_window_h:
                     v_copy = dict(v)
@@ -304,6 +305,7 @@ class AISEngine:
                 "width_m": v.get("width_m", 32),
                 "dwt_tonnes": v.get("dwt_tonnes", 45000),
                 "composite_suspect_score": composite_score,
+                "total_score": composite_score,
                 "attribution_tier": attribution_tier,
                 "flag_color": flag_color,
                 "score_breakdown": {
@@ -315,7 +317,9 @@ class AISEngine:
                 },
                 "closest_approach": cpa,
                 "kinematics": kinematics,
-                "full_trajectory": v.get("trajectory", [])
+                "full_trajectory": v.get("trajectory", []),
+                "data_origin": v.get("data_origin", "Scenario Physics Simulation (Synthetic Trajectory)"),
+                "is_real_ais": v.get("is_real_ais", False)
             }
             ranked_vessels.append(v_result)
 

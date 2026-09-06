@@ -135,9 +135,10 @@ class OceanShieldApp {
     L.control.zoom({ position: 'topright' }).addTo(this.map);
 
     // Multiple basemap layers for judge inspection
-    const darkGray = L.tileLayer('https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 16,
-      attribution: 'Esri'
+    const darkGray = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      subdomains: 'abcd',
+      attribution: '&copy; CARTO &copy; OpenStreetMap'
     });
 
     const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -153,10 +154,10 @@ class OceanShieldApp {
     // Default to satellite so judges see real coastlines, islands, and ocean
     satellite.addTo(this.map);
 
-    // Reference labels on top of satellite
-    const refLabels = L.tileLayer('https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 16,
-      opacity: 0.80
+    // Reference boundaries and labels on top of satellite
+    const refLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 18,
+      opacity: 0.85
     }).addTo(this.map);
 
     // Layer control switcher

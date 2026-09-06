@@ -140,7 +140,7 @@ def main():
         print(f"      - Normalized Difference Oil Index (NDOI): +{eo_diag['mean_ndoi']:.4f}")
         print(f"      - Optical Classification: {eo_diag['classification']}")
         print(f"      - Optical Confidence: {eo_diag['confidence']*100:.1f}%")
-        print(f"      - Natural Lookalike Algae Discrimination: {'REJECTED (Low FAI)' if eo_diag['lookalike_algae_rejected'] else 'CLEAN SEA'}")
+        print(f"      - Natural Lookalike Algae Discrimination: {'REJECTED (Low FAI)' if eo_diag.get('lookalike_algae_rejected', False) else 'CLEAN SEA'}")
 
     # 3. Lagrangian Hydrodynamic Drift & Mackay ADIOS Weathering
     print("\n[3/4] Running 4th-Order Runge-Kutta Lagrangian Hindcast & ADIOS Weathering...")

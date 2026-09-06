@@ -42,18 +42,47 @@ def _parse_timestamp(value: str) -> datetime:
     return timestamp.astimezone(timezone.utc)
 
 
+def validate_imo(imo_number: int) -> bool:
+    """Validates IMO check digit according to IMO Resolution A.1078(28)."""
+    s = str(imo_number).strip()
+    if len(s) != 7 or not s.isdigit():
+        return False
+    digits = [int(c) for c in s]
+    chk = sum(digits[i] * (7 - i) for i in range(6)) % 10
+    return chk == digits[6]
+
+
 def _normalized_vessel_type(raw_type: str, cargo: str) -> str:
+    """Decodes authentic MarineCadastre numeric VesselType/Cargo codes."""
+    type_code = _integer(raw_type, default=-1)
+    cargo_code = _integer(cargo, default=-1)
+
+    if 80 <= type_code <= 89 or 80 <= cargo_code <= 89:
+        if type_code == 81 or cargo_code == 81:
+            return "Hazardous Category A Tanker"
+        return "Crude / Product Tanker"
+    if 70 <= type_code <= 79 or 70 <= cargo_code <= 79:
+        return "Container / Bulk Cargo Carrier"
+    if 30 <= type_code <= 37:
+        return "Commercial Fishing Vessel"
+    if 50 <= type_code <= 55:
+        return "Tug / Towing / Offshore Support"
+    if 60 <= type_code <= 69:
+        return "Passenger Ferry"
+
+    # String fallbacks if raw strings are provided
     cargo_l = cargo.lower()
     raw_l = raw_type.lower()
-    if "crude" in cargo_l:
-        return "Crude Oil Tanker"
-    if "petroleum" in cargo_l or "product" in cargo_l or raw_l in {"80", "81", "82", "tanker"}:
-        return "Product Tanker"
-    if "cargo" in raw_l:
-        return "General Cargo"
+    if "crude" in cargo_l or "oil" in cargo_l or "tanker" in raw_l:
+        return "Crude / Product Tanker"
+    if "container" in raw_l or "bulk" in raw_l or "cargo" in raw_l:
+        return "Container / Bulk Cargo Carrier"
     if "fishing" in raw_l:
-        return "Fishing Vessel"
-    return raw_type or "Other / Unknown"
+        return "Commercial Fishing Vessel"
+    if "tug" in raw_l or "supply" in raw_l:
+        return "Tug / Towing / Offshore Support"
+
+    return raw_type or "Other / Unclassified Vessel"
 
 
 def parse_marinecadastre_csv(content: bytes, filename: str = "ais.csv") -> Dict[str, Any]:
@@ -94,9 +123,11 @@ def parse_marinecadastre_csv(content: bytes, filename: str = "ais.csv") -> Dict[
             vessel_name = _value(row, "VesselName", "vessel_name", default=f"VESSEL-{mmsi}")
             cargo = _value(row, "Cargo", "cargo")
             vessel_type = _normalized_vessel_type(_value(row, "VesselType", "vessel_type"), cargo)
+            imo_val = _integer(_value(row, "IMO", "imo"))
             vessel = vessel_rows.setdefault(mmsi, {
                 "mmsi": mmsi,
-                "imo": _integer(_value(row, "IMO", "imo")),
+                "imo": imo_val,
+                "is_imo_verified": validate_imo(imo_val) if imo_val > 0 else False,
                 "vessel_name": vessel_name,
                 "call_sign": _value(row, "CallSign", "call_sign", default="N/A"),
                 "flag_state": "Not supplied by source",

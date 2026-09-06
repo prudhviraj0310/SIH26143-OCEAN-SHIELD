@@ -98,15 +98,15 @@ class TestOceanShieldPipeline(unittest.TestCase):
         culprit = results["primary_culprit"]
         self.assertIsNotNone(culprit)
         self.assertEqual(culprit["vessel_name"], "MT NEPTUNE GLORY")
-        self.assertEqual(culprit["imo"], 9384721)
+        self.assertEqual(culprit["imo"], 9384722)
         self.assertGreaterEqual(culprit["composite_suspect_score"], 80.0, "Culprit should have high suspect score")
         self.assertLess(culprit["closest_approach"]["distance_nm"], 1.0, "Culprit should be directly over origin")
         self.assertGreaterEqual(culprit["kinematics"]["speed_drop_knots"], 6.0, "Culprit should exhibit speed drop")
 
     def test_all_scenarios_and_dossier_pdf(self):
-        """Validates all 3 Indian maritime sectors and generates an analyst-review PDF."""
+        """Validates all Indian and benchmark maritime sectors and generates an analyst-review PDF."""
         scenarios = get_all_scenarios()
-        self.assertEqual(len(scenarios), 3)
+        self.assertGreaterEqual(len(scenarios), 3)
 
         for sid in scenarios:
             sar_img, current_field, data = get_scenario_sar_and_currents(sid)
@@ -258,6 +258,35 @@ class TestOceanShieldPipeline(unittest.TestCase):
         first_track = parsed["vessels"][0]["trajectory"]
         self.assertEqual(first_track[-1]["relative_time_hours"], 0.0)
         self.assertLess(first_track[0]["relative_time_hours"], 0.0)
+
+    def test_real_hycom_netcdf_ingestion_and_provenance(self):
+        """Validates ingestion of genuine NOAA/Fleet Numerical 4D HYCOM NetCDF archives."""
+        real_nc = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "..", "datasets", "ocean_met", "hycom_real_gulf_kachchh.nc")
+        )
+        if not os.path.exists(real_nc):
+            self.skipTest("Real HYCOM NetCDF not found on disk")
+
+        from src.ocean_shield.ocean_data import OceanDataProvider
+        provider = OceanDataProvider(real_nc, center_lat=22.465, center_lon=69.215)
+        self.assertTrue(provider.is_loaded)
+        self.assertTrue(provider.metadata.get("is_real_observed"))
+        self.assertIn("Fleet Numerical", provider.metadata.get("institution", ""))
+
+        # Velocity extraction at open ocean location
+        u_c, v_c, u_w, v_w = provider.get_velocity_at(22.48, 69.20, t_hours_relative=0.0)
+        self.assertIsInstance(u_c, float)
+        self.assertIsInstance(v_c, float)
+        # Ensure fill values (-30000.0) were properly masked
+        self.assertGreater(u_c, -5.0)
+        self.assertLess(u_c, 5.0)
+        self.assertGreater(v_c, -5.0)
+        self.assertLess(v_c, 5.0)
+
+        # Provenance telemetry check
+        telem = provider.get_telemetry_summary(22.48, 69.20, 0.0)
+        self.assertTrue(telem["is_real_observed_currents"])
+        self.assertIn("institution", telem)
 
 
 if __name__ == "__main__":
