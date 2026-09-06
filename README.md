@@ -1,5 +1,5 @@
 # 🌊 OCEAN-SHIELD
-### Defense-Grade Autonomous Satellite Remote Sensing & AIS Maritime Oil Spill Attribution System
+### Evidence-Aware Satellite Remote Sensing & AIS Maritime Spill Investigation Workspace
 **Problem Statement ID:** SIH26143 | **Organization:** National Technical Research Organisation (NTRO)  
 **Theme:** Disaster Management & Maritime Environmental Security | **Target Authority:** Indian Coast Guard & DG Shipping
 
@@ -7,16 +7,16 @@
 
 ## 📌 Executive Overview
 
-**OCEAN-SHIELD** is an operational maritime intelligence and satellite remote sensing pipeline designed to solve the critical challenge of unattributable marine oil spills in Indian Exclusive Economic Zones (EEZ) and strategic maritime chokepoints (Gulf of Kachchh, Mumbai High, Great Nicobar Channel).
+**OCEAN-SHIELD** is an SIH prototype for investigating unattributed marine oil spills in Indian Exclusive Economic Zones (EEZ) and strategic maritime chokepoints (Gulf of Kachchh, Mumbai High, Great Nicobar Channel). It makes input provenance and model limitations visible, so an analyst can distinguish a demonstration from a field-data screening run.
 
 When rogue commercial vessels flush oily bilge water or wash cargo slop tanks under the cover of darkness or foul weather, they inflict catastrophic damage on fragile marine sanctuaries, coral reefs, and coastal fishing grounds. When these vessels intentionally disable their AIS (Automatic Identification System) transponders, conventional coast guard patrols are blind.
 
-OCEAN-SHIELD delivers an **end-to-end, court-admissible automated attribution chain**:
+OCEAN-SHIELD delivers an **end-to-end automated screening and decision-support chain**:
 1. **Multi-Modal Satellite Detection:** Dual C-Band SAR (Sentinel-1) & Electro-Optical Multi-Spectral (Sentinel-2 MSI) detection using a real **PyTorch Deep Learning U-Net** and **Super-Resolution (SR)** detail synthesis.
 2. **Lagrangian 4th-Order Runge-Kutta Hydrodynamic Hindcast:** Backward drift advection using high-resolution gridded ocean current fields and NOAA GFS surface wind vectors to reconstruct the spill release epicenter $(x_0, y_0, t_0)$ and slick age.
 3. **Mackay ADIOS Physical Oil Weathering Model:** Computes volatile evaporative depletion, Mooney-Mackay water-in-oil chocolate mousse emulsification, dynamic viscosity surge, and volume expansion.
 4. **AIS Correlative Kinematic Attribution & Dark Vessel Radar Surveillance:** Ingests NOAA/MarineCadastre AIS data, scores candidate vessels on CPA distance, temporal coincidence, and speed drop anomalies, while cross-referencing radar corner-reflectors against AIS dead zones to unmask **Non-Cooperative Dark Ships**.
-5. **Court-Admissible Enforcement Dossier:** Automated compilation of statutory violation notices (PDF) adhering to Merchant Shipping Act Sec. 356 and MARPOL 73/78 Annex I standards.
+5. **Analyst-review case summary:** A reproducible PDF that records model outputs, caveats, and recommended verification steps. It is not a statutory notice or finding of liability.
 
 ---
 
@@ -49,15 +49,15 @@ flowchart TD
         AIS_STREAM["Historic AIS Traffic (NOAA / MarineCadastre)"] --> CORRIDOR_FILTER["Spatiotemporal Corridor Filtering (CPA, Delta-t)"]
         HINDCAST --> CORRIDOR_FILTER
         CORRIDOR_FILTER --> KINEMATICS["Kinematic Anomaly Scoring\n(Discharge Speed Drop, Tanker Risk Class)"]
-        KINEMATICS --> SUSPECT_RANKING["Composite Culprit Attribution Ranking"]
+        KINEMATICS --> SUSPECT_RANKING["Composite Investigative-lead Ranking"]
         
         RADAR_CONTACTS & AIS_STREAM --> DARK_DETECTOR["Radar-to-AIS Dead Zone Cross-Referencing"]
-        DARK_DETECTOR --> DARK_VESSELS["Non-Cooperative DARK VESSELS Flagged\n(Transponder Disabled Near Origin)"]
+        DARK_DETECTOR --> DARK_VESSELS["Radar/AIS Mismatch Cues\n(Analyst Verification Required)"]
     end
 
-    subgraph ENFORCEMENT["4. Operational Command & Legal Enforcement"]
+    subgraph REVIEW["4. Operational Review & Case Summary"]
         SUSPECT_RANKING & DARK_VESSELS & ADIOS --> COCKPIT["Maritime Command Cockpit (Web GIS HUD)"]
-        COCKPIT --> PDF["Indian Coast Guard Statutory Violation Dossier (PDF)"]
+        COCKPIT --> PDF["Analyst-Review Case Summary (PDF)"]
     end
 ```
 
@@ -65,16 +65,18 @@ flowchart TD
 
 ## 📊 Deep Learning & Physical Validation Metrics
 
-### 1. PyTorch SAR U-Net (Trained on Zenodo Sentinel-1 SAR Benchmark)
+### 1. PyTorch SAR U-Net (Zenodo Sentinel-1 benchmark experiment)
 - **Architecture:** 4-stage encoder-decoder with DoubleConv, BatchNorm, ReLU, MaxPool downsampling, Bilinear upsampling, and skip connections.
 - **Loss Function:** Combined `DiceBCELoss` ($\mathcal{L} = \text{BCE} + (1 - \text{Dice})$) for severe class imbalance handling.
 - **Trained Model Checkpoint:** `models/sar_unet_best.pt` (50,058,111 bytes).
-- **Benchmark Performance (Test Split):**
+- **Reported experiment metrics:**
   - **Mean IoU (Jaccard Index):** **0.7808**
   - **Dice Coefficient (F1-Score):** **0.8752**
   - **Spill Detection Recall:** **0.9951 (99.51%)**
   - **Detection Precision:** **0.7837 (78.37%)**
   - **Inference Latency:** **< 80 ms** on CPU, **< 12 ms** on Apple Silicon MPS / NVIDIA CUDA.
+
+> These figures are experiment claims, not an operational performance guarantee. Before deployment, reproduce them on a held-out, geographically separated real-scene test set and publish precision/recall by sea state and lookalike class.
 
 ### 2. Mackay ADIOS Physical Weathering Model
 Simulates the chemical & rheological transformation of spilled crude oil:
@@ -94,8 +96,8 @@ Simulates the chemical & rheological transformation of spilled crude oil:
 ### 1. Environment Setup
 ```bash
 # Clone repository
-git clone https://github.com/prudhviraj/OCEAN-SHIELD.git
-cd OCEAN-SHIELD
+git clone https://github.com/prudhviraj0310/SIH26143-OCEAN-SHIELD.git
+cd SIH26143-OCEAN-SHIELD
 
 # Create and activate Python virtual environment
 python3 -m venv .venv
@@ -116,7 +118,8 @@ Open **`http://127.0.0.1:8090`** in any web browser to access:
 - ADIOS Oil Weathering real-time telemetry card
 - Interactive Timeline Scrubber ($-18\text{h}$ hindcast to $+24\text{h}$ future forecast)
 - AIS Suspect Ranking & Non-Cooperative Dark Vessel radar pings
-- One-click Statutory Violation Notice PDF download
+- Provenance-first input panel with SAR raster upload, historic AIS CSV ingestion, and optional met-ocean vector override
+- One-click analyst-review case summary PDF download
 
 ### 3. Run Headless CLI Attribution (No Browser Required)
 ```bash
@@ -127,11 +130,18 @@ python ocean_shield_cli.py --scenario gulf_of_kachchh --engine unet --export-pdf
 python ocean_shield_cli.py --scenario gulf_of_kachchh --ais-csv datasets/marinecadastre_sample_ais.csv
 ```
 
-### 4. Execute Automated Verification Suite
+### 4. Field-data workflow
+
+1. Select **Add SAR raster** and provide the documented scene centre and pixel size (PNG/JPEG/single-band TIFF).
+2. Select **Ingest historic AIS CSV**. The parser requires `MMSI`, `BaseDateTime`, `LAT`, and `LON`, preserves actual ping timing, and labels the file with a SHA-256 hash.
+3. Optionally enter time-aligned met-ocean vectors; the interface marks this as an operator-supplied override.
+4. Treat every score as an investigative lead. Preserve original calibrated source products and obtain analyst review before escalation.
+
+### 5. Execute Automated Verification Suite
 ```bash
 python -m unittest src/ocean_shield/tests/test_pipeline.py -v
 ```
-All 8 verification tests run and pass in ~1.3 seconds.
+The suite covers the pipeline and AIS CSV ingestion. Install the declared dependencies before running it.
 
 ---
 
@@ -152,7 +162,7 @@ planning for sih/
 │   ├── train_sar_unet.py                        # Complete PyTorch U-Net training pipeline
 │   └── download_zenodo_dataset.py               # Safe Zenodo archive extraction utility
 ├── reports/
-│   └── Test_Verification_Dossier.pdf           # Sample generated Coast Guard statutory violation notice
+│   └── Test_Verification_Dossier.pdf           # Sample analyst-review case summary
 └── src/
     └── ocean_shield/
         ├── models/                              # PyTorch neural network modules (SAR_UNet, DiceBCELoss)
@@ -161,7 +171,7 @@ planning for sih/
         ├── drift_engine.py                      # Lagrangian RK4 drift & Mackay ADIOS oil weathering
         ├── ais_engine.py                        # Spatiotemporal correlation, kinematics & Dark Vessel detection
         ├── scenarios.py                         # Benchmark maritime sectors (Kachchh, Mumbai High, Nicobar)
-        ├── report_generator.py                  # Court-admissible ReportLab PDF generator
+        ├── report_generator.py                  # Analyst-review ReportLab case-summary generator
         ├── server.py                            # FastAPI REST service
         ├── cli.py                               # Terminal command logic
         ├── templates/index.html                 # Tactical Command Center cockpit interface
@@ -172,11 +182,9 @@ planning for sih/
 
 ---
 
-## 📜 Legal Admissibility Standards
-The compiled legal dossiers generated by OCEAN-SHIELD satisfy:
-- **Section 356 of the Indian Merchant Shipping Act, 1958** (Prevention of Marine Pollution).
-- **International Maritime Organization (IMO) MARPOL 73/78 Annex I** regulations.
-- **Section 65B of the Indian Evidence Act** for electronic remote sensing records.
+## ⚖️ Operational and legal boundary
+
+OCEAN-SHIELD does not issue enforcement orders, establish chain of custody, prove a discharge, or make a legal finding. Any real investigation must retain calibrated source data and follow the competent authority's approved procedures, legal review, and applicable evidence rules.
 
 ---
 *Developed for Smart India Hackathon 2026 (SIH26143) &bull; National Technical Research Organisation (NTRO)*

@@ -374,7 +374,7 @@ class AISEngine:
                 # Target appears on radar but NO AIS transponder signal found -> DARK VESSEL!
                 dist_to_origin_nm = self.haversine_distance_nm(tgt["lat"], tgt["lon"], origin_lat, origin_lon)
                 tgt_copy["has_matched_ais"] = False
-                tgt_copy["matched_mmsi"] = "NONE (TRANSISTOR DISABLED)"
+                tgt_copy["matched_mmsi"] = "NONE (TRANSPONDER DISABLED)"
                 tgt_copy["status"] = "DARK_VESSEL_NON_COOPERATIVE"
                 tgt_copy["distance_to_spill_origin_nm"] = round(dist_to_origin_nm, 2)
                 tgt_copy["threat_classification"] = "HIGH PRIORITY SUSPECT (COVERT DISCHARGE)" if dist_to_origin_nm < 12.0 else "UNREGISTERED MARITIME CONTACT"

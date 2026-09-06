@@ -6,15 +6,16 @@ AIS vessel correlation & anomaly scoring, and automated Coast Guard PDF violatio
 
 import os
 import io
-import csv
+import hashlib
+import math
 from typing import Dict, Any, Optional, List
 import numpy as np
 import cv2
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .sar_engine import SAREngine
 from .drift_engine import DriftEngine, OceanCurrentField
@@ -25,6 +26,7 @@ from .scenarios import (
     image_to_base64_png, generate_synthetic_sar_image
 )
 from .report_generator import DossierReportGenerator
+from .ais_ingestion import MAX_AIS_UPLOAD_BYTES, parse_marinecadastre_csv
 
 
 app = FastAPI(
@@ -35,10 +37,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["http://127.0.0.1:8090", "http://localhost:8090"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "X-File-Name", "X-Center-Lat", "X-Center-Lon", "X-Pixel-Size-M", "X-Model-Type", "X-Threshold-Offset"],
 )
 
 # Base directories
@@ -61,13 +63,35 @@ drift_engine = DriftEngine()
 ais_engine = AISEngine()
 report_gen = DossierReportGenerator(output_dir=REPORTS_DIR)
 
+MAX_SAR_UPLOAD_BYTES = 25 * 1024 * 1024
+
+
+def _validated_coordinate(value: float, low: float, high: float, name: str) -> float:
+    if not math.isfinite(value) or not low <= value <= high:
+        raise HTTPException(status_code=422, detail=f"{name} must be between {low} and {high}.")
+    return value
+
+
+def _decode_uploaded_sar(content: bytes) -> np.ndarray:
+    if not content:
+        raise HTTPException(status_code=422, detail="SAR image is empty.")
+    if len(content) > MAX_SAR_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="SAR image exceeds the 25 MB upload limit.")
+    image = cv2.imdecode(np.frombuffer(content, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        raise HTTPException(status_code=422, detail="Unsupported SAR image. Upload a PNG, JPEG, or single-band TIFF.")
+    height, width = image.shape[:2]
+    if height < 64 or width < 64 or image.size > 25_000_000:
+        raise HTTPException(status_code=422, detail="SAR image must be 64 px–25 MP after decoding.")
+    return image
+
 
 # --- Request Models ---
 class AnalyzeSARRequest(BaseModel):
     scenario_id: str = "gulf_of_kachchh"
     use_super_resolution: bool = True
     model_type: str = "unet"  # "unet" (PyTorch Deep Learning) or "cfar_edge" (Fast Tactical)
-    threshold_offset: float = 22.0
+    threshold_offset: float = Field(default=22.0, ge=1.0, le=100.0)
 
 
 class AnalyzeEORequest(BaseModel):
@@ -79,8 +103,12 @@ class SimulateDriftRequest(BaseModel):
     slick_lat: float
     slick_lon: float
     slick_age_hours: Optional[float] = None
-    max_lookback_hours: float = 24.0
-    forecast_hours: float = 48.0
+    max_lookback_hours: float = Field(default=24.0, ge=1.0, le=168.0)
+    forecast_hours: float = Field(default=48.0, ge=1.0, le=168.0)
+    current_u_ms: Optional[float] = Field(default=None, ge=-5.0, le=5.0)
+    current_v_ms: Optional[float] = Field(default=None, ge=-5.0, le=5.0)
+    wind_u_ms: Optional[float] = Field(default=None, ge=-60.0, le=60.0)
+    wind_v_ms: Optional[float] = Field(default=None, ge=-60.0, le=60.0)
 
 
 class CorrelateAISRequest(BaseModel):
@@ -88,10 +116,12 @@ class CorrelateAISRequest(BaseModel):
     origin_lat: float
     origin_lon: float
     origin_time_rel_h: float
-    spatial_radius_nm: float = 25.0
-    temporal_window_h: float = 5.0
+    spatial_radius_nm: float = Field(default=25.0, gt=0.0, le=200.0)
+    temporal_window_h: float = Field(default=5.0, gt=0.0, le=168.0)
     hindcast_trajectory: Optional[List[Dict[str, Any]]] = None
     radar_targets: Optional[List[Dict[str, Any]]] = None
+    vessels: Optional[List[Dict[str, Any]]] = None
+    ais_provenance: Optional[Dict[str, Any]] = None
 
 
 # --- Endpoints ---
@@ -162,7 +192,7 @@ async def analyze_sar(req: AnalyzeSARRequest):
     """Executes SAR radar speckle suppression, PyTorch U-Net or CFAR segmentation, and geometric extraction."""
     sar_img, current_field, scenario_data = get_scenario_sar_and_currents(req.scenario_id)
 
-    pixel_size = 50.0  # Real-world Sentinel-1 mapping scale
+    pixel_size = float(scenario_data.get("satellite_metadata", {}).get("pixel_spacing_m", 10.0))
     center_lat = scenario_data["center"]["lat"]
     center_lon = scenario_data["center"]["lon"]
 
@@ -195,6 +225,65 @@ async def analyze_sar(req: AnalyzeSARRequest):
         "radar_detected_ships": results.get("radar_detected_ships", []),
         "active_engine": results.get("active_engine", "PyTorch U-Net"),
         "metadata": scenario_data["satellite_metadata"]
+    }
+
+
+@app.post("/api/analyze-sar-upload")
+async def analyze_sar_upload(request: Request):
+    """Analyse a user-supplied SAR raster and return a provenance-labelled result.
+
+    The uploader supplies scene centre and pixel size because common image exports do
+    not preserve GeoTIFF transforms through browser upload. Full georeferencing is a
+    planned input adapter, not silently inferred here.
+    """
+    try:
+        center_lat = float(request.headers["X-Center-Lat"])
+        center_lon = float(request.headers["X-Center-Lon"])
+        pixel_size_m = float(request.headers.get("X-Pixel-Size-M", "10.0"))
+        threshold_offset = float(request.headers.get("X-Threshold-Offset", "22.0"))
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Valid X-Center-Lat and X-Center-Lon headers are required.") from exc
+    model_type = request.headers.get("X-Model-Type", "unet")
+    filename = request.headers.get("X-File-Name", "sar-raster")
+
+    _validated_coordinate(center_lat, -90.0, 90.0, "center_lat")
+    _validated_coordinate(center_lon, -180.0, 180.0, "center_lon")
+    if not 1.0 <= pixel_size_m <= 1_000.0:
+        raise HTTPException(status_code=422, detail="pixel_size_m must be between 1 and 1000.")
+    if not 1.0 <= threshold_offset <= 100.0:
+        raise HTTPException(status_code=422, detail="threshold_offset must be between 1 and 100.")
+    if model_type not in {"unet", "cfar_edge"}:
+        raise HTTPException(status_code=422, detail="model_type must be 'unet' or 'cfar_edge'.")
+
+    content = await request.body()
+    sar_image = _decode_uploaded_sar(content)
+    results = sar_engine.process_sar_scene(
+        sar_image, center_lat, center_lon, pixel_size_m=pixel_size_m, model_type=model_type
+    )
+    if model_type == "unet" and sar_engine.model_loaded:
+        mask, _ = sar_engine.predict_unet(sar_image)
+    else:
+        mask, _ = sar_engine.segment_oil_slick(sar_image, threshold_offset=threshold_offset)
+    colored_mask = cv2.applyColorMap(mask, cv2.COLORMAP_JET)
+    overlay = cv2.addWeighted(cv2.cvtColor(sar_image, cv2.COLOR_GRAY2BGR), 0.65, colored_mask, 0.35, 0)
+
+    return {
+        "sar_results": results,
+        "segmentation_overlay_base64": image_to_base64_png(overlay),
+        "super_resolution_base64": image_to_base64_png(sar_engine.enhance_sar_super_resolution(sar_image, scale_factor=2)),
+        "radar_detected_ships": results.get("radar_detected_ships", []),
+        "active_engine": results.get("active_engine", "CFAR"),
+        "provenance": {
+            "source_kind": "user_uploaded_sar_raster",
+            "source_filename": filename,
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "bytes": len(content),
+            "image_shape_px": {"width": int(sar_image.shape[1]), "height": int(sar_image.shape[0])},
+            "scene_center": {"lat": center_lat, "lon": center_lon},
+            "pixel_size_m": pixel_size_m,
+            "georeferencing": "user-supplied centre and pixel size; original GeoTIFF transform not retained",
+        },
+        "screening_notice": "Automated screening result. Analyst review and validated sensor calibration are required before operational or legal use.",
     }
 
 
@@ -243,6 +332,19 @@ async def simulate_drift(req: SimulateDriftRequest):
     """
     _, current_field, scenario_data = get_scenario_sar_and_currents(req.scenario_id)
 
+    met_ocean_source = "scenario demonstration field"
+    overrides = (req.current_u_ms, req.current_v_ms, req.wind_u_ms, req.wind_v_ms)
+    if any(value is not None for value in overrides):
+        current_field = OceanCurrentField(
+            base_current_u=req.current_u_ms if req.current_u_ms is not None else current_field.base_current_u,
+            base_current_v=req.current_v_ms if req.current_v_ms is not None else current_field.base_current_v,
+            base_wind_u=req.wind_u_ms if req.wind_u_ms is not None else current_field.base_wind_u,
+            base_wind_v=req.wind_v_ms if req.wind_v_ms is not None else current_field.base_wind_v,
+            tidal_amplitude=current_field.tidal_amplitude,
+            tidal_period_h=current_field.tidal_period_h,
+        )
+        met_ocean_source = "operator-supplied current and wind vectors"
+
     # Calibrate target release age from scenario ground truth if not provided or out of bounds
     gt_age = abs(scenario_data.get("ground_truth_culprit", {}).get("discharge_time_rel_h", 10.5))
     target_age = req.slick_age_hours
@@ -270,7 +372,15 @@ async def simulate_drift(req: SimulateDriftRequest):
         "total_drift_distance_km": hindcast_res["total_drift_distance_km"],
         "forecast_trajectory": forecast_res["forecast_trajectory"],
         "weathering_summary": forecast_res.get("weathering_summary", {}),
-        "beaching_warning": forecast_res["beaching_warning"]
+        "beaching_warning": forecast_res["beaching_warning"],
+        "provenance": {
+            "met_ocean_source": met_ocean_source,
+            "current_u_ms": current_field.base_current_u,
+            "current_v_ms": current_field.base_current_v,
+            "wind_u_ms": current_field.base_wind_u,
+            "wind_v_ms": current_field.base_wind_v,
+        },
+        "screening_notice": "Drift output is scenario-grade unless supplied vectors are validated against authoritative met-ocean observations.",
     }
 
 
@@ -281,7 +391,7 @@ async def correlate_ais(req: CorrelateAISRequest):
     calculates kinematic behavioral anomaly scores, and flags non-cooperative DARK VESSELS.
     """
     _, current_field, scenario_data = get_scenario_sar_and_currents(req.scenario_id)
-    vessels = scenario_data.get("ais_vessels", [])
+    vessels = req.vessels if req.vessels is not None else scenario_data.get("ais_vessels", [])
 
     hindcast_traj = req.hindcast_trajectory
     if not hindcast_traj:
@@ -296,7 +406,8 @@ async def correlate_ais(req: CorrelateAISRequest):
     if radar_tgts is None:
         sar_img, _, _ = get_scenario_sar_and_currents(req.scenario_id)
         radar_tgts = sar_engine.detect_radar_ship_targets(
-            sar_img, scenario_data["center"]["lat"], scenario_data["center"]["lon"], pixel_size_m=50.0
+            sar_img, scenario_data["center"]["lat"], scenario_data["center"]["lon"],
+            pixel_size_m=float(scenario_data.get("satellite_metadata", {}).get("pixel_spacing_m", 10.0))
         )
 
     results = ais_engine.attribute_oil_spill(
@@ -307,6 +418,14 @@ async def correlate_ais(req: CorrelateAISRequest):
         radar_targets=radar_tgts
     )
 
+    results["ais_provenance"] = req.ais_provenance or {
+        "source_kind": "embedded demonstration scenario",
+        "scenario_id": req.scenario_id,
+    }
+    results["screening_notice"] = (
+        "AIS ranking is an investigative lead, not a finding of responsibility. "
+        "Corroborate with calibrated imagery, chain-of-custody records, and human review."
+    )
     return results
 
 
@@ -367,56 +486,26 @@ async def export_dossier(scenario_id: str):
 
 
 @app.post("/api/upload-ais-csv")
-async def upload_ais_csv(file: UploadFile = File(...)):
+async def upload_ais_csv(request: Request):
     """
     Directly ingests NOAA / MarineCadastre formatted CSV files:
     Headers: MMSI, BaseDateTime, LAT, LON, SOG, COG, Heading, VesselName, IMO, CallSign, VesselType, Status, Length, Width, Draft
     """
-    content = await file.read()
-    reader = csv.DictReader(io.StringIO(content.decode("utf-8")))
+    filename = request.headers.get("X-File-Name", "ais.csv")
+    if not filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=422, detail="Upload a .csv AIS export.")
+    content = await request.body()
+    if len(content) > MAX_AIS_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="AIS CSV exceeds the 25 MB upload limit.")
+    try:
+        parsed = parse_marinecadastre_csv(content, filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    vessels_dict = {}
-    for row in reader:
-        mmsi = row.get("MMSI") or row.get("mmsi")
-        if not mmsi:
-            continue
-        try:
-            mmsi = int(mmsi)
-            lat = float(row.get("LAT") or row.get("lat") or 0.0)
-            lon = float(row.get("LON") or row.get("lon") or 0.0)
-            sog = float(row.get("SOG") or row.get("sog") or 0.0)
-            cog = float(row.get("COG") or row.get("cog") or 0.0)
-            v_name = row.get("VesselName") or row.get("vessel_name") or f"VESSEL-{mmsi}"
-            imo = int(row.get("IMO") or row.get("imo") or 0)
-            v_type = row.get("VesselType") or row.get("vessel_type") or "Other / Unknown"
-
-            if mmsi not in vessels_dict:
-                vessels_dict[mmsi] = {
-                    "mmsi": mmsi,
-                    "imo": imo,
-                    "vessel_name": v_name,
-                    "flag_state": "Commercial Transit",
-                    "vessel_type": v_type,
-                    "length_m": float(row.get("Length") or 160),
-                    "width_m": float(row.get("Width") or 25),
-                    "dwt_tonnes": 40000,
-                    "trajectory": []
-                }
-
-            vessels_dict[mmsi]["trajectory"].append({
-                "relative_time_hours": 0.0,
-                "lat": lat,
-                "lon": lon,
-                "sog_knots": sog,
-                "cog_degrees": cog
-            })
-        except Exception:
-            continue
-
-    parsed_vessels = list(vessels_dict.values())
     return {
         "status": "success",
-        "filename": file.filename,
-        "vessels_parsed_count": len(parsed_vessels),
-        "sample_vessels": parsed_vessels[:5]
+        "vessels_parsed_count": len(parsed["vessels"]),
+        "vessels": parsed["vessels"],
+        "provenance": parsed["provenance"],
+        "screening_notice": "Uploaded AIS is time-normalized to its newest ping (T=0); it is used only for this browser session.",
     }

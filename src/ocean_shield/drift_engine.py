@@ -110,6 +110,45 @@ class DriftEngine:
 
         return u_net, v_net
 
+    def _rk4_advection_step(
+        self,
+        current_field: OceanCurrentField,
+        lat: float,
+        lon: float,
+        t_hours: float,
+        dt_sec: float,
+        meters_per_deg_lat: float,
+        meters_per_deg_lon: float,
+    ) -> Tuple[float, float]:
+        """
+        True 4th-Order Runge-Kutta (RK4) hydrodynamic & wind leeway advection.
+        Evaluates k1, k2, k3, k4 vector stages across the time-varying velocity field.
+        """
+        u1, v1, uw1, vw1 = current_field.get_velocity_at(lat, lon, t_hours)
+        k1_u, k1_v = self._compute_drift_vector(u1, v1, uw1, vw1)
+
+        half_dt_h = (0.5 * dt_sec) / 3600.0
+        lat2 = lat + (0.5 * dt_sec * k1_v) / meters_per_deg_lat
+        lon2 = lon + (0.5 * dt_sec * k1_u) / meters_per_deg_lon
+        u2, v2, uw2, vw2 = current_field.get_velocity_at(lat2, lon2, t_hours + half_dt_h)
+        k2_u, k2_v = self._compute_drift_vector(u2, v2, uw2, vw2)
+
+        lat3 = lat + (0.5 * dt_sec * k2_v) / meters_per_deg_lat
+        lon3 = lon + (0.5 * dt_sec * k2_u) / meters_per_deg_lon
+        u3, v3, uw3, vw3 = current_field.get_velocity_at(lat3, lon3, t_hours + half_dt_h)
+        k3_u, k3_v = self._compute_drift_vector(u3, v3, uw3, vw3)
+
+        full_dt_h = dt_sec / 3600.0
+        lat4 = lat + (dt_sec * k3_v) / meters_per_deg_lat
+        lon4 = lon + (dt_sec * k3_u) / meters_per_deg_lon
+        u4, v4, uw4, vw4 = current_field.get_velocity_at(lat4, lon4, t_hours + full_dt_h)
+        k4_u, k4_v = self._compute_drift_vector(u4, v4, uw4, vw4)
+
+        u_rk4 = (k1_u + 2.0 * k2_u + 2.0 * k3_u + k4_u) / 6.0
+        v_rk4 = (k1_v + 2.0 * k2_v + 2.0 * k3_v + k4_v) / 6.0
+
+        return u_rk4, v_rk4
+
     def run_hindcast(
         self,
         initial_lat: float,
@@ -122,9 +161,7 @@ class DriftEngine:
     ) -> Dict[str, Any]:
         """
         Runs a REVERSE Lagrangian particle simulation (backwards in time) from detection
-        timestamp (T_detect) back up to max_lookback_hours.
-        At each step t <= 0, calculates centroid, spatial dispersion variance, and identifies
-        the release moment (t0) where slick was most concentrated (point source discharge).
+        timestamp (T_detect) back up to max_lookback_hours using 4th-Order Runge-Kutta advection.
         """
         np.random.seed(random_seed)
 
@@ -157,21 +194,15 @@ class DriftEngine:
             centroid_lat = float(np.mean(p_lat))
             centroid_lon = float(np.mean(p_lon))
 
-            # Contraction towards origin: as we step backward towards release time t0,
-            # the particle plume contracts back towards the narrow vessel line-source
-            time_to_origin_ratio = max(0.12, abs(current_t_hours - target_t0) / (abs(target_t0) + 1e-4))
-            spread_factor = 0.25 + 0.75 * time_to_origin_ratio
-
-            d_x = (p_lon - centroid_lon) * meters_per_deg_lon * spread_factor
-            d_y = (p_lat - centroid_lat) * meters_per_deg_lat * spread_factor
+            d_x = (p_lon - centroid_lon) * meters_per_deg_lon
+            d_y = (p_lat - centroid_lat) * meters_per_deg_lat
             variance_m2 = float(np.mean(d_x ** 2 + d_y ** 2))
             spread_radius_km = round(math.sqrt(variance_m2) / 1000.0, 3)
 
             # Sample 35 representative particles for UI rendering
             sample_indices = np.linspace(0, self.num_particles - 1, 35, dtype=int)
             sampled_coords = [
-                [round(float(centroid_lon + (p_lon[i] - centroid_lon) * spread_factor), 5),
-                 round(float(centroid_lat + (p_lat[i] - centroid_lat) * spread_factor), 5)]
+                [round(float(p_lon[i]), 5), round(float(p_lat[i]), 5)]
                 for i in sample_indices
             ]
 
@@ -196,13 +227,13 @@ class DriftEngine:
             if step == total_steps:
                 break
 
-            # Evaluate hydrodynamics at current centroid
-            u_curr, v_curr, u_wind, v_wind = current_field.get_velocity_at(
-                centroid_lat, centroid_lon, current_t_hours
+            # Evaluate 4th-Order Runge-Kutta advection vector
+            u_net, v_net = self._rk4_advection_step(
+                current_field, centroid_lat, centroid_lon, current_t_hours,
+                dt_sec, meters_per_deg_lat, meters_per_deg_lon
             )
-            u_net, v_net = self._compute_drift_vector(u_curr, v_curr, u_wind, v_wind)
 
-            # Backwards advection step
+            # Backwards advection step + stochastic horizontal diffusion
             sigma_diff = math.sqrt(2.0 * self.diffusion_coeff * abs(dt_sec)) * 0.4
             rand_dx = np.random.normal(0, sigma_diff, self.num_particles)
             rand_dy = np.random.normal(0, sigma_diff, self.num_particles)
@@ -220,21 +251,26 @@ class DriftEngine:
             origin_lat = rec["centroid"]["lat"]
             origin_lon = rec["centroid"]["lon"]
 
+        total_drift_km = round(
+            math.hypot(
+                (origin_lon - initial_lon) * meters_per_deg_lon,
+                (origin_lat - initial_lat) * meters_per_deg_lat
+            ) / 1000.0, 2
+        )
+        # Statistical confidence derived from ensemble coherence:
+        final_spread_km = math.sqrt(variance_m2) / 1000.0
+        confidence_val = round(max(60.0, min(95.0, 94.0 - (final_spread_km / max(total_drift_km, 1.0)) * 12.0)), 1)
+
         return {
             "origin_release_point": {
                 "lat": round(origin_lat, 6),
                 "lon": round(origin_lon, 6),
                 "estimated_t0_hours_relative": round(estimated_t0_hours, 2),
                 "slick_age_hours": round(abs(estimated_t0_hours), 1),
-                "confidence_percent": 94.2
+                "confidence_percent": confidence_val
             },
             "hindcast_trajectory": history_trajectory,
-            "total_drift_distance_km": round(
-                math.hypot(
-                    (origin_lon - initial_lon) * meters_per_deg_lon,
-                    (origin_lat - initial_lat) * meters_per_deg_lat
-                ) / 1000.0, 2
-            )
+            "total_drift_distance_km": total_drift_km
         }
 
     def run_forecast(
@@ -305,12 +341,13 @@ class DriftEngine:
             if step == total_steps:
                 break
 
-            u_curr, v_curr, u_wind, v_wind = current_field.get_velocity_at(
-                centroid_lat, centroid_lon, current_t_hours
+            # Forward advection using 4th-Order Runge-Kutta
+            u_net, v_net = self._rk4_advection_step(
+                current_field, centroid_lat, centroid_lon, current_t_hours,
+                dt_sec, meters_per_deg_lat, meters_per_deg_lon
             )
-            u_net, v_net = self._compute_drift_vector(u_curr, v_curr, u_wind, v_wind)
 
-            # Forward advection + diffusion
+            # Stochastic horizontal turbulent diffusion
             sigma_diff = math.sqrt(2.0 * self.diffusion_coeff * dt_sec)
             rand_dx = np.random.normal(0, sigma_diff, self.num_particles)
             rand_dy = np.random.normal(0, sigma_diff, self.num_particles)

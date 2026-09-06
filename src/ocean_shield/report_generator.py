@@ -1,7 +1,6 @@
 """
 Report Generator: Indian Coast Guard & NTRO Formal Marine Pollution Dossier
-Generates a court-admissible, tamper-evident legal violation notice and technical
-evidence package under Section 356E of the Merchant Shipping Act, 1958 & MARPOL 73/78.
+Generates an analyst-review case summary from automated screening outputs.
 """
 
 import hashlib
@@ -20,9 +19,9 @@ from reportlab.lib.units import inch
 
 class DossierReportGenerator:
     """
-    Builds an executive Coast Guard / NTRO Maritime Pollution Investigation Dossier (PDF).
-    Integrates satellite radar observation data, Lagrangian backward hindcast physics,
-    and AIS vessel kinematic anomaly attribution into an official legal notice.
+    Builds a maritime pollution investigation case summary (PDF).
+    The summary is decision support: it never claims legal authority, a finding of
+    liability, or an evidentiary chain of custody for unverified source material.
     """
 
     def __init__(self, output_dir: str = "reports"):
@@ -46,7 +45,7 @@ class DossierReportGenerator:
         ref_id = f"ICG-MEP-DOSSIER-{now.strftime('%Y%m%d')}-{scenario_data.get('id', 'ENV')[:4].upper()}"
 
         if not filename:
-            filename = f"ICG_Violation_Dossier_{ref_id}.pdf"
+            filename = f"Ocean_Shield_Case_Summary_{ref_id}.pdf"
 
         filepath = os.path.join(self.output_dir, filename)
 
@@ -127,15 +126,15 @@ class DossierReportGenerator:
 
         story = []
 
-        # 1. Official Header
+        # 1. Analyst-review header
         header_text = """
-        <b>GOVERNMENT OF INDIA &mdash; MARITIME ENVIRONMENTAL PROTECTION DIVISION</b><br/>
-        <b>HEADQUARTERS INDIAN COAST GUARD &bull; NATIONAL TECHNICAL RESEARCH ORGANISATION (NTRO)</b>
+        <b>OCEAN-SHIELD &mdash; MARITIME ENVIRONMENTAL ANALYTICS</b><br/>
+        <b>SIH26143 PROTOTYPE &bull; ANALYST-REVIEW CASE SUMMARY</b>
         """
         story.append(Paragraph(header_text, title_style))
         story.append(Spacer(1, 4))
-        story.append(Paragraph("TECHNICAL EVIDENCE DOSSIER & STATUTORY NOTICE OF VIOLATION", subtitle_style))
-        story.append(Paragraph("ISSUED UNDER SECTION 356E, MERCHANT SHIPPING ACT 1958 & MARPOL 73/78 ANNEX I", subtitle_style))
+        story.append(Paragraph("AUTOMATED SCREENING OUTPUT &mdash; NOT A STATUTORY NOTICE OR FINDING OF LIABILITY", subtitle_style))
+        story.append(Paragraph("Requires calibrated imagery, source provenance, qualified analyst review, and competent-authority action.", subtitle_style))
         story.append(Spacer(1, 6))
         story.append(HRFlowable(width="100%", thickness=1.5, color=color_navy, spaceAfter=8))
 
@@ -154,8 +153,8 @@ class DossierReportGenerator:
             [
                 Paragraph("<b>Maritime Sector:</b>", body_style),
                 Paragraph(f"{scenario_data.get('region', 'Indian EEZ')}", body_style),
-                Paragraph("<b>Legal Classification:</b>", body_style),
-                Paragraph("<font color='#b91c1c'><b>ILLEGAL DISCHARGE (CRIMINAL)</b></font>", body_style)
+                Paragraph("<b>Review status:</b>", body_style),
+                Paragraph("<font color='#b45309'><b>SCREENING LEAD &mdash; REVIEW REQUIRED</b></font>", body_style)
             ],
             [
                 Paragraph("<b>Target Vessel:</b>", body_style),
@@ -166,8 +165,8 @@ class DossierReportGenerator:
             [
                 Paragraph("<b>Flag State:</b>", body_style),
                 Paragraph(f"{culprit.get('flag_state', 'Unknown')}", body_style),
-                Paragraph("<b>Attribution Certainty:</b>", body_style),
-                Paragraph(f"<font color='#047857'><b>{culprit.get('composite_suspect_score', 0)}% (CONFIRMED)</b></font>", body_bold)
+                Paragraph("<b>Attribution rank:</b>", body_style),
+                Paragraph(f"<font color='#b45309'><b>{culprit.get('composite_suspect_score', 0)}% (MODEL SCORE)</b></font>", body_bold)
             ]
         ]
 
@@ -184,9 +183,9 @@ class DossierReportGenerator:
         story.append(meta_table)
         story.append(Spacer(1, 8))
 
-        # 3. Satellite SAR Radar Detection Evidence
+        # 3. Satellite SAR radar-screening observations
         sat_meta = scenario_data.get("satellite_metadata", {})
-        story.append(Paragraph("1. SATELLITE RADAR REMOTE SENSING (SAR) OBSERVATION", h1_style))
+        story.append(Paragraph("1. SATELLITE RADAR REMOTE SENSING (SAR) SCREENING", h1_style))
 
         sar_data = [
             [
@@ -233,15 +232,16 @@ class DossierReportGenerator:
         story.append(sar_table)
         story.append(Spacer(1, 8))
 
-        # 4. Reverse Lagrangian Hydrodynamic Hindcast (Finding t0 and x0)
-        story.append(Paragraph("2. REVERSE LAGRANGIAN HYDRODYNAMIC DRIFT ANALYSIS (ORIGIN ATTRIBUTION)", h1_style))
+        # 4. Reverse Lagrangian Hydrodynamic Hindcast (candidate t0 and x0)
+        story.append(Paragraph("2. REVERSE LAGRANGIAN HYDRODYNAMIC DRIFT ANALYSIS", h1_style))
 
         hindcast_text = f"""
         Using an advection-diffusion Lagrangian numerical formulation integrated with real-time oceanographic
         current vector fields (&Delta;u={scenario_data.get('ocean_conditions', {}).get('base_current_u', 0):.2f} m/s,
         &Delta;v={scenario_data.get('ocean_conditions', {}).get('base_current_v', 0):.2f} m/s) and Ekman surface windage
         (3.2% Stokes drift factor with 15&deg; Coriolis deflection), the slick plume trajectory was hindcasted backwards in time.
-        The particle convergence analysis resolved the <b>exact discharge origin point</b>:
+        The model estimates the following <b>candidate release origin</b>; positional and temporal uncertainty
+        must be quantified against authoritative current, wind, and imagery inputs before operational use:
         """
         story.append(Paragraph(hindcast_text, body_style))
         story.append(Spacer(1, 4))
@@ -282,7 +282,7 @@ class DossierReportGenerator:
         ais_evidence_text = f"""
         Analysis of <b>{ais_results.get('total_vessels_in_region', 0)} vessels</b> operating in the sector filtered down to
         <b>{ais_results.get('vessels_evaluated_in_corridor', 0)} corridor candidates</b>. Vessel <b>{culprit.get('vessel_name')}</b>
-        exhibited definitive spatio-temporal intersection with the discharge epicenter:
+        was ranked as the highest model-scored lead based on spatio-temporal proximity and kinematic features:
         """
         story.append(Paragraph(ais_evidence_text, body_style))
         story.append(Spacer(1, 4))
@@ -298,13 +298,13 @@ class DossierReportGenerator:
             [
                 Paragraph("Closest Point of Approach (CPA)", body_style),
                 Paragraph(f"<b>{cpa.get('distance_nm', 0):.2f} NM</b> ({cpa.get('distance_km', 0):.2f} km)", body_style),
-                Paragraph("Exact spatial co-location with slick root", body_style),
+                Paragraph("Modelled proximity to candidate origin", body_style),
                 Paragraph(f"<b>{breakdown.get('proximity_score', 0)}/100</b>", body_bold)
             ],
             [
                 Paragraph("Temporal Coincidence", body_style),
                 Paragraph(f"&Delta;t = <b>{cpa.get('time_diff_h', 0):.2f} hours</b> from origin", body_style),
-                Paragraph("Precise temporal synchronization at t<sub>0</sub>", body_style),
+                Paragraph("Modelled temporal alignment", body_style),
                 Paragraph(f"<b>{breakdown.get('temporal_score', 0)}/100</b>", body_bold)
             ],
             [
@@ -339,8 +339,8 @@ class DossierReportGenerator:
         if dark_ships:
             story.append(Paragraph("4. NON-COOPERATIVE / DARK VESSEL RADAR SURVEILLANCE AUDIT", h1_style))
             dark_text = f"""
-            <b>TACTICAL RADAR TARGET INTERCEPTION:</b> CFAR point-target detection extracted <b>{len(dark_ships)} radar contacts</b>
-            with metallic corner-reflector signatures (>+5 dB &sigma;<sup>0</sup>) that broadcast <b>ZERO AIS transponder telemetry</b>.
+            CFAR point-target screening extracted <b>{len(dark_ships)} candidate contacts</b> without a nearby AIS
+            trajectory in the supplied data. This is a cue for analyst verification, not proof that a transponder was disabled.
             """
             story.append(Paragraph(dark_text, body_style))
             story.append(Spacer(1, 4))
@@ -379,10 +379,10 @@ class DossierReportGenerator:
         if coast_warning.get("will_beach"):
             story.append(Paragraph("5. COASTAL HAZARD & BEACHING INTERCEPTION ALERT", h1_style))
             warning_text = f"""
-            <b>CRITICAL SHORELINE ALERT:</b> Hydrodynamic forecasting indicates slick impact along the coastline
+            <b>MODELLED SHORELINE ALERT:</b> Hydrodynamic forecasting estimates possible slick impact along the coastline
             within <b>{coast_warning.get('estimated_time_to_beach_hours', 'N/A')} hours</b>. Interception coordinates:
             {coast_warning.get('beaching_location', {}).get('lat', 0):.4f}&deg; N, {coast_warning.get('beaching_location', {}).get('lon', 0):.4f}&deg; E.
-            Immediate mobilization of ICG Pollution Response (PR) Vessels and containment booms is ordered.
+            This scenario output should be reviewed by the responsible incident commander before any response decision.
             """
             warning_box = Table([[Paragraph(warning_text, alert_box_style)]], colWidths=[540])
             warning_box.setStyle(TableStyle([
@@ -396,31 +396,26 @@ class DossierReportGenerator:
             story.append(warning_box)
             story.append(Spacer(1, 8))
 
-        # 7. Statutory Directives & Detention Order
-        story.append(Paragraph("5. STATUTORY DIRECTIVES & DETENTION ORDER", h1_style))
-        legal_text = f"""
-        <b>NOTICE TO MASTER, OWNER, AND FLAG ADMINISTRATION:</b><br/>
-        Pursuant to powers vested under Section 356J and Section 356E of the Merchant Shipping Act, 1958:
-        <br/>
-        1. <b>PORT STATE CONTROL INTERCEPTION:</b> The Principal Officer, Mercantile Marine Department (MMD),
-        is directed to <b>DETAIN</b> vessel <b>{culprit.get('vessel_name')} (IMO: {culprit.get('imo')})</b> upon entry into any Indian port
-        or anchorage until mandatory oil record book (ORB Part I & II) inspection and bilge manifold swab sampling are concluded.<br/>
-        2. <b>FINANCIAL SECURITY:</b> A maritime environmental lien of <b>INR 25,00,00,000 (Twenty-Five Crore Rupees)</b>
-        is hereby levied to cover offshore containment, dispersant spraying, and coastal remediation costs.<br/>
-        3. <b>FLAG STATE NOTIFICATION:</b> A copy of this satellite radar and AIS kinematic forensic package is dispatched
-        to the International Maritime Organization (IMO) and the Maritime Administration of {culprit.get('flag_state')}.
+        # 7. Recommended analyst next steps
+        story.append(Paragraph("5. ANALYST NEXT STEPS", h1_style))
+        next_steps = f"""
+        1. Obtain original calibrated SAR/EO products and preserve their source metadata and hashes.<br/>
+        2. Re-run drift with authoritative, time-aligned current and wind fields and report uncertainty bounds.<br/>
+        3. Verify AIS completeness, vessel identity, and timing against the original provider export; obtain independent corroboration before contacting
+        vessel <b>{culprit.get('vessel_name', 'N/A')} (IMO: {culprit.get('imo', 'N/A')})</b>.<br/>
+        4. Refer any enforcement decision to the competent authority and applicable law.
         """
-        story.append(Paragraph(legal_text, body_style))
+        story.append(Paragraph(next_steps, body_style))
         story.append(Spacer(1, 10))
 
-        # 8. Cryptographic Chain of Custody
+        # 8. Reproducibility fingerprint (not a chain of custody)
         evidence_hash_src = f"{ref_id}:{culprit.get('imo')}:{slick.get('area_km2')}:{origin.get('lat')}:{origin.get('lon')}"
         sha256_hash = hashlib.sha256(evidence_hash_src.encode("utf-8")).hexdigest()
 
         footer_table_data = [
             [
-                Paragraph("<b>Forensic Chain-of-Custody SHA-256 Hash:</b><br/><code>" + sha256_hash + "</code>", body_style),
-                Paragraph("<b>Authorized Signatory:</b><br/>Inspector General (Operations & MEP)<br/>Indian Coast Guard Headquarters, New Delhi", body_style)
+                Paragraph("<b>Generated-output fingerprint (SHA-256):</b><br/><code>" + sha256_hash + "</code>", body_style),
+                Paragraph("<b>Review status:</b><br/>Automated decision-support output<br/>No authorized signatory or legal effect", body_style)
             ]
         ]
         footer_table = Table(footer_table_data, colWidths=[340, 200])

@@ -13,6 +13,7 @@ from src.ocean_shield.drift_engine import DriftEngine, OceanCurrentField
 from src.ocean_shield.ais_engine import AISEngine
 from src.ocean_shield.scenarios import get_scenario_sar_and_currents, get_all_scenarios
 from src.ocean_shield.report_generator import DossierReportGenerator
+from src.ocean_shield.ais_ingestion import parse_marinecadastre_csv
 
 
 class TestOceanShieldPipeline(unittest.TestCase):
@@ -99,7 +100,7 @@ class TestOceanShieldPipeline(unittest.TestCase):
         self.assertGreaterEqual(culprit["kinematics"]["speed_drop_knots"], 6.0, "Culprit should exhibit speed drop")
 
     def test_all_scenarios_and_dossier_pdf(self):
-        """Validates all 3 Indian maritime sectors and generates an official PDF dossier."""
+        """Validates all 3 Indian maritime sectors and generates an analyst-review PDF."""
         scenarios = get_all_scenarios()
         self.assertEqual(len(scenarios), 3)
 
@@ -235,7 +236,7 @@ class TestOceanShieldPipeline(unittest.TestCase):
         self.assertGreater(np.sum(clean_mask > 0), 0, "Tiled inference should detect the oil slick")
 
     def test_marinecadastre_ais_csv_ingestion(self):
-        """Validates ingestion and parsing of standard NOAA/BOEM MarineCadastre CSV datasets."""
+        """Validates time-preserving parsing of standard MarineCadastre CSV exports."""
         import csv
         csv_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "datasets", "marinecadastre_sample_ais.csv")
         self.assertTrue(os.path.exists(csv_path), "MarineCadastre sample CSV must exist")
@@ -245,6 +246,14 @@ class TestOceanShieldPipeline(unittest.TestCase):
             self.assertGreater(len(reader), 10, "Should have multiple vessel pings")
             mmsi_list = [r["MMSI"] for r in reader]
             self.assertIn("636019482", mmsi_list, "MT NEPTUNE GLORY MMSI should be in sample")
+
+        with open(csv_path, "rb") as f:
+            parsed = parse_marinecadastre_csv(f.read(), "marinecadastre_sample_ais.csv")
+        self.assertEqual(parsed["provenance"]["valid_pings"], len(reader))
+        self.assertEqual(len(parsed["provenance"]["sha256"]), 64)
+        first_track = parsed["vessels"][0]["trajectory"]
+        self.assertEqual(first_track[-1]["relative_time_hours"], 0.0)
+        self.assertLess(first_track[0]["relative_time_hours"], 0.0)
 
 
 if __name__ == "__main__":

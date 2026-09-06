@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OCEAN-SHIELD &bull; Satellite SAR & AIS Maritime Oil Spill Attribution System (SIH26143)</title>
+  <title>OCEAN-SHIELD &bull; Maritime Spill Investigation Workspace (SIH26143)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
@@ -47,15 +47,15 @@
       </button>
       <button id="btnCorrelateAIS" class="btn-tactical btn-primary">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
-        3. Attribute Culprit
+        3. Rank Vessel Leads
       </button>
       <button id="btnDownloadDossier" class="btn-tactical btn-hazard">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-        Export Legal Notice (PDF)
+        Export Case Summary (PDF)
       </button>
       <div class="badge-status">
         <span class="pulse-dot"></span>
-        <span id="systemStatusText">SURVEILLANCE ACTIVE</span>
+        <span id="systemStatusText">DEMO WORKSPACE READY</span>
       </div>
     </div>
   </header>
@@ -131,6 +131,42 @@
             <div class="metric-label" id="labelConfidence">Oil Confidence</div>
             <div id="metricConfidence" class="metric-value emerald">-- %</div>
           </div>
+        </div>
+      </section>
+
+      <section class="panel-card evidence-rail" aria-label="Input evidence controls">
+        <div class="card-title">
+          <span>Evidence Integrity</span>
+          <span id="inputModeTag" class="tag evidence-demo">DEMO INPUTS</span>
+        </div>
+        <p id="inputModeCopy" class="evidence-copy">This sector is a generated demonstration scenario. Rankings are investigative leads, not liability findings.</p>
+        <div class="source-capsule">
+          <span class="source-dot"></span>
+          <span id="sourceSummary">SAR: synthetic scenario &bull; AIS: embedded tracks</span>
+        </div>
+        <div class="ingest-actions">
+          <button id="btnUploadSAR" class="btn-tactical btn-outline ingest-btn">Add SAR raster</button>
+          <button id="btnConfigureMetOcean" class="btn-tactical btn-outline ingest-btn">Set met-ocean</button>
+        </div>
+        <input type="file" id="sarFileInput" accept=".tif,.tiff,.png,.jpg,.jpeg,image/tiff,image/png,image/jpeg" hidden>
+        <div id="sarUploadForm" class="input-drawer" hidden>
+          <div class="drawer-heading">SAR scene registration</div>
+          <div class="field-grid">
+            <label>Center latitude<input id="sarCenterLat" type="number" step="0.0001" value="22.465"></label>
+            <label>Center longitude<input id="sarCenterLon" type="number" step="0.0001" value="69.215"></label>
+            <label>Pixel size (m)<input id="sarPixelSize" type="number" min="1" max="1000" step="0.1" value="10"></label>
+          </div>
+          <button id="btnRunUploadedSAR" class="btn-tactical btn-primary drawer-cta">Analyze uploaded scene</button>
+        </div>
+        <div id="metOceanForm" class="input-drawer" hidden>
+          <div class="drawer-heading">Validated vector override <span>(m/s)</span></div>
+          <div class="field-grid four-fields">
+            <label>Current U<input id="currentU" type="number" step="0.01" placeholder="east +"></label>
+            <label>Current V<input id="currentV" type="number" step="0.01" placeholder="north +"></label>
+            <label>Wind U<input id="windU" type="number" step="0.1" placeholder="east +"></label>
+            <label>Wind V<input id="windV" type="number" step="0.1" placeholder="north +"></label>
+          </div>
+          <p class="drawer-note">Use only time-aligned, authoritative observations; blanks retain the scenario values.</p>
         </div>
       </section>
 
@@ -266,8 +302,8 @@
       <!-- Primary Suspect Dossier Card -->
       <section class="panel-card">
         <div class="card-title">
-          <span>Culprit Vessel Dossier</span>
-          <span class="tag" style="color: var(--accent-crimson);">STATUTORY NOTICE</span>
+          <span>Vessel Lead Assessment</span>
+          <span class="tag" style="color: var(--accent-amber);">REVIEW REQUIRED</span>
         </div>
 
         <div class="suspect-banner" id="suspectBanner">
@@ -281,11 +317,11 @@
             </div>
             <div class="score-badge">
               <div class="score-num" id="suspectScore">--%</div>
-              <div class="score-label">Culprit Score</div>
+              <div class="score-label">Lead score</div>
             </div>
           </div>
           <div style="font-size: 0.72rem; color: #fecdd3; font-family: var(--text-mono); line-height: 1.3;" id="suspectSummary">
-            Run step 3 to correlate AIS transponders against release point (x₀, y₀, t₀).
+            Run step 3 to rank AIS leads around the modelled release point (x₀, y₀, t₀).
           </div>
         </div>
 
@@ -343,7 +379,7 @@
         <div style="display: flex; gap: 8px; margin-top: 6px; margin-bottom: 8px;">
           <button id="btnUploadAIS" class="btn-tactical btn-outline" style="width: 100%; font-size: 0.72rem; padding: 6px 10px; display: flex; align-items: center; justify-content: center; gap: 6px;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-            📂 Ingest NOAA/MarineCadastre CSV
+            📂 Ingest historic AIS CSV
           </button>
           <input type="file" id="aisFileInput" accept=".csv" style="display: none;">
         </div>

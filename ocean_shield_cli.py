@@ -25,6 +25,7 @@ from src.ocean_shield.scenarios import (
     get_scenario_sar_and_currents, get_scenario_eo_data, get_all_scenarios
 )
 from src.ocean_shield.report_generator import DossierReportGenerator
+from src.ocean_shield.ais_ingestion import parse_marinecadastre_csv
 
 
 def print_banner():
@@ -79,6 +80,20 @@ def main():
 
     args = parser.parse_args()
     print_banner()
+
+    custom_ais = None
+    if args.ais_csv:
+        try:
+            with open(args.ais_csv, "rb") as handle:
+                parsed_ais = parse_marinecadastre_csv(handle.read(), os.path.basename(args.ais_csv))
+            custom_ais = parsed_ais["vessels"]
+            provenance = parsed_ais["provenance"]
+            print(
+                f"[*] AIS source loaded: {provenance['vessels']} vessels / {provenance['valid_pings']} pings "
+                f"(T=0: {provenance['reference_time_utc']})"
+            )
+        except (OSError, ValueError) as exc:
+            parser.error(f"Could not ingest --ais-csv: {exc}")
 
     t_start = time.time()
     print(f"[*] Initializing forensic pipeline for scenario: '{args.scenario.upper()}'")
@@ -156,7 +171,7 @@ def main():
 
     # 4. AIS Maritime Correlation & Culprit Attribution
     print("\n[4/4] Correlating Maritime AIS Traffic & Cross-Referencing Radar Contacts...")
-    vessels = scenario_data.get("ais_vessels", [])
+    vessels = custom_ais if custom_ais is not None else scenario_data.get("ais_vessels", [])
     radar_ships = sar_res.get("radar_detected_ships", []) if sar_res else []
 
     ais_res = ais_engine.attribute_oil_spill(
@@ -169,12 +184,12 @@ def main():
     culprit = ais_res.get("primary_culprit")
     if culprit:
         print("\n" + "=" * 80)
-        print(f"🚨 PRIMARY POLLUTING CULPRIT IDENTIFIED: {culprit['vessel_name']}")
+        print(f"⚠️  HIGHEST-RANKED INVESTIGATIVE LEAD: {culprit['vessel_name']}")
         print("=" * 80)
         print(f"   - IMO: {culprit['imo']} | MMSI: {culprit['mmsi']} | Flag: {culprit['flag_state']}")
         dwt = culprit.get("dwt_tonnes") or culprit.get("deadweight_tonnes", 45000)
         print(f"   - Vessel Class: {culprit['vessel_type']} ({dwt} DWT)")
-        print(f"   - Composite Culprit Score: {culprit['composite_suspect_score']}% ({culprit['attribution_tier']})")
+        print(f"   - Composite Lead Score: {culprit['composite_suspect_score']}% ({culprit['attribution_tier']})")
         dt_val = culprit['closest_approach'].get('time_diff_h', culprit['closest_approach'].get('time_delta_hours', 0.0))
         cruise = culprit['kinematics'].get('cruise_speed', 15.4)
         min_s = culprit['kinematics'].get('min_speed_near_origin', 5.1)
@@ -183,7 +198,7 @@ def main():
         print(f"   - Temporal Coincidence: Δt = {dt_val:.1f} hours at release point")
         print(f"   - Speed Drop Anomaly: Dropped by -{s_drop:.1f} kts (Cruising {cruise:.1f} -> Min {min_s:.1f} kts)")
     else:
-        print("[-] No cooperative vessel in corridor exceeded suspect threshold.")
+        print("[-] No vessel lead met the configured corridor threshold.")
 
     # Dark Ships Audit
     dark_vessels = ais_res.get("dark_vessels_detected", [])
@@ -193,7 +208,7 @@ def main():
 
     # 5. Export PDF Legal Violation Dossier
     if args.export_pdf:
-        print("\n[*] Compiling Court-Admissible Statutory Legal Dossier (PDF)...")
+        print("\n[*] Compiling analyst-review case summary (PDF)...")
         os.makedirs(args.output_dir, exist_ok=True)
         report_gen = DossierReportGenerator(output_dir=args.output_dir)
         pdf_path = report_gen.generate_pdf_dossier(
@@ -205,7 +220,7 @@ def main():
                 "weathering_summary": w
             },
             ais_res,
-            filename=f"Statutory_Notice_{args.scenario.upper()}.pdf"
+            filename=f"Analyst_Case_Summary_{args.scenario.upper()}.pdf"
         )
         print(f"   - Dossier compiled successfully: {pdf_path} ({os.path.getsize(pdf_path)} bytes)")
 

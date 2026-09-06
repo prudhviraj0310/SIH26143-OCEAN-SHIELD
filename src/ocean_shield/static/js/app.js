@@ -13,6 +13,11 @@ class OceanShieldApp {
     this.aisResults = null;
     this.activeSensor = 'sar';
     this.eoResults = null;
+    this.customAisVessels = null;
+    this.aisProvenance = null;
+    this.pendingSarFile = null;
+    this.sarProvenance = null;
+    this.sceneGeometry = null;
 
     // Simulation state
     this.currentRelativeTime = 0.0;
@@ -61,6 +66,15 @@ class OceanShieldApp {
     // Custom AIS CSV file upload
     this.btnUploadAIS = document.getElementById('btnUploadAIS');
     this.aisFileInput = document.getElementById('aisFileInput');
+    this.btnUploadSAR = document.getElementById('btnUploadSAR');
+    this.sarFileInput = document.getElementById('sarFileInput');
+    this.sarUploadForm = document.getElementById('sarUploadForm');
+    this.btnRunUploadedSAR = document.getElementById('btnRunUploadedSAR');
+    this.btnConfigureMetOcean = document.getElementById('btnConfigureMetOcean');
+    this.metOceanForm = document.getElementById('metOceanForm');
+    this.inputModeTag = document.getElementById('inputModeTag');
+    this.inputModeCopy = document.getElementById('inputModeCopy');
+    this.sourceSummary = document.getElementById('sourceSummary');
 
     this.timeSlider = document.getElementById('timeSlider');
     this.btnPlayPause = document.getElementById('btnPlayPause');
@@ -201,6 +215,13 @@ class OceanShieldApp {
       this.aisFileInput.addEventListener('change', (e) => this.handleAISUpload(e));
     }
 
+    this.btnUploadSAR?.addEventListener('click', () => this.sarFileInput.click());
+    this.sarFileInput?.addEventListener('change', (e) => this.prepareSARUpload(e));
+    this.btnRunUploadedSAR?.addEventListener('click', () => this.runUploadedSAR());
+    this.btnConfigureMetOcean?.addEventListener('click', () => {
+      this.metOceanForm.hidden = !this.metOceanForm.hidden;
+    });
+
     this.timeSlider.addEventListener('input', (e) => {
       this.setTimeOffset(parseFloat(e.target.value));
     });
@@ -214,6 +235,10 @@ class OceanShieldApp {
       const resp = await fetch(`/api/scenario/${scenarioId}`);
       const data = await resp.json();
       this.scenarioData = data.scenario;
+      this.pendingSarFile = null;
+      this.sarProvenance = null;
+      this.sceneGeometry = { ...this.scenarioData.center, width: 512, height: 512, pixelSize: 50 };
+      this.setEvidenceState();
 
       // Update HUD & Map
       document.getElementById('hudSectorName').innerText = this.scenarioData.region;
@@ -260,6 +285,18 @@ class OceanShieldApp {
     // Remove SOG chart if present
     const sogChart = document.getElementById('sogChartContainer');
     if (sogChart) sogChart.remove();
+  }
+
+  setEvidenceState() {
+    const hasFieldData = Boolean(this.sarProvenance || this.aisProvenance);
+    this.inputModeTag.className = `tag ${hasFieldData ? 'evidence-field' : 'evidence-demo'}`;
+    this.inputModeTag.innerText = hasFieldData ? 'FIELD INPUTS' : 'DEMO INPUTS';
+    this.inputModeCopy.innerText = hasFieldData
+      ? 'Uploaded inputs are provenance-labelled. Automated outputs remain analyst-review leads, not findings of liability.'
+      : 'This sector is a generated demonstration scenario. Rankings are investigative leads, not liability findings.';
+    const sar = this.sarProvenance ? `SAR: ${this.sarProvenance.source_filename}` : 'SAR: synthetic scenario';
+    const ais = this.aisProvenance ? `AIS: ${this.aisProvenance.source_filename}` : 'AIS: embedded tracks';
+    this.sourceSummary.innerText = `${sar} • ${ais}`;
   }
 
   toggleSuperResolution(preloadedData) {
@@ -357,29 +394,81 @@ class OceanShieldApp {
     if (!file) return;
 
     document.getElementById('systemStatusText').innerText = 'INGESTING AIS CSV...';
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
       const resp = await fetch('/api/upload-ais-csv', {
         method: 'POST',
-        body: formData
+        headers: { 'X-File-Name': file.name },
+        body: file
       });
       const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Unable to parse AIS CSV.');
       if (data.status === 'success' && data.vessels) {
-        alert(`Successfully ingested ${data.vessels_parsed} vessels from MarineCadastre CSV! Correlating against spill epicenter...`);
-        if (this.scenarioData) {
-          this.scenarioData.ais_vessels = data.vessels;
-        }
+        this.customAisVessels = data.vessels;
+        this.aisProvenance = data.provenance;
+        this.setEvidenceState();
+        document.getElementById('systemStatusText').innerText = `AIS READY (${data.vessels_parsed_count} VESSELS)`;
         await this.runAISCorrelation();
       }
     } catch (err) {
       console.error('Error uploading AIS CSV:', err);
-      alert('Error parsing custom AIS CSV file.');
+      document.getElementById('systemStatusText').innerText = 'AIS INGEST FAILED';
+      alert(err.message || 'Error parsing custom AIS CSV file.');
+    } finally {
+      event.target.value = '';
+    }
+  }
+
+  prepareSARUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    this.pendingSarFile = file;
+    this.sarUploadForm.hidden = false;
+    document.getElementById('systemStatusText').innerText = `SAR SELECTED: ${file.name}`;
+  }
+
+  async runUploadedSAR() {
+    if (!this.pendingSarFile) return;
+    document.getElementById('systemStatusText').innerText = 'ANALYZING UPLOADED SAR...';
+    try {
+      const resp = await fetch('/api/analyze-sar-upload', {
+        method: 'POST',
+        headers: {
+          'X-File-Name': this.pendingSarFile.name,
+          'X-Center-Lat': document.getElementById('sarCenterLat').value,
+          'X-Center-Lon': document.getElementById('sarCenterLon').value,
+          'X-Pixel-Size-M': document.getElementById('sarPixelSize').value,
+          'X-Model-Type': this.modelSelect?.value || 'unet',
+          'X-Threshold-Offset': '20'
+        },
+        body: this.pendingSarFile
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Unable to analyse SAR raster.');
+      this.sarProvenance = data.provenance;
+      this.sceneGeometry = {
+        lat: data.provenance.scene_center.lat,
+        lon: data.provenance.scene_center.lon,
+        width: data.provenance.image_shape_px.width,
+        height: data.provenance.image_shape_px.height,
+        pixelSize: data.provenance.pixel_size_m
+      };
+      this.setEvidenceState();
+      this.sarPreviewImg.src = this.srToggle.checked ? data.super_resolution_base64 : data.segmentation_overlay_base64;
+      this.renderSarResponse(data);
+      this.sarUploadForm.hidden = true;
+      document.getElementById('systemStatusText').innerText = 'UPLOADED SAR SCREENED';
+    } catch (err) {
+      console.error('Error analysing uploaded SAR:', err);
+      document.getElementById('systemStatusText').innerText = 'SAR ANALYSIS FAILED';
+      alert(err.message || 'Error analysing uploaded SAR raster.');
     }
   }
 
   async runSARAnalysis() {
+    if (this.pendingSarFile) {
+      await this.runUploadedSAR();
+      return;
+    }
     document.getElementById('systemStatusText').innerText = 'ANALYZING SAR SCENE...';
     try {
       const selectedModel = this.modelSelect ? this.modelSelect.value : 'unet';
@@ -394,8 +483,18 @@ class OceanShieldApp {
         })
       });
       const data = await resp.json();
-      this.sarResults = data.sar_results;
+      this.renderSarResponse(data);
 
+      const activeEngine = data.active_engine || (selectedModel === 'unet' ? 'PyTorch U-Net' : 'Adaptive CFAR');
+      document.getElementById('systemStatusText').innerText = `SAR SCREENED (${activeEngine.includes('U-Net') ? 'U-NET' : 'CFAR'})`;
+    } catch (err) {
+      console.error('Error analyzing SAR:', err);
+      document.getElementById('systemStatusText').innerText = 'SAR ANALYSIS FAILED';
+    }
+  }
+
+  renderSarResponse(data) {
+      this.sarResults = data.sar_results;
       const slick = this.sarResults.primary_slick;
       if (slick) {
         this.metricArea.innerText = `${slick.area_km2.toFixed(2)} km²`;
@@ -426,15 +525,9 @@ class OceanShieldApp {
       }
 
       // Drape SAR imagery directly onto the map as a geo-referenced overlay
-      if (data.segmentation_overlay_base64 && this.scenarioData) {
+      if (data.segmentation_overlay_base64 && this.sceneGeometry) {
         this.drapeSAROverlay(data.segmentation_overlay_base64);
       }
-
-      const activeEngine = data.active_engine || (selectedModel === 'unet' ? 'PyTorch U-Net' : 'Adaptive CFAR');
-      document.getElementById('systemStatusText').innerText = `SAR DETECTED (${activeEngine.includes('U-Net') ? 'U-NET' : 'CFAR'})`;
-    } catch (err) {
-      console.error('Error analyzing SAR:', err);
-    }
   }
 
   drapeSAROverlay(base64Img) {
@@ -443,17 +536,16 @@ class OceanShieldApp {
       this.map.removeLayer(this.sarOverlayLayer);
     }
 
-    // Calculate geographic bounds from scene center & pixel coverage
-    // 512px * 50m/px = 25,600m = 25.6km half-extent from center
-    const sc = this.scenarioData;
-    const halfExtentKm = (512 * 50.0) / 1000.0; // 25.6 km
+    // Calculate bounds from the explicit scene registration, never guessed implicitly.
+    const sc = this.sceneGeometry;
+    const halfExtentKm = (Math.max(sc.width, sc.height) * sc.pixelSize) / 2000.0;
     const degPerKmLat = 1.0 / 111.32;
-    const degPerKmLon = 1.0 / (111.32 * Math.cos(sc.center.lat * Math.PI / 180));
+    const degPerKmLon = 1.0 / (111.32 * Math.cos(sc.lat * Math.PI / 180));
 
-    const south = sc.center.lat - halfExtentKm * degPerKmLat;
-    const north = sc.center.lat + halfExtentKm * degPerKmLat;
-    const west = sc.center.lon - halfExtentKm * degPerKmLon;
-    const east = sc.center.lon + halfExtentKm * degPerKmLon;
+    const south = sc.lat - halfExtentKm * degPerKmLat;
+    const north = sc.lat + halfExtentKm * degPerKmLat;
+    const west = sc.lon - halfExtentKm * degPerKmLon;
+    const east = sc.lon + halfExtentKm * degPerKmLon;
 
     const bounds = [[south, west], [north, east]];
     this.sarOverlayLayer = L.imageOverlay(base64Img, bounds, {
@@ -491,6 +583,10 @@ class OceanShieldApp {
 
     document.getElementById('systemStatusText').innerText = 'COMPUTING HYDRODYNAMICS...';
     try {
+      const optionalNumber = (id) => {
+        const value = document.getElementById(id)?.value;
+        return value === '' || value === undefined ? null : Number(value);
+      };
       const resp = await fetch('/api/simulate-drift', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -500,7 +596,11 @@ class OceanShieldApp {
           slick_lon: slick.centroid.lon,
           slick_age_hours: slick.estimated_age_hours,
           max_lookback_hours: 18.0,
-          forecast_hours: 24.0
+          forecast_hours: 24.0,
+          current_u_ms: optionalNumber('currentU'),
+          current_v_ms: optionalNumber('currentV'),
+          wind_u_ms: optionalNumber('windU'),
+          wind_v_ms: optionalNumber('windV')
         })
       });
       const data = await resp.json();
@@ -549,7 +649,7 @@ class OceanShieldApp {
       });
 
       this.originMarker = L.marker([origin.lat, origin.lon], { icon: originIcon })
-        .bindPopup(`<b>ILLEGAL RELEASE EPICENTER (x₀, y₀)</b><br>Time: T - ${origin.slick_age_hours}h<br>Coordinates: ${origin.lat.toFixed(4)}° N, ${origin.lon.toFixed(4)}° E`)
+        .bindPopup(`<b>MODELLED RELEASE CANDIDATE (x₀, y₀)</b><br>Time: T - ${origin.slick_age_hours}h<br>Coordinates: ${origin.lat.toFixed(4)}° N, ${origin.lon.toFixed(4)}° E`)
         .addTo(this.map);
 
       // Update Beaching Hazards
@@ -563,7 +663,7 @@ class OceanShieldApp {
       }
 
       this.renderParticlesAtTime(0.0);
-      document.getElementById('systemStatusText').innerText = 'HINDCAST CONVERGED';
+      document.getElementById('systemStatusText').innerText = 'DRIFT MODEL COMPLETE';
     } catch (err) {
       console.error('Error running drift simulation:', err);
     }
@@ -587,7 +687,9 @@ class OceanShieldApp {
           spatial_radius_nm: 30.0,
           temporal_window_h: 5.0,
           hindcast_trajectory: this.driftResults ? this.driftResults.hindcast_trajectory : null,
-          radar_targets: radarTargets
+          radar_targets: radarTargets,
+          vessels: this.customAisVessels,
+          ais_provenance: this.aisProvenance
         })
       });
       const data = await resp.json();
@@ -601,7 +703,7 @@ class OceanShieldApp {
         this.suspectFlag.innerText = culprit.flag_state;
         this.suspectType.innerText = culprit.vessel_type;
         this.suspectScore.innerText = `${culprit.composite_suspect_score}%`;
-        this.suspectSummary.innerText = `Identified with ${culprit.attribution_tier}. Slowed to ${culprit.kinematics.min_speed_near_origin} kts over epicenter with CPA ${culprit.closest_approach.distance_nm} NM.`;
+        this.suspectSummary.innerText = `Highest-ranked model lead: ${culprit.attribution_tier}. CPA ${culprit.closest_approach.distance_nm} NM; verify with source records and analyst review.`;
 
         // Update Anomaly Breakdown
         const b = culprit.score_breakdown;
@@ -632,7 +734,7 @@ class OceanShieldApp {
         this.renderSOGChart(culprit);
       }
 
-      document.getElementById('systemStatusText').innerText = 'ROGUE VESSEL ATTRIBUTED';
+      document.getElementById('systemStatusText').innerText = 'VESSEL LEADS RANKED';
     } catch (err) {
       console.error('Error correlating AIS:', err);
     }
