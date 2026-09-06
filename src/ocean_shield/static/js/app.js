@@ -621,6 +621,8 @@ class OceanShieldApp {
             </div>
           `)
           .addTo(this.map);
+      }
+
       // Populate SAR preview image in Detection card
       if (this.sarPreviewImg) {
         const b64 = (this.srToggle && this.srToggle.checked && data.super_resolution_base64)
