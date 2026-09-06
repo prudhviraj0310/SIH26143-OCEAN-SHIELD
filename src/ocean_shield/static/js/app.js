@@ -144,8 +144,15 @@ class OceanShieldApp {
     });
 
     const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 18,
+      maxZoom: 19,
+      maxNativeZoom: 8,
       attribution: 'Esri World Imagery'
+    });
+
+    const googleSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+      maxZoom: 20,
+      maxNativeZoom: 11,
+      attribution: 'Google Satellite'
     });
 
     const osmSea = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -164,7 +171,8 @@ class OceanShieldApp {
 
     // Layer control switcher
     const baseMaps = {
-      '🛰️ Satellite Imagery': satellite,
+      '🛰️ Esri Satellite Imagery': satellite,
+      '🌍 Google Earth Satellite': googleSatellite,
       '🌑 Dark Tactical': darkGray,
       '🗺️ OpenStreetMap': osmSea
     };
@@ -612,7 +620,7 @@ class OceanShieldApp {
           }
         }).addTo(this.map);
 
-        this.map.fitBounds(this.slickLayer.getBounds(), { padding: [50, 50] });
+        this.map.fitBounds(this.slickLayer.getBounds(), { padding: [60, 60], maxZoom: 10 });
 
         // Add slick label
         L.popup({ autoClose: false, closeOnClick: false, className: 'slick-tactical-popup' })
