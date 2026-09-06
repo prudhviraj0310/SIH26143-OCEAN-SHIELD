@@ -15,5 +15,7 @@ from src.ocean_shield.server import app
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("src.ocean_shield.server:app", host="127.0.0.1", port=8090, reload=True)
+    port = int(os.environ.get("PORT", 8090))
+    host = os.environ.get("HOST", "0.0.0.0")
+    uvicorn.run("src.ocean_shield.server:app", host=host, port=port)
 

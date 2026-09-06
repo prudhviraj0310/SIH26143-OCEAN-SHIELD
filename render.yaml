@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: ocean-shield
+    runtime: python
+    buildCommand: pip install --no-cache-dir torch --extra-index-url https://download.pytorch.org/whl/cpu && pip install --no-cache-dir -r requirements.txt
+    startCommand: python server.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
