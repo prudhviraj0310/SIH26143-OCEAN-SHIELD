@@ -123,19 +123,6 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                 "coastal_zone_name": "Marine National Park & Coral Reef Sanctuary, Jamnagar",
                 "distance_to_shore_km": 16.5
             },
-            "ground_truth_culprit": {
-                "vessel_name": "MT NEPTUNE GLORY",
-                "imo": 9384721,
-                "mmsi": 636019482,
-                "flag_state": "Liberia (LR)",
-                "vessel_type": "Crude Oil Tanker",
-                "dwt_tonnes": 158000,
-                "discharge_time_rel_h": -10.5,
-                "discharge_lat": 22.385,
-                "discharge_lon": 69.115,
-                "discharge_volume_tonnes": 48.5,
-                "violation_type": "Illegal Bilge & Slop Tank Flushing under cover of darkness"
-            },
             "ais_vessels": [
                 {
                     "mmsi": 636019482,
@@ -151,7 +138,7 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                         {"relative_time_hours": -14.0, "lat": 22.280, "lon": 68.950, "sog_knots": 15.4, "cog_degrees": 52.0},
                         {"relative_time_hours": -12.0, "lat": 22.330, "lon": 69.030, "sog_knots": 15.1, "cog_degrees": 50.0},
                         {"relative_time_hours": -11.0, "lat": 22.365, "lon": 69.085, "sog_knots": 9.2, "cog_degrees": 48.0},
-                        {"relative_time_hours": -10.5, "lat": 22.384, "lon": 69.116, "sog_knots": 5.1, "cog_degrees": 44.0},  # CULPRIT RELEASE POINT
+                        {"relative_time_hours": -10.5, "lat": 22.384, "lon": 69.116, "sog_knots": 5.1, "cog_degrees": 44.0},
                         {"relative_time_hours": -10.0, "lat": 22.398, "lon": 69.135, "sog_knots": 5.4, "cog_degrees": 46.0},
                         {"relative_time_hours": -9.0, "lat": 22.420, "lon": 69.170, "sog_knots": 11.5, "cog_degrees": 55.0},
                         {"relative_time_hours": -7.0, "lat": 22.460, "lon": 69.240, "sog_knots": 14.8, "cog_degrees": 54.0},
@@ -274,19 +261,6 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                 "coastal_zone_name": "Open Ocean Basin (High-Density Petroleum Rigs Zone)",
                 "distance_to_shore_km": 145.0
             },
-            "ground_truth_culprit": {
-                "vessel_name": "MV ORIENTAL MARINER",
-                "imo": 9248102,
-                "mmsi": 354921000,
-                "flag_state": "Panama (PA)",
-                "vessel_type": "Bulk Carrier",
-                "dwt_tonnes": 82000,
-                "discharge_time_rel_h": -8.5,
-                "discharge_lat": 19.345,
-                "discharge_lon": 71.210,
-                "discharge_volume_tonnes": 32.0,
-                "violation_type": "Engine Room Bilge Separator Bypass Discharge"
-            },
             "ais_vessels": [
                 {
                     "mmsi": 354921000,
@@ -369,19 +343,6 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                 "coastline_lat_threshold": 6.95,
                 "coastal_zone_name": "Great Nicobar Biosphere Reserve & Coral Reefs",
                 "distance_to_shore_km": 28.0
-            },
-            "ground_truth_culprit": {
-                "vessel_name": "CHEM STAR III",
-                "imo": 9411234,
-                "mmsi": 357890123,
-                "flag_state": "Panama (PA)",
-                "vessel_type": "Chemical Tanker",
-                "dwt_tonnes": 52000,
-                "discharge_time_rel_h": -11.0,
-                "discharge_lat": 6.810,
-                "discharge_lon": 93.580,
-                "discharge_volume_tonnes": 24.5,
-                "violation_type": "Noxious Liquid Chemical Slop Tank Stripping"
             },
             "ais_vessels": [
                 {

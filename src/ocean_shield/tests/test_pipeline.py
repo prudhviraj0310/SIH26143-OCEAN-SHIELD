@@ -82,19 +82,23 @@ class TestOceanShieldPipeline(unittest.TestCase):
     def test_ais_correlation_and_culprit_attribution(self):
         """Validates spatio-temporal corridor filtering, kinematic anomalies, and rogue ship attribution."""
         _, _, scenario_data = get_scenario_sar_and_currents("gulf_of_kachchh")
-        ground_truth = scenario_data["ground_truth_culprit"]
+
+        # Test candidate release coordinates derived from drift hindcast
+        release_lat = 22.384
+        release_lon = 69.116
+        release_time_h = -10.5
 
         results = self.ais_engine.attribute_oil_spill(
             scenario_data["ais_vessels"],
-            ground_truth["discharge_lat"],
-            ground_truth["discharge_lon"],
-            ground_truth["discharge_time_rel_h"]
+            release_lat,
+            release_lon,
+            release_time_h
         )
 
         culprit = results["primary_culprit"]
         self.assertIsNotNone(culprit)
-        self.assertEqual(culprit["vessel_name"], ground_truth["vessel_name"])
-        self.assertEqual(culprit["imo"], ground_truth["imo"])
+        self.assertEqual(culprit["vessel_name"], "MT NEPTUNE GLORY")
+        self.assertEqual(culprit["imo"], 9384721)
         self.assertGreaterEqual(culprit["composite_suspect_score"], 80.0, "Culprit should have high suspect score")
         self.assertLess(culprit["closest_approach"]["distance_nm"], 1.0, "Culprit should be directly over origin")
         self.assertGreaterEqual(culprit["kinematics"]["speed_drop_knots"], 6.0, "Culprit should exhibit speed drop")

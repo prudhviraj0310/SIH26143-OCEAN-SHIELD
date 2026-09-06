@@ -17,6 +17,8 @@ import os
 import sys
 import time
 
+import numpy as np
+
 from src.ocean_shield.sar_engine import SAREngine
 from src.ocean_shield.eo_engine import EOEngine
 from src.ocean_shield.drift_engine import DriftEngine
@@ -142,11 +144,8 @@ def main():
 
     # 3. Lagrangian Hydrodynamic Drift & Mackay ADIOS Weathering
     print("\n[3/4] Running 4th-Order Runge-Kutta Lagrangian Hindcast & ADIOS Weathering...")
-    target_age = sar_res["primary_slick"]["estimated_age_hours"] if (sar_res and sar_res.get("primary_slick")) else 10.5
-    # Constrain to scenario ground truth realistic range
-    gt_age = abs(scenario_data.get("ground_truth_culprit", {}).get("discharge_time_rel_h", 10.5))
-    if target_age < 4.0 or target_age > 16.0:
-        target_age = gt_age
+    target_age = sar_res["primary_slick"]["estimated_age_hours"] if (sar_res and sar_res.get("primary_slick")) else 12.0
+    target_age = float(np.clip(target_age, 2.0, 24.0))
 
     hindcast_res = drift_engine.run_hindcast(
         center_lat, center_lon, current_field,

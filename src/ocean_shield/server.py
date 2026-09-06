@@ -345,11 +345,16 @@ async def simulate_drift(req: SimulateDriftRequest):
         )
         met_ocean_source = "operator-supplied current and wind vectors"
 
-    # Calibrate target release age from scenario ground truth if not provided or out of bounds
-    gt_age = abs(scenario_data.get("ground_truth_culprit", {}).get("discharge_time_rel_h", 10.5))
+    # Determine target release age: from operator request, or physical age estimate from SAR detection
     target_age = req.slick_age_hours
-    if target_age is None or target_age > 16.0 or target_age < 4.0:
-        target_age = gt_age
+    if target_age is None:
+        sar_img, _, _ = get_scenario_sar_and_currents(req.scenario_id)
+        sar_res = sar_engine.process_sar_scene(
+            sar_img, req.slick_lat, req.slick_lon,
+            pixel_size_m=float(scenario_data.get("satellite_metadata", {}).get("pixel_spacing_m", 10.0))
+        )
+        target_age = sar_res.get("primary_slick", {}).get("estimated_age_hours", 12.0)
+    target_age = float(np.clip(target_age, 2.0, 36.0))
 
     # Backward Hindcast
     hindcast_res = drift_engine.run_hindcast(
@@ -441,7 +446,7 @@ async def export_dossier(scenario_id: str):
         sar_img, scenario_data["center"]["lat"], scenario_data["center"]["lon"]
     )
     slick = sar_res["primary_slick"]
-    target_age = abs(scenario_data.get("ground_truth_culprit", {}).get("discharge_time_rel_h", 10.5))
+    target_age = float(np.clip(slick.get("estimated_age_hours", 12.0), 2.0, 36.0))
 
     drift_hindcast = drift_engine.run_hindcast(
         slick["centroid"]["lat"], slick["centroid"]["lon"],
