@@ -138,7 +138,7 @@ class OceanShieldApp {
     L.control.zoom({ position: 'topright' }).addTo(this.map);
 
     // Multiple basemap layers for judge inspection
-    const darkGray = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    const darkTactical = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
       subdomains: 'abcd',
       attribution: '&copy; CARTO &copy; OpenStreetMap'
@@ -154,19 +154,13 @@ class OceanShieldApp {
       attribution: 'OpenStreetMap'
     });
 
-    // Default to satellite so judges see real coastlines, islands, and ocean
-    satellite.addTo(this.map);
-
-    // Reference boundaries and labels on top of satellite
-    const refLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 18,
-      opacity: 0.85
-    }).addTo(this.map);
+    // Default to Dark Tactical: seamless deep-ocean navy with glowing coastlines, no missing tile watermarks
+    darkTactical.addTo(this.map);
 
     // Layer control switcher
     const baseMaps = {
+      '🌑 Dark Tactical (C2 Navy)': darkTactical,
       '🛰️ Satellite Imagery': satellite,
-      '🌑 Dark Tactical': darkGray,
       '🗺️ OpenStreetMap': osmSea
     };
     L.control.layers(baseMaps, null, { position: 'topright', collapsed: true }).addTo(this.map);
@@ -577,13 +571,21 @@ class OceanShieldApp {
 
       const activeEngine = data.active_engine || (selectedModel === 'unet' ? 'PyTorch U-Net' : 'Adaptive CFAR');
       document.getElementById('systemStatusText').innerText = `SAR SCREENED (${activeEngine.includes('U-Net') ? 'U-NET' : 'CFAR'})`;
+      this.updateStepperState(1);
     } catch (err) {
       console.error('Error analyzing SAR:', err);
       document.getElementById('systemStatusText').innerText = 'SAR ANALYSIS FAILED';
     }
   }
 
+  updateStepperState(step) {
+    if (this.btnDetectSAR) this.btnDetectSAR.classList.toggle('active', step >= 1);
+    if (this.btnRunDrift) this.btnRunDrift.classList.toggle('active', step >= 2);
+    if (this.btnCorrelateAIS) this.btnCorrelateAIS.classList.toggle('active', step >= 3);
+  }
+
   renderSarResponse(data) {
+      if (!data || !data.sar_results) return;
       this.sarResults = data.sar_results;
       const slick = this.sarResults.primary_slick;
       if (slick) {
@@ -688,7 +690,11 @@ class OceanShieldApp {
   }
 
   async runDriftSimulation() {
-    if (!this.sarResults || !this.sarResults.primary_slick) return;
+    if (!this.sarResults || !this.sarResults.primary_slick) {
+      document.getElementById('systemStatusText').innerText = 'RUNNING SAR DETECTION FIRST...';
+      await this.runSARAnalysis();
+      if (!this.sarResults || !this.sarResults.primary_slick) return;
+    }
     const slick = this.sarResults.primary_slick;
 
     document.getElementById('systemStatusText').innerText = 'COMPUTING HYDRODYNAMICS...';
@@ -783,13 +789,18 @@ class OceanShieldApp {
 
       this.renderParticlesAtTime(0.0);
       document.getElementById('systemStatusText').innerText = 'DRIFT MODEL COMPLETE';
+      this.updateStepperState(2);
     } catch (err) {
       console.error('Error running drift simulation:', err);
     }
   }
 
   async runAISCorrelation() {
-    if (!this.driftResults || !this.driftResults.origin_release_point) return;
+    if (!this.driftResults || !this.driftResults.origin_release_point) {
+      document.getElementById('systemStatusText').innerText = 'RUNNING DRIFT SIMULATION FIRST...';
+      await this.runDriftSimulation();
+      if (!this.driftResults || !this.driftResults.origin_release_point) return;
+    }
     const origin = this.driftResults.origin_release_point;
 
     document.getElementById('systemStatusText').innerText = 'CORRELATING AIS TRAFFIC...';
@@ -865,7 +876,8 @@ class OceanShieldApp {
         this.renderSOGChart(culprit);
       }
 
-      document.getElementById('systemStatusText').innerText = 'VESSEL LEADS RANKED';
+      document.getElementById('systemStatusText').innerText = 'WORKSPACE ACTIVE • ALL LEADS RANKED';
+      this.updateStepperState(3);
     } catch (err) {
       console.error('Error correlating AIS:', err);
     }
