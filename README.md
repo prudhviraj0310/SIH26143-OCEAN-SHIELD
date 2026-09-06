@@ -65,18 +65,12 @@ flowchart TD
 
 ## 📊 Deep Learning & Physical Validation Metrics
 
-### 1. PyTorch SAR U-Net (Zenodo Sentinel-1 benchmark experiment)
-- **Architecture:** 4-stage encoder-decoder with DoubleConv, BatchNorm, ReLU, MaxPool downsampling, Bilinear upsampling, and skip connections.
+### 1. PyTorch SAR U-Net Architecture
+- **Architecture:** 4-stage encoder-decoder with DoubleConv, BatchNorm, ReLU, MaxPool downsampling, Bilinear upsampling, and skip connections (`src/ocean_shield/models/unet.py`).
 - **Loss Function:** Combined `DiceBCELoss` ($\mathcal{L} = \text{BCE} + (1 - \text{Dice})$) for severe class imbalance handling.
-- **Trained Model Checkpoint:** `models/sar_unet_best.pt` (50,058,111 bytes).
-- **Reported experiment metrics:**
-  - **Mean IoU (Jaccard Index):** **0.7808**
-  - **Dice Coefficient (F1-Score):** **0.8752**
-  - **Spill Detection Recall:** **0.9951 (99.51%)**
-  - **Detection Precision:** **0.7837 (78.37%)**
-  - **Inference Latency:** **< 80 ms** on CPU, **< 12 ms** on Apple Silicon MPS / NVIDIA CUDA.
-
-> These figures are experiment claims, not an operational performance guarantee. Before deployment, reproduce them on a held-out, geographically separated real-scene test set and publish precision/recall by sea state and lookalike class.
+- **Tiled Sliding Window Inference:** Seamless 2D Hann-window overlap blending (`stride=192, tile=256`) to process large satellite swaths without GPU out-of-memory errors.
+- **Model Checkpoint:** `models/sar_unet_best.pt` provided for proof-of-concept pipeline execution and tensor flow validation.
+- **Production Roadmap:** Operational deployment requires end-to-end training against full-resolution (84+ GB) Sentinel-1 GRD imagery from the Copernicus Open Access Hub with rigorous geographical train/validation/test splits.
 
 ### 2. Mackay ADIOS Physical Weathering Model
 Simulates the chemical & rheological transformation of spilled crude oil:
