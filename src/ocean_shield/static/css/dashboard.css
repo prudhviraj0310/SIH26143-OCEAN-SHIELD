@@ -314,6 +314,22 @@ html, body {
   transform: translateY(-1px);
 }
 
+.btn-techstack {
+  background: rgba(0, 242, 254, 0.12);
+  border: 1px solid rgba(0, 242, 254, 0.4);
+  color: var(--accent-cyan);
+  text-decoration: none;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.15);
+}
+
+.btn-techstack:hover {
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.3) 0%, rgba(59, 130, 246, 0.3) 100%);
+  border-color: var(--accent-cyan);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 0 16px rgba(0, 242, 254, 0.35);
+}
+
 .badge-status {
   display: inline-flex;
   align-items: center;

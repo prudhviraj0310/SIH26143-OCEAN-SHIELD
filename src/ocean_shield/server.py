@@ -167,6 +167,17 @@ async def serve_dashboard():
         return HTMLResponse(content=f.read())
 
 
+@app.get("/techstack", response_class=HTMLResponse)
+@app.get("/architecture", response_class=HTMLResponse)
+async def serve_techstack():
+    """Serves the complete 5-layer engineering pipeline & tech stack breakdown page."""
+    techstack_path = os.path.join(TEMPLATES_DIR, "techstack.html")
+    if not os.path.exists(techstack_path):
+        return HTMLResponse("<h1>OCEAN-SHIELD Tech Stack page not found</h1>", status_code=404)
+    with open(techstack_path, "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
+
 @app.get("/api/health")
 async def health_check():
     return {
