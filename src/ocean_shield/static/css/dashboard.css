@@ -2161,5 +2161,94 @@ body.mode-expert .map-legend-dock {
   font-family: var(--font-mono);
 }
 
+/* ==========================================================================
+   GLOBAL DRAG & DROP INGESTION OVERLAY
+   ========================================================================== */
+.global-drop-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(7, 13, 24, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.global-drop-overlay.active {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.drop-zone-modal {
+  background: rgba(13, 22, 38, 0.95);
+  border: 2px dashed var(--accent-cyan);
+  border-radius: 20px;
+  padding: 40px 48px;
+  text-align: center;
+  box-shadow: 0 0 60px rgba(0, 242, 254, 0.4);
+  max-width: 580px;
+  animation: pulseDrop 2s infinite ease-in-out;
+}
+
+@keyframes pulseDrop {
+  0%, 100% { transform: scale(1); border-color: rgba(0, 242, 254, 0.6); }
+  50% { transform: scale(1.02); border-color: rgba(0, 242, 254, 1); box-shadow: 0 0 80px rgba(0, 242, 254, 0.6); }
+}
+
+.drop-zone-modal .drop-icon {
+  font-size: 3rem;
+  margin-bottom: 14px;
+}
+
+.drop-zone-modal h2 {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #ffffff;
+  margin-bottom: 8px;
+}
+
+.drop-zone-modal .drop-sub {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-bottom: 22px;
+}
+
+.drop-zone-modal .code-hl {
+  color: var(--accent-cyan);
+  background: rgba(0, 242, 254, 0.12);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.drop-zone-modal .drop-tags {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.drop-zone-modal .tag-badge {
+  background: rgba(5, 214, 160, 0.15);
+  border: 1px solid rgba(5, 214, 160, 0.4);
+  color: #05d6a0;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
 
 

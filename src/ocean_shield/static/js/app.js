@@ -480,6 +480,9 @@ class OceanShieldApp {
       this.metOceanForm.hidden = !this.metOceanForm.hidden;
     });
 
+    // Initialize global drag & drop for live satellite imagery and AIS CSV tables
+    this.initGlobalDragAndDrop();
+
     this.timeSlider.addEventListener('input', (e) => {
       this.setTimeOffset(parseFloat(e.target.value));
     });
@@ -905,6 +908,133 @@ class OceanShieldApp {
       document.getElementById('systemStatusText').innerText = 'UPLOADED SAR SCREENED';
     } catch (err) {
       console.error('Error analysing uploaded SAR:', err);
+      document.getElementById('systemStatusText').innerText = 'SAR ANALYSIS FAILED';
+      alert(err.message || 'Error analysing uploaded SAR raster.');
+    }
+  }
+
+  initGlobalDragAndDrop() {
+    const overlay = document.getElementById('globalDropOverlay');
+    if (!overlay) return;
+
+    let dragCounter = 0;
+
+    window.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      dragCounter++;
+      overlay.hidden = false;
+      overlay.classList.add('active');
+    });
+
+    window.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        overlay.classList.remove('active');
+        overlay.hidden = true;
+      }
+    });
+
+    window.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+
+    window.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      overlay.classList.remove('active');
+      overlay.hidden = true;
+
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+
+      const file = files[0];
+      const name = file.name.toLowerCase();
+
+      if (name.endsWith('.csv')) {
+        await this.handleAISFileDirect(file);
+      } else if (name.endsWith('.png') || name.endsWith('.tif') || name.endsWith('.tiff') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
+        await this.handleSARFileDirect(file);
+      } else {
+        alert(`Unsupported file format: "${file.name}". Please drop a Sentinel-1 SAR image (.png, .tif) or MarineCadastre AIS table (.csv).`);
+      }
+    });
+  }
+
+  async handleAISFileDirect(file) {
+    document.getElementById('systemStatusText').innerText = `INGESTING LIVE AIS: ${file.name}...`;
+    try {
+      const resp = await fetch('/api/upload-ais-csv', {
+        method: 'POST',
+        headers: {
+          'X-File-Name': file.name,
+          'X-Reference-Time-UTC': this.sceneAcquisitionTime || ''
+        },
+        body: file
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Unable to parse AIS CSV.');
+      if (data.status === 'success' && data.vessels) {
+        this.customAisVessels = data.vessels;
+        this.aisProvenance = data.provenance;
+        this.setEvidenceState();
+        document.getElementById('systemStatusText').innerText = `✓ AIS INGESTED (${data.vessels_parsed_count} LIVE VESSELS)`;
+        
+        const badge = document.getElementById('vesselCountTag');
+        if (badge) badge.innerText = `${data.vessels.length} LIVE VESSELS`;
+        
+        // Re-run AIS correlation to rank suspects against the active spill!
+        await this.runAISCorrelation();
+      }
+    } catch (err) {
+      console.error('Error uploading live AIS CSV:', err);
+      document.getElementById('systemStatusText').innerText = 'AIS INGEST FAILED';
+      alert(err.message || 'Error parsing custom AIS CSV file.');
+    }
+  }
+
+  async handleSARFileDirect(file) {
+    this.pendingSarFile = file;
+    document.getElementById('systemStatusText').innerText = `SCREENING LIVE SAR: ${file.name}...`;
+    try {
+      const resp = await fetch('/api/analyze-sar-upload', {
+        method: 'POST',
+        headers: {
+          'X-File-Name': file.name,
+          'X-Center-Lat': document.getElementById('sarCenterLat')?.value || '22.465',
+          'X-Center-Lon': document.getElementById('sarCenterLon')?.value || '69.215',
+          'X-Pixel-Size-M': document.getElementById('sarPixelSize')?.value || '10.0',
+          'X-Model-Type': this.modelSelect?.value || 'unet',
+          'X-Threshold-Offset': '20',
+          'X-Acquisition-Time-UTC': document.getElementById('sarAcquisitionUtc')?.value
+            ? `${document.getElementById('sarAcquisitionUtc').value}Z`
+            : ''
+        },
+        body: file
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Unable to analyse SAR raster.');
+      this.sarProvenance = data.provenance;
+      this.sceneAcquisitionTime = data.provenance.acquisition_time_utc || null;
+      this.sceneGeometry = {
+        lat: data.provenance.scene_center.lat,
+        lon: data.provenance.scene_center.lon,
+        width: data.provenance.image_shape_px.width,
+        height: data.provenance.image_shape_px.height,
+        pixelSize: data.provenance.pixel_size_m
+      };
+      this.setEvidenceState();
+      this.sarPreviewImg.src = this.srToggle.checked ? data.super_resolution_base64 : data.segmentation_overlay_base64;
+      this.renderSarResponse(data);
+      if (this.sarUploadForm) this.sarUploadForm.hidden = true;
+      document.getElementById('systemStatusText').innerText = '✓ LIVE SAR SEGMENTED (PYTORCH U-NET)';
+      
+      // Auto-run drift and AIS correlation pipeline!
+      await this.runDriftSimulation();
+      await this.runAISCorrelation();
+    } catch (err) {
+      console.error('Error analysing live SAR:', err);
       document.getElementById('systemStatusText').innerText = 'SAR ANALYSIS FAILED';
       alert(err.message || 'Error analysing uploaded SAR raster.');
     }
