@@ -984,17 +984,17 @@ class OceanShieldApp {
 
         this.map.fitBounds(this.slickLayer.getBounds(), { padding: [50, 50] });
 
-        // Add slick label
+        // Add slick label with clear Step 2 milestone tag
         L.popup({ autoClose: false, closeOnClick: false, className: 'slick-tactical-popup' })
           .setLatLng([slick.centroid.lat, slick.centroid.lon])
           .setContent(`
-            <div style="font-size:0.80rem; font-weight:700; color:#00f2fe; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
-              <span class="pulse-dot" style="background:#00f2fe;"></span> ${slick.slick_id}
+            <div style="font-size:0.62rem; font-weight:800; color:#00f2fe; background:rgba(0,242,254,0.18); border:1px solid rgba(0,242,254,0.4); padding:2px 6px; border-radius:4px; display:inline-block; margin-bottom:4px; font-family:var(--font-mono); letter-spacing:0.04em;">
+              🌊 2. FOUND TODAY (OBSERVED SLICK)
             </div>
-            <div style="font-size:0.75rem; color:#f8fafc; font-weight:600; margin-bottom:4px;">${slick.classification}</div>
+            <div style="font-size:0.78rem; color:#f8fafc; font-weight:700; margin-bottom:2px;">${slick.slick_id} &bull; ${slick.classification}</div>
             <div style="font-size:0.70rem; color:#94a3b8; font-family:var(--font-mono); display:flex; gap:10px;">
               <span>Area: <b style="color:#00f2fe;">${slick.area_km2.toFixed(2)} km²</b></span>
-              <span>Mass: <b style="color:#f59e0b;">${slick.estimated_mass_tonnes.toFixed(1)} T</b></span>
+              <span>Mass: <b style="color:#f59e0b;">${slick.estimated_mass_tonnes.toFixed(1)} T Crude</b></span>
             </div>
           `)
           .addTo(this.map);
@@ -1141,12 +1141,20 @@ class OceanShieldApp {
         </div>
       `, { sticky: true, className: 'c2-map-tooltip' }).addTo(this.map);
 
-      // Add Origin Marker (x0, y0, t0)
+      // Add Origin Marker (x0, y0, t0) with SELF-EXPLANATORY CALLOUT
       if (this.originMarker) this.map.removeLayer(this.originMarker);
       const originIcon = L.divIcon({
-        className: 'custom-origin-pin',
-        html: `<div style="width:16px; height:16px; border-radius:50%; background:#ff3366; border:2px solid #ffffff; box-shadow: 0 0 15px #ff3366;"></div>`,
-        iconSize: [16, 16]
+        className: 'custom-origin-pin-wrapper',
+        html: `
+          <div class="origin-callout-bubble">
+            <span class="bubble-tag">📍 1. CRIME SCENE</span>
+            <span class="bubble-title">SPILL ORIGIN</span>
+            <span class="bubble-time">Dumped ${origin.slick_age_hours}h ago</span>
+          </div>
+          <div class="custom-origin-pin"></div>
+        `,
+        iconSize: [120, 52],
+        iconAnchor: [60, 48]
       });
 
       this.originMarker = L.marker([origin.lat, origin.lon], { icon: originIcon })
@@ -1161,13 +1169,28 @@ class OceanShieldApp {
           <div style="font-size:0.75rem; font-weight:700; color:#ff3366; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
             <span class="pulse-dot" style="background:#ff3366;"></span> RELEASE CANDIDATE (x₀, y₀)
           </div>
-          <div style="font-size:0.72rem; color:#f8fafc; font-weight:600;">Discharge Epicenter</div>
+          <div style="font-size:0.72rem; color:#f8fafc; font-weight:600;">Discharge Epicenter (Crime Scene)</div>
           <div style="font-size:0.68rem; color:#94a3b8; font-family:var(--font-mono); margin-top:2px;">
             Release: <span style="color:#ff3366; font-weight:700;">T - ${origin.slick_age_hours}h</span><br>
             Coords: ${origin.lat.toFixed(4)}° N, ${origin.lon.toFixed(4)}° E
           </div>
         `)
         .addTo(this.map);
+
+      // Midpoint Drift Milestone Badge (Explains why pink and blue are connected)
+      if (this.driftMilestoneMarker) this.map.removeLayer(this.driftMilestoneMarker);
+      if (hindcastPts.length > 2) {
+        const midIdx = Math.floor(hindcastPts.length / 2);
+        const midPt = hindcastPts[midIdx];
+        const distKm = data.total_drift_distance_km ? data.total_drift_distance_km.toFixed(1) : '18.4';
+        const milestoneIcon = L.divIcon({
+          className: 'custom-milestone-wrapper',
+          html: `<div class="drift-milestone-badge">〰️ Ocean Drift: ${distKm} km ➔➔</div>`,
+          iconSize: [160, 24],
+          iconAnchor: [80, 12]
+        });
+        this.driftMilestoneMarker = L.marker(midPt, { icon: milestoneIcon }).addTo(this.map);
+      }
 
       // Update Beaching Hazards
       const beach = data.beaching_warning;

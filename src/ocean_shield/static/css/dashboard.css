@@ -2024,4 +2024,126 @@ body.mode-expert .map-legend-dock {
   animation: radarSweep 1.8s ease-in-out infinite;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   SELF-EXPLANATORY MAP CALLOUT BADGES (ORIGIN VS OBSERVED)
+   ══════════════════════════════════════════════════════════════════ */
+.custom-origin-pin-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.origin-callout-bubble {
+  background: rgba(220, 38, 38, 0.94);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1.5px solid #ffffff;
+  border-radius: 8px;
+  padding: 4px 8px;
+  color: #ffffff;
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.65);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  white-space: nowrap;
+  pointer-events: none;
+  margin-bottom: 4px;
+}
+
+.origin-callout-bubble .bubble-tag {
+  font-size: 0.55rem;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-bottom: 2px;
+}
+
+.origin-callout-bubble .bubble-title {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.origin-callout-bubble .bubble-time {
+  font-size: 0.58rem;
+  opacity: 0.92;
+  font-family: var(--font-mono);
+}
+
+.custom-origin-pin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ff3366;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 0 16px #ff3366, 0 0 30px #ff3366;
+  animation: pulseCrimePin 1.8s infinite;
+}
+
+@keyframes pulseCrimePin {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 12px #ff3366; }
+  50% { transform: scale(1.3); box-shadow: 0 0 24px #ff3366; }
+}
+
+/* Midpoint Drift Milestone Badge */
+.drift-milestone-badge {
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 51, 102, 0.6);
+  border-radius: 16px;
+  padding: 3px 9px;
+  color: #ff3366;
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Slick Location Callout */
+.slick-callout-bubble {
+  background: rgba(10, 25, 47, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1.5px solid #00f2fe;
+  border-radius: 8px;
+  padding: 4px 8px;
+  color: #ffffff;
+  box-shadow: 0 4px 16px rgba(0, 242, 254, 0.45);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.slick-callout-bubble .bubble-tag {
+  font-size: 0.55rem;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  background: rgba(0, 242, 254, 0.25);
+  color: #00f2fe;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-bottom: 2px;
+}
+
+.slick-callout-bubble .bubble-title {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.slick-callout-bubble .bubble-time {
+  font-size: 0.58rem;
+  color: #94a3b8;
+  font-family: var(--font-mono);
+}
+
+
 
