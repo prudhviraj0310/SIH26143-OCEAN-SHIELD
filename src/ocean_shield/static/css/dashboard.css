@@ -1751,3 +1751,214 @@ body.mode-expert .executive-mission-dock {
     width: 100%;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   TACTICAL MAP VISUAL GUIDE & SYMBOL KEY (.map-legend-dock)
+   ══════════════════════════════════════════════════════════════════ */
+.map-legend-dock {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 750;
+  width: 300px;
+  background: rgba(10, 16, 30, 0.90);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(0, 242, 254, 0.25);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.mode-expert .map-legend-dock {
+  left: calc(var(--dock-width-left) + 20px);
+  top: 14px;
+}
+
+.legend-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  background: rgba(15, 23, 42, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  user-select: none;
+}
+
+.legend-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-indicator-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 8px var(--accent-cyan);
+}
+
+.legend-header-title {
+  font-size: 0.70rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #f8fafc;
+}
+
+.legend-toggle-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 0.60rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 3px 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.legend-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-color: var(--accent-cyan);
+}
+
+.legend-content {
+  padding: 10px 12px;
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.legend-content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.legend-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+.legend-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.legend-group-header {
+  font-size: 0.60rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+  padding-bottom: 3px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.legend-badge-symbol {
+  font-size: 0.75rem;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.symbol-blue-dots {
+  color: #00f2fe;
+  text-shadow: 0 0 6px #00f2fe;
+  font-size: 0.65rem;
+  letter-spacing: 1px;
+}
+
+.legend-line-sample {
+  width: 26px;
+  height: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+
+.line-red-dashed {
+  border-top: 3px dashed #ff3366;
+}
+
+.line-amber-dashed {
+  border-top: 3px dashed #f59e0b;
+}
+
+.line-red-solid {
+  background: #ff3366;
+  height: 3.5px;
+  box-shadow: 0 0 6px rgba(255, 51, 102, 0.6);
+}
+
+.line-green-solid {
+  background: #05d6a0;
+  height: 2.5px;
+}
+
+.line-cyan-dashed {
+  border-top: 2px dashed #00f2fe;
+}
+
+.legend-zone-sample {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.zone-red {
+  background: rgba(239, 68, 68, 0.25);
+  border: 1.5px dashed #ef4444;
+}
+
+.zone-green {
+  background: rgba(5, 214, 160, 0.20);
+  border: 1px solid #05d6a0;
+}
+
+.legend-desc {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.legend-label {
+  font-size: 0.70rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.legend-sub {
+  font-size: 0.63rem;
+  color: #94a3b8;
+  line-height: 1.25;
+}
+
+/* Collapsed state */
+.map-legend-dock.collapsed {
+  width: 210px;
+}
+
+.map-legend-dock.collapsed .legend-content {
+  display: none !important;
+}
+

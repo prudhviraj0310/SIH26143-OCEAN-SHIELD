@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   
   <!-- Custom Modern C2 Dashboard CSS -->
-  <link rel="stylesheet" href="/static/css/dashboard.css?v=3.5">
+  <link rel="stylesheet" href="/static/css/dashboard.css?v=3.6">
 </head>
 <body class="theme-c2 mode-simple">
 
@@ -109,6 +109,100 @@
       <div class="hud-item">
         <span class="hud-tag">SWARM</span>
         <strong class="cyan font-mono">1,000 PARTICLES</strong>
+      </div>
+    </div>
+
+    <!-- FLOATING VISUAL MAP GUIDE & SYMBOL KEY (Self-Explanatory for Judges & Users) -->
+    <div class="map-legend-dock" id="mapLegendDock">
+      <div class="legend-header" id="legendHeader" title="Click to collapse or expand Map Guide">
+        <div class="legend-header-left">
+          <span class="legend-indicator-dot"></span>
+          <span class="legend-header-title">MAP GUIDE & SYMBOLS</span>
+        </div>
+        <button class="legend-toggle-btn" id="btnToggleLegend" aria-label="Toggle map guide">
+          <span id="legendToggleText">COLLAPSE</span>
+          <span class="legend-arrow" id="legendArrow">▲</span>
+        </button>
+      </div>
+
+      <div class="legend-content" id="legendContent">
+        <!-- Section 1: Oil & Physics Particles -->
+        <div class="legend-group">
+          <div class="legend-group-header">🌊 OIL SPILL & PARTICLES</div>
+          <div class="legend-item">
+            <span class="legend-badge-symbol symbol-blue-dots">●●●</span>
+            <div class="legend-desc">
+              <div class="legend-label">Cyan / Blue Dots</div>
+              <div class="legend-sub">Virtual Oil Particles (Spreading fluid swarm)</div>
+            </div>
+          </div>
+          <div class="legend-item">
+            <span class="legend-badge-symbol symbol-origin-pin">📍</span>
+            <div class="legend-desc">
+              <div class="legend-label">Red Pulsing Pin</div>
+              <div class="legend-sub">Spill Epicenter (Where ship dumped oil T - 12h)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Lines & Trajectories -->
+        <div class="legend-group">
+          <div class="legend-group-header">📈 TRAJECTORIES & SHIP LINES</div>
+          <div class="legend-item">
+            <span class="legend-line-sample line-red-dashed"></span>
+            <div class="legend-desc">
+              <div class="legend-label">Red Dashed Line</div>
+              <div class="legend-sub">Rewind Drift (Traces back to origin point)</div>
+            </div>
+          </div>
+          <div class="legend-item">
+            <span class="legend-line-sample line-amber-dashed"></span>
+            <div class="legend-desc">
+              <div class="legend-label">Amber Dashed Line</div>
+              <div class="legend-sub">Future Forecast (Where oil will hit in 24h)</div>
+            </div>
+          </div>
+          <div class="legend-item">
+            <span class="legend-line-sample line-red-solid"></span>
+            <div class="legend-desc">
+              <div class="legend-label">Solid Red Line</div>
+              <div class="legend-sub">Prime Suspect Ship (Decelerated to dump bilge)</div>
+            </div>
+          </div>
+          <div class="legend-item">
+            <span class="legend-line-sample line-green-solid"></span>
+            <div class="legend-desc">
+              <div class="legend-label">Solid Green Line</div>
+              <div class="legend-sub">Innocent Vessels (Normal speed, low score)</div>
+            </div>
+          </div>
+          <div class="legend-item">
+            <span class="legend-line-sample line-cyan-dashed"></span>
+            <div class="legend-desc">
+              <div class="legend-label">Cyan Dashed Line</div>
+              <div class="legend-sub">India 200 NM EEZ & Shipping Highway</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3: Zones -->
+        <div class="legend-group">
+          <div class="legend-group-header">🛑 MARITIME ZONES</div>
+          <div class="legend-item">
+            <span class="legend-zone-sample zone-red"></span>
+            <div class="legend-desc">
+              <div class="legend-label">Red Dotted Circle</div>
+              <div class="legend-sub">Marine Coral Sanctuary (High-risk hazard)</div>
+            </div>
+          </div>
+          <div class="legend-item">
+            <span class="legend-zone-sample zone-green"></span>
+            <div class="legend-desc">
+              <div class="legend-label">Green / Open Water</div>
+              <div class="legend-sub">Safe Navigable Commercial Sea</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -586,6 +680,6 @@
 
   <!-- Leaflet & App Scripts -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="/static/js/app.js?v=3.5"></script>
+  <script src="/static/js/app.js?v=3.6"></script>
 </body>
 </html>

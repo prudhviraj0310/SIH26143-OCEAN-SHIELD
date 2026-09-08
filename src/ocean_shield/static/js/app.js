@@ -438,6 +438,28 @@ class OceanShieldApp {
     this.btnExecAutoRun?.addEventListener('click', () => this.runAutoInvestigation());
     this.btnExecDownloadPDF?.addEventListener('click', () => this.downloadDossier());
 
+    // Tactical Map Legend Collapse / Expand Toggle
+    const legendDock = document.getElementById('mapLegendDock');
+    const btnToggleLegend = document.getElementById('btnToggleLegend');
+    const legendHeader = document.getElementById('legendHeader');
+    const legendToggleText = document.getElementById('legendToggleText');
+    const legendArrow = document.getElementById('legendArrow');
+
+    const toggleLegend = () => {
+      if (!legendDock) return;
+      const isCollapsed = legendDock.classList.toggle('collapsed');
+      if (legendToggleText) legendToggleText.innerText = isCollapsed ? 'SHOW' : 'COLLAPSE';
+      if (legendArrow) legendArrow.innerText = isCollapsed ? '▼' : '▲';
+    };
+
+    btnToggleLegend?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleLegend();
+    });
+    legendHeader?.addEventListener('click', () => {
+      toggleLegend();
+    });
+
     this.srToggle.addEventListener('change', () => this.toggleSuperResolution());
     if (this.modelSelect) {
       this.modelSelect.addEventListener('change', () => this.runSARAnalysis());
