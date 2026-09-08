@@ -638,11 +638,53 @@ class OceanShieldApp {
       });
     });
 
-    // Chamber Milestone Node Click Handler
+    // Chamber Milestone Node Click Handler (Both HTML List and SVG Web Graph)
     this.chamberNodes.forEach(node => {
       node.addEventListener('click', () => {
         const nodeId = parseInt(node.getAttribute('data-node'), 10);
         this.selectChamberMilestone(nodeId);
+      });
+    });
+
+    // 2D SVG Topological Web Graph Node Click Handler
+    const svgNodes = document.querySelectorAll('.svg-web-node[data-node]');
+    svgNodes.forEach(sNode => {
+      sNode.addEventListener('click', () => {
+        const nodeId = parseInt(sNode.getAttribute('data-node'), 10);
+        this.selectChamberMilestone(nodeId);
+      });
+    });
+
+    // View Mode Toggle (2D Graph Web vs Step Cards Flow)
+    const btnGraph = document.getElementById('btnViewWebGraph');
+    const btnFlow = document.getElementById('btnViewFlowList');
+    const wrapGraph = document.getElementById('chamberSvgWebWrap');
+    const wrapFlow = document.getElementById('chamberNodesFlow');
+
+    if (btnGraph && btnFlow) {
+      btnGraph.addEventListener('click', () => {
+        btnGraph.classList.add('active');
+        btnFlow.classList.remove('active');
+        if (wrapGraph) wrapGraph.style.display = 'block';
+        if (wrapFlow) wrapFlow.style.display = 'none';
+      });
+
+      btnFlow.addEventListener('click', () => {
+        btnFlow.classList.add('active');
+        btnGraph.classList.remove('active');
+        if (wrapGraph) wrapGraph.style.display = 'none';
+        if (wrapFlow) wrapFlow.style.display = 'flex';
+      });
+    }
+
+    // Direct Dataset Quick-Switch Chips in Chamber Banner & SVG Web
+    document.querySelectorAll('[data-switch-tab]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tabKey = el.getAttribute('data-switch-tab');
+        if (tabKey) {
+          this.switchQuicklookTab(tabKey);
+        }
       });
     });
   }
@@ -689,7 +731,7 @@ class OceanShieldApp {
     const data = this.chamberMilestones[nodeId];
     if (!data) return;
 
-    // Update active node styling
+    // 1. Update HTML list cards active state
     this.chamberNodes.forEach(n => {
       if (parseInt(n.getAttribute('data-node'), 10) === nodeId) {
         n.classList.add('active');
@@ -698,13 +740,56 @@ class OceanShieldApp {
       }
     });
 
-    // Animate and update detail card
+    // 2. Update SVG 2D Web Nodes active state
+    document.querySelectorAll('.svg-web-node[data-node]').forEach(sn => {
+      if (parseInt(sn.getAttribute('data-node'), 10) === nodeId) {
+        sn.classList.add('active');
+      } else {
+        sn.classList.remove('active');
+      }
+    });
+
+    // 3. Highlight connected SVG web threads
+    document.querySelectorAll('.web-thread').forEach(wt => {
+      wt.style.strokeWidth = '';
+      wt.style.opacity = '';
+    });
+
+    // Highlight key threads based on active node
+    const threadMap = {
+      1: ['path1_2'],
+      2: ['path1_2', 'path2_3', 'pathLoopRewind'],
+      3: ['path2_3', 'pathHycom', 'pathWind', 'path3_4'],
+      4: ['path3_4', 'path4_5'],
+      5: ['path4_5', 'path5_6'],
+      6: ['path5_6', 'path6_7', 'pathLoopRewind'],
+      7: ['path6_7', 'path7_8'],
+      8: ['path7_8']
+    };
+
+    const targetThreads = threadMap[nodeId] || [];
+    targetThreads.forEach(tId => {
+      const p = document.getElementById(tId);
+      if (p) {
+        p.style.strokeWidth = '4px';
+        p.style.opacity = '1';
+      }
+    });
+
+    // 4. Animate and update detail card
     if (this.detailStepBadge) this.detailStepBadge.innerText = data.step;
     if (this.detailTitle) this.detailTitle.innerText = data.title;
     if (this.detailWhy) this.detailWhy.innerText = data.why;
     if (this.detailMath) this.detailMath.innerText = data.math;
     if (this.detailDataset) this.detailDataset.innerHTML = data.dataset;
     if (this.detailLegal) this.detailLegal.innerText = data.legal;
+
+    // Glowing border feedback
+    if (this.detailCard) {
+      this.detailCard.style.animation = 'none';
+      void this.detailCard.offsetWidth;
+      this.detailCard.style.animation = 'fadeInPane 0.25s ease-out';
+    }
   }
 
   async loadDatasetInspection() {
