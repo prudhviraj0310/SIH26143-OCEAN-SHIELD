@@ -147,7 +147,7 @@ class OceanShieldApp {
     this.map = L.map('tacticalMap', {
       zoomControl: false,
       attributionControl: false
-    }).setView([22.465, 69.215], 10);
+    }).setView([22.585, 69.185], 10);
 
     L.control.zoom({ position: 'topright' }).addTo(this.map);
 
@@ -1002,8 +1002,8 @@ class OceanShieldApp {
         method: 'POST',
         headers: {
           'X-File-Name': file.name,
-          'X-Center-Lat': document.getElementById('sarCenterLat')?.value || '22.465',
-          'X-Center-Lon': document.getElementById('sarCenterLon')?.value || '69.215',
+          'X-Center-Lat': document.getElementById('sarCenterLat')?.value || '22.585',
+          'X-Center-Lon': document.getElementById('sarCenterLon')?.value || '69.185',
           'X-Pixel-Size-M': document.getElementById('sarPixelSize')?.value || '10.0',
           'X-Model-Type': this.modelSelect?.value || 'unet',
           'X-Threshold-Offset': '20',

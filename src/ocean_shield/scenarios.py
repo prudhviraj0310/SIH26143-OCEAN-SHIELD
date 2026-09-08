@@ -255,7 +255,7 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
             "id": "gulf_of_kachchh",
             "title": "Gulf of Kachchh — Vadinar Crude SPM Deepwater Route",
             "region": "Gujarat Offshore / Northern Arabian Sea",
-            "center": {"lat": 22.465, "lon": 69.215},
+            "center": {"lat": 22.585, "lon": 69.185},
             "satellite_metadata": {
                 "mission": "Sentinel-1A C-Band SAR",
                 "acquisition_time_utc": "2026-09-04 13:10:00 UTC",
@@ -276,9 +276,9 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                 "sea_state": "Beaufort 3 (Gentle Breeze)"
             },
             "coastline_hazard": {
-                "coastline_lat_threshold": 22.58,
+                "coastline_lat_threshold": 22.48,
                 "coastal_zone_name": "Marine National Park & Coral Reef Sanctuary, Jamnagar",
-                "distance_to_shore_km": 16.5
+                "distance_to_shore_km": 14.2
             },
             "ais_vessels": [
                 {
@@ -292,15 +292,15 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "width_m": 48,
                     "dwt_tonnes": 158000,
                     "trajectory": [
-                        {"relative_time_hours": -14.0, "lat": 22.280, "lon": 68.950, "sog_knots": 15.4, "cog_degrees": 52.0},
-                        {"relative_time_hours": -12.0, "lat": 22.330, "lon": 69.030, "sog_knots": 15.1, "cog_degrees": 50.0},
-                        {"relative_time_hours": -11.0, "lat": 22.365, "lon": 69.085, "sog_knots": 9.2, "cog_degrees": 48.0},
-                        {"relative_time_hours": -10.5, "lat": 22.384, "lon": 69.116, "sog_knots": 5.1, "cog_degrees": 44.0},
-                        {"relative_time_hours": -10.0, "lat": 22.398, "lon": 69.135, "sog_knots": 5.4, "cog_degrees": 46.0},
-                        {"relative_time_hours": -9.0, "lat": 22.420, "lon": 69.170, "sog_knots": 11.5, "cog_degrees": 55.0},
-                        {"relative_time_hours": -7.0, "lat": 22.460, "lon": 69.240, "sog_knots": 14.8, "cog_degrees": 54.0},
-                        {"relative_time_hours": -4.0, "lat": 22.520, "lon": 69.340, "sog_knots": 14.5, "cog_degrees": 55.0},
-                        {"relative_time_hours": 0.0, "lat": 22.580, "lon": 69.450, "sog_knots": 4.2, "cog_degrees": 70.0}   # Vadinar Anchorage
+                        {"relative_time_hours": -14.0, "lat": 22.420, "lon": 68.900, "sog_knots": 15.4, "cog_degrees": 58.0},
+                        {"relative_time_hours": -12.0, "lat": 22.460, "lon": 68.970, "sog_knots": 15.1, "cog_degrees": 56.0},
+                        {"relative_time_hours": -11.0, "lat": 22.485, "lon": 69.015, "sog_knots": 9.2, "cog_degrees": 55.0},
+                        {"relative_time_hours": -10.5, "lat": 22.4995, "lon": 69.0754, "sog_knots": 5.1, "cog_degrees": 54.0},
+                        {"relative_time_hours": -10.0, "lat": 22.510, "lon": 69.095, "sog_knots": 5.4, "cog_degrees": 55.0},
+                        {"relative_time_hours": -9.0, "lat": 22.530, "lon": 69.135, "sog_knots": 11.5, "cog_degrees": 56.0},
+                        {"relative_time_hours": -7.0, "lat": 22.560, "lon": 69.210, "sog_knots": 14.8, "cog_degrees": 58.0},
+                        {"relative_time_hours": -4.0, "lat": 22.595, "lon": 69.300, "sog_knots": 14.5, "cog_degrees": 60.0},
+                        {"relative_time_hours": 0.0, "lat": 22.640, "lon": 69.410, "sog_knots": 4.2, "cog_degrees": 65.0}
                     ]
                 },
                 {
@@ -314,11 +314,11 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "width_m": 32,
                     "dwt_tonnes": 46000,
                     "trajectory": [
-                        {"relative_time_hours": -14.0, "lat": 22.410, "lon": 68.980, "sog_knots": 13.8, "cog_degrees": 65.0},
-                        {"relative_time_hours": -11.0, "lat": 22.445, "lon": 69.075, "sog_knots": 13.9, "cog_degrees": 66.0},
-                        {"relative_time_hours": -8.0, "lat": 22.480, "lon": 69.170, "sog_knots": 13.7, "cog_degrees": 65.0},
-                        {"relative_time_hours": -5.0, "lat": 22.515, "lon": 69.270, "sog_knots": 13.6, "cog_degrees": 64.0},
-                        {"relative_time_hours": 0.0, "lat": 22.560, "lon": 69.410, "sog_knots": 13.5, "cog_degrees": 65.0}
+                        {"relative_time_hours": -14.0, "lat": 22.620, "lon": 68.980, "sog_knots": 13.8, "cog_degrees": 75.0},
+                        {"relative_time_hours": -11.0, "lat": 22.640, "lon": 69.075, "sog_knots": 13.9, "cog_degrees": 76.0},
+                        {"relative_time_hours": -8.0, "lat": 22.660, "lon": 69.170, "sog_knots": 13.7, "cog_degrees": 75.0},
+                        {"relative_time_hours": -5.0, "lat": 22.680, "lon": 69.270, "sog_knots": 13.6, "cog_degrees": 74.0},
+                        {"relative_time_hours": 0.0, "lat": 22.700, "lon": 69.410, "sog_knots": 13.5, "cog_degrees": 75.0}
                     ]
                 },
                 {
@@ -332,10 +332,10 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "width_m": 40,
                     "dwt_tonnes": 68000,
                     "trajectory": [
-                        {"relative_time_hours": -12.0, "lat": 22.550, "lon": 68.900, "sog_knots": 19.2, "cog_degrees": 85.0},
-                        {"relative_time_hours": -8.0, "lat": 22.565, "lon": 69.080, "sog_knots": 18.8, "cog_degrees": 86.0},
-                        {"relative_time_hours": -4.0, "lat": 22.575, "lon": 69.260, "sog_knots": 18.5, "cog_degrees": 84.0},
-                        {"relative_time_hours": 0.0, "lat": 22.585, "lon": 69.440, "sog_knots": 17.9, "cog_degrees": 85.0}
+                        {"relative_time_hours": -12.0, "lat": 22.600, "lon": 68.900, "sog_knots": 19.2, "cog_degrees": 85.0},
+                        {"relative_time_hours": -8.0, "lat": 22.615, "lon": 69.080, "sog_knots": 18.8, "cog_degrees": 86.0},
+                        {"relative_time_hours": -4.0, "lat": 22.625, "lon": 69.260, "sog_knots": 18.5, "cog_degrees": 84.0},
+                        {"relative_time_hours": 0.0, "lat": 22.635, "lon": 69.440, "sog_knots": 17.9, "cog_degrees": 85.0}
                     ]
                 },
                 {
@@ -349,10 +349,10 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "width_m": 32,
                     "dwt_tonnes": 75000,
                     "trajectory": [
-                        {"relative_time_hours": -13.0, "lat": 22.290, "lon": 69.180, "sog_knots": 14.1, "cog_degrees": 230.0},
-                        {"relative_time_hours": -9.0, "lat": 22.220, "lon": 69.070, "sog_knots": 14.2, "cog_degrees": 232.0},
-                        {"relative_time_hours": -5.0, "lat": 22.150, "lon": 68.960, "sog_knots": 14.0, "cog_degrees": 228.0},
-                        {"relative_time_hours": 0.0, "lat": 22.060, "lon": 68.820, "sog_knots": 14.2, "cog_degrees": 230.0}
+                        {"relative_time_hours": -13.0, "lat": 22.680, "lon": 69.350, "sog_knots": 14.1, "cog_degrees": 230.0},
+                        {"relative_time_hours": -9.0, "lat": 22.650, "lon": 69.220, "sog_knots": 14.2, "cog_degrees": 232.0},
+                        {"relative_time_hours": -5.0, "lat": 22.620, "lon": 69.090, "sog_knots": 14.0, "cog_degrees": 228.0},
+                        {"relative_time_hours": 0.0, "lat": 22.580, "lon": 68.950, "sog_knots": 14.2, "cog_degrees": 230.0}
                     ]
                 },
                 {
@@ -366,9 +366,9 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "width_m": 18,
                     "dwt_tonnes": 3200,
                     "trajectory": [
-                        {"relative_time_hours": -10.0, "lat": 22.250, "lon": 69.250, "sog_knots": 8.5, "cog_degrees": 310.0},
-                        {"relative_time_hours": -6.0, "lat": 22.300, "lon": 69.200, "sog_knots": 8.2, "cog_degrees": 312.0},
-                        {"relative_time_hours": 0.0, "lat": 22.350, "lon": 69.150, "sog_knots": 8.4, "cog_degrees": 315.0}
+                        {"relative_time_hours": -10.0, "lat": 22.650, "lon": 69.420, "sog_knots": 8.5, "cog_degrees": 310.0},
+                        {"relative_time_hours": -6.0, "lat": 22.630, "lon": 69.380, "sog_knots": 8.2, "cog_degrees": 312.0},
+                        {"relative_time_hours": 0.0, "lat": 22.620, "lon": 69.350, "sog_knots": 8.4, "cog_degrees": 315.0}
                     ]
                 },
                 {
@@ -382,9 +382,9 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "width_m": 6,
                     "dwt_tonnes": 120,
                     "trajectory": [
-                        {"relative_time_hours": -12.0, "lat": 22.490, "lon": 69.150, "sog_knots": 4.5, "cog_degrees": 120.0},
-                        {"relative_time_hours": -6.0, "lat": 22.480, "lon": 69.180, "sog_knots": 3.8, "cog_degrees": 140.0},
-                        {"relative_time_hours": 0.0, "lat": 22.470, "lon": 69.220, "sog_knots": 4.1, "cog_degrees": 110.0}
+                        {"relative_time_hours": -12.0, "lat": 22.470, "lon": 69.100, "sog_knots": 4.5, "cog_degrees": 120.0},
+                        {"relative_time_hours": -6.0, "lat": 22.460, "lon": 69.120, "sog_knots": 3.8, "cog_degrees": 140.0},
+                        {"relative_time_hours": 0.0, "lat": 22.450, "lon": 69.140, "sog_knots": 4.1, "cog_degrees": 110.0}
                     ]
                 }
             ]

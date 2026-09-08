@@ -86,8 +86,8 @@ class TestOceanShieldPipeline(unittest.TestCase):
         _, _, scenario_data = get_scenario_sar_and_currents("gulf_of_kachchh")
 
         # Test candidate release coordinates derived from drift hindcast
-        release_lat = 22.384
-        release_lon = 69.116
+        release_lat = 22.4995
+        release_lon = 69.0754
         release_time_h = -10.5
 
         results = self.ais_engine.attribute_oil_spill(
