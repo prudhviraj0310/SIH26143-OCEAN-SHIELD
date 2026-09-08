@@ -774,270 +774,216 @@
               </div>
             </div>
 
-            <div class="chamber-grid">
-              <!-- Left: The Interactive 2D Topological Web Graph -->
-              <div class="chamber-web-col">
-                <div class="web-view-toolbar">
-                  <div class="web-view-title">
+            <div class="chamber-workspace-grid">
+              <!-- LEFT: Chronological Investigation Web Flow (Day 0 -> Drift -> Day 1 -> Day 2) -->
+              <div class="chamber-timeline-web">
+                <div class="timeline-web-header">
+                  <div class="twh-title">
                     <span class="pulse-dot-cyan"></span>
-                    <strong>2D TOPOLOGICAL INVESTIGATION WEB</strong>
-                    <span class="web-sub-tag">Touch / Click any node to inspect "Why is it used?"</span>
+                    <strong>CHRONOLOGICAL INVESTIGATION WEB</strong>
                   </div>
-                  <div class="web-view-toggles">
-                    <button id="btnViewWebGraph" class="btn-web-toggle active" title="Show 2D Topological Web Graph">🕸️ 2D Graph Web</button>
-                    <button id="btnViewFlowList" class="btn-web-toggle" title="Show Milestone Cards Flow">📋 Step Cards</button>
-                  </div>
+                  <span class="twh-hint">Click any milestone below to inspect why it is used & its math</span>
                 </div>
 
-                <!-- 2D SVG Interactive Web Graph Canvas -->
-                <div class="chamber-svg-web-wrap" id="chamberSvgWebWrap">
-                  <svg id="chamberSvgWeb" viewBox="0 0 660 460" preserveAspectRatio="xMidYMid meet">
-                    <defs>
-                      <linearGradient id="gradCyan" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.9"/>
-                        <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.6"/>
-                      </linearGradient>
-                      <linearGradient id="gradCrime" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stop-color="#ef4444" stop-opacity="0.9"/>
-                        <stop offset="100%" stop-color="#f97316" stop-opacity="0.7"/>
-                      </linearGradient>
-                      <linearGradient id="gradDrift" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.8"/>
-                        <stop offset="100%" stop-color="#10b981" stop-opacity="0.8"/>
-                      </linearGradient>
-                      <linearGradient id="gradAi" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stop-color="#a855f7" stop-opacity="0.9"/>
-                        <stop offset="100%" stop-color="#ec4899" stop-opacity="0.7"/>
-                      </linearGradient>
-                      <filter id="nodeGlow" x="-30%" y="-30%" width="160%" height="160%">
-                        <feGaussianBlur stdDeviation="4" result="blur"/>
-                        <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-                      </filter>
-                    </defs>
-
-                    <!-- Background Timeline Phase Bands -->
-                    <rect x="10" y="10" width="145" height="440" rx="8" class="phase-band band-day0"/>
-                    <text x="82" y="30" class="phase-hdr">DAY 0 • DISCHARGE</text>
-
-                    <rect x="165" y="10" width="145" height="440" rx="8" class="phase-band band-drift"/>
-                    <text x="237" y="30" class="phase-hdr">10.5h OCEAN DRIFT</text>
-
-                    <rect x="320" y="10" width="185" height="440" rx="8" class="phase-band band-day1"/>
-                    <text x="412" y="30" class="phase-hdr">DAY 1 • DETECTION & REWIND</text>
-
-                    <rect x="515" y="10" width="135" height="440" rx="8" class="phase-band band-day2"/>
-                    <text x="582" y="30" class="phase-hdr">DAY 2 • IMPACT</text>
-
-                    <!-- FORENSIC REWIND CLOSED LOOP (Connecting Hindcast back to the crime scene) -->
-                    <path id="pathLoopRewind" d="M 460,225 C 360,140 180,180 85,290" class="web-thread thread-loop"/>
-                    <circle r="4" fill="#fbbf24" filter="url(#nodeGlow)">
-                      <animateMotion dur="3.5s" repeatCount="indefinite" path="M 460,225 C 360,140 180,180 85,290"/>
-                    </circle>
-                    <rect x="200" y="152" width="170" height="20" rx="4" class="loop-badge-bg"/>
-                    <text x="285" y="166" class="loop-badge-txt">⏪ Rewind Origin Proved (Δ = 0.0 NM)</text>
-
-                    <!-- SVG CONNECTING WEB THREADS -->
-                    <!-- 1 -> 2 (Commercial transit into speed collapse) -->
-                    <path id="path1_2" d="M 85,115 L 85,285" class="web-thread thread-kinematic"/>
-                    <circle r="3.5" fill="#38bdf8">
-                      <animateMotion dur="2.4s" repeatCount="indefinite" path="M 85,115 L 85,285"/>
-                    </circle>
-
-                    <!-- 2 -> 3 (Discharge entering ocean currents) -->
-                    <path id="path2_3" d="M 125,320 C 170,320 190,250 215,235" class="web-thread thread-ocean"/>
-                    <circle r="3.5" fill="#f87171">
-                      <animateMotion dur="2.8s" repeatCount="indefinite" path="M 125,320 C 170,320 190,250 215,235"/>
-                    </circle>
-
-                    <!-- HYCOM Currents Data Feed -> Node 3 -->
-                    <path id="pathHycom" d="M 237,105 L 237,195" class="web-thread thread-data-feed"/>
-                    <circle r="3" fill="#22d3ee">
-                      <animateMotion dur="2.0s" repeatCount="indefinite" path="M 237,105 L 237,195"/>
-                    </circle>
-
-                    <!-- ECMWF Wind Feed -> Node 3 -->
-                    <path id="pathWind" d="M 237,365 L 237,265" class="web-thread thread-data-feed"/>
-                    <circle r="3" fill="#34d399">
-                      <animateMotion dur="2.0s" repeatCount="indefinite" path="M 237,365 L 237,265"/>
-                    </circle>
-
-                    <!-- 3 -> 4 (Drift enters Sentinel-1 radar footprint) -->
-                    <path id="path3_4" d="M 265,225 C 310,225 330,125 355,105" class="web-thread thread-space"/>
-                    <circle r="3.5" fill="#c084fc">
-                      <animateMotion dur="2.5s" repeatCount="indefinite" path="M 265,225 C 310,225 330,125 355,105"/>
-                    </circle>
-
-                    <!-- 4 -> 5 (SAR scene fed into U-Net) -->
-                    <path id="path4_5" d="M 375,125 L 375,285" class="web-thread thread-ai"/>
-                    <circle r="3.5" fill="#a855f7">
-                      <animateMotion dur="2.2s" repeatCount="indefinite" path="M 375,125 L 375,285"/>
-                    </circle>
-
-                    <!-- 5 -> 6 (Polygon reversed in time) -->
-                    <path id="path5_6" d="M 405,320 C 430,320 440,255 450,240" class="web-thread thread-physics"/>
-                    <circle r="3.5" fill="#06b6d4">
-                      <animateMotion dur="2.0s" repeatCount="indefinite" path="M 405,320 C 430,320 440,255 450,240"/>
-                    </circle>
-
-                    <!-- 6 -> 7 (Rewind matched with AIS track) -->
-                    <path id="path6_7" d="M 485,215 C 520,180 540,135 555,115" class="web-thread thread-culprit"/>
-                    <circle r="3.5" fill="#fb7185">
-                      <animateMotion dur="2.0s" repeatCount="indefinite" path="M 485,215 C 520,180 540,135 555,115"/>
-                    </circle>
-
-                    <!-- 7 -> 8 (Forward forecast to reef sanctuary) -->
-                    <path id="path7_8" d="M 580,125 L 580,285" class="web-thread thread-hazard"/>
-                    <circle r="3.5" fill="#fbbf24">
-                      <animateMotion dur="2.2s" repeatCount="indefinite" path="M 580,125 L 580,285"/>
-                    </circle>
-
-                    <!-- DATA INJECTION CHIPS ON THE SVG WEB -->
-                    <g class="svg-data-chip" data-switch-tab="hycom" style="cursor:pointer;">
-                      <rect x="180" y="80" width="115" height="24" rx="12" class="data-chip-bg"/>
-                      <text x="237" y="96" class="data-chip-txt">🌊 HYCOM Currents (u,v)</text>
-                    </g>
-                    <g class="svg-data-chip" data-switch-tab="wind" style="cursor:pointer;">
-                      <rect x="180" y="370" width="115" height="24" rx="12" class="data-chip-bg"/>
-                      <text x="237" y="386" class="data-chip-txt">💨 ECMWF Wind Leeway</text>
-                    </g>
-
-                    <!-- INTERACTIVE 2D WEB NODES (Clickable in SVG) -->
-                    <!-- Node 1: Normal Transit -->
-                    <g class="svg-web-node active" data-node="1" transform="translate(85, 90)">
-                      <circle r="26" class="swn-halo halo-blue"/>
-                      <circle r="22" class="swn-circle circle-blue"/>
-                      <text y="6" class="swn-icon">🚢</text>
-                      <text y="-28" class="swn-tag">01 • DAY 0</text>
-                      <text y="38" class="swn-label">Normal Transit</text>
-                      <text y="50" class="swn-sub">15.4 kts baseline</text>
-                    </g>
-
-                    <!-- Node 2: Covert Bilge Dump -->
-                    <g class="svg-web-node" data-node="2" transform="translate(85, 320)">
-                      <circle r="28" class="swn-halo halo-red pulse-halo"/>
-                      <circle r="22" class="swn-circle circle-red"/>
-                      <text y="6" class="swn-icon">⚠️</text>
-                      <text y="-28" class="swn-tag tag-crime-txt">02 • THE CRIME</text>
-                      <text y="38" class="swn-label label-red">Covert Discharge</text>
-                      <text y="50" class="swn-sub">5.1 kts speed drop</text>
-                    </g>
-
-                    <!-- Node 3: Lagrangian Drift -->
-                    <g class="svg-web-node" data-node="3" transform="translate(237, 225)">
-                      <circle r="26" class="swn-halo halo-cyan"/>
-                      <circle r="22" class="swn-circle circle-cyan"/>
-                      <text y="6" class="swn-icon">〰️</text>
-                      <text y="-28" class="swn-tag">03 • 10.5h SPAN</text>
-                      <text y="38" class="swn-label">Ocean Drift</text>
-                      <text y="50" class="swn-sub">Runge-Kutta 4th</text>
-                    </g>
-
-                    <!-- Node 4: Sentinel-1 SAR -->
-                    <g class="svg-web-node" data-node="4" transform="translate(375, 90)">
-                      <circle r="26" class="swn-halo halo-purple"/>
-                      <circle r="22" class="swn-circle circle-purple"/>
-                      <text y="6" class="swn-icon">🛰️</text>
-                      <text y="-28" class="swn-tag">04 • DAY 1 T0</text>
-                      <text y="38" class="swn-label">Sentinel-1 Radar</text>
-                      <text y="50" class="swn-sub">C-Band VV scene</text>
-                    </g>
-
-                    <!-- Node 5: Autonomous U-Net -->
-                    <g class="svg-web-node" data-node="5" transform="translate(375, 320)">
-                      <circle r="26" class="swn-halo halo-green"/>
-                      <circle r="22" class="swn-circle circle-green"/>
-                      <text y="6" class="swn-icon">🧠</text>
-                      <text y="-28" class="swn-tag">05 • AI SEGMENT</text>
-                      <text y="38" class="swn-label">PyTorch U-Net</text>
-                      <text y="50" class="swn-sub">13.6 tons crude</text>
-                    </g>
-
-                    <!-- Node 6: Reverse Hindcast Rewind -->
-                    <g class="svg-web-node" data-node="6" transform="translate(470, 225)">
-                      <circle r="26" class="swn-halo halo-cyan"/>
-                      <circle r="22" class="swn-circle circle-cyan"/>
-                      <text y="6" class="swn-icon">⏪</text>
-                      <text y="-28" class="swn-tag">06 • REWIND</text>
-                      <text y="38" class="swn-label">Reverse Hindcast</text>
-                      <text y="50" class="swn-sub">Pinpoint -10.5h</text>
-                    </g>
-
-                    <!-- Node 7: AIS Attribution -->
-                    <g class="svg-web-node" data-node="7" transform="translate(580, 90)">
-                      <circle r="28" class="swn-halo halo-crimson pulse-halo"/>
-                      <circle r="22" class="swn-circle circle-crimson"/>
-                      <text y="6" class="swn-icon">🎯</text>
-                      <text y="-28" class="swn-tag tag-culprit-txt">07 • CULPRIT</text>
-                      <text y="38" class="swn-label label-crimson">AIS Attribution</text>
-                      <text y="50" class="swn-sub">Neptune 92.2%</text>
-                    </g>
-
-                    <!-- Node 8: Coastal Warning -->
-                    <g class="svg-web-node" data-node="8" transform="translate(580, 320)">
-                      <circle r="26" class="swn-halo halo-amber"/>
-                      <circle r="22" class="swn-circle circle-amber"/>
-                      <text y="6" class="swn-icon">🚨</text>
-                      <text y="-28" class="swn-tag">08 • DAY 2 FORECAST</text>
-                      <text y="38" class="swn-label label-amber">Sanctuary Alert</text>
-                      <text y="50" class="swn-sub">Beaching in 14.2h</text>
-                    </g>
-                  </svg>
+                <!-- Closed Forensic Loop Evidence Ribbon -->
+                <div class="forensic-loop-strip">
+                  <span class="fls-icon">⏪</span>
+                  <span class="fls-text"><strong>FORENSIC REWIND LOOP CLOSED:</strong> Reverse Lagrangian Hindcast rewinds from Day 1 Detection back to Day 0 discharge point with <strong>0.0 NM CPA match</strong>.</span>
                 </div>
 
-                <!-- Fallback Step Cards Flow (Hidden by default, toggleable via buttons above) -->
-                <div class="chamber-nodes-flow custom-scrollbar" id="chamberNodesFlow" style="display:none;">
-                  <div class="chamber-node active" data-node="1">
-                    <div class="node-time-badge">DAY 0 • 05:00 UTC (T - 14.0h)</div>
-                    <div class="node-title">🚢 Normal Commercial Transit</div>
-                    <div class="node-sub">Tanker MT Neptune Glory transits Gulf of Kachchh fairway at 15.4 knots.</div>
-                    <div class="node-status-tag tag-normal">Baseline Traffic</div>
+                <!-- The 4 Day Phases Web Flow -->
+                <div class="timeline-phases-grid custom-scrollbar">
+                  
+                  <!-- PHASE 1: DAY 0 (Voyage & The Crime) -->
+                  <div class="phase-column phase-col-day0">
+                    <div class="phase-col-header">
+                      <span class="phase-dot dot-blue"></span>
+                      <strong>DAY 0 • THE CRIME</strong>
+                    </div>
+                    <div class="phase-nodes-list">
+                      <!-- Node 1 -->
+                      <div class="web-node-card active" data-node="1">
+                        <div class="wnc-top">
+                          <span class="wnc-num">01</span>
+                          <span class="wnc-time">05:00 UTC (T - 14h)</span>
+                        </div>
+                        <div class="wnc-main">
+                          <span class="wnc-icon">🚢</span>
+                          <div class="wnc-text">
+                            <strong class="wnc-title">Normal Transit</strong>
+                            <span class="wnc-desc">Fairway cruising speed</span>
+                          </div>
+                        </div>
+                        <div class="wnc-tag tag-normal">15.4 kts baseline</div>
+                      </div>
+
+                      <div class="wnc-connector-arrow">
+                        <span class="conn-line"></span>
+                        <span class="conn-label">⚠️ 10.3 kts Deceleration</span>
+                        <span class="conn-arrow">▼</span>
+                      </div>
+
+                      <!-- Node 2 -->
+                      <div class="web-node-card node-crime" data-node="2">
+                        <div class="wnc-top">
+                          <span class="wnc-num">02</span>
+                          <span class="wnc-time">07:30 UTC (T - 10.5h)</span>
+                        </div>
+                        <div class="wnc-main">
+                          <span class="wnc-icon">⚠️</span>
+                          <div class="wnc-text">
+                            <strong class="wnc-title">Covert Discharge</strong>
+                            <span class="wnc-desc">Tanker illegal bilge purge</span>
+                          </div>
+                        </div>
+                        <div class="wnc-tag tag-crime">Speed dropped to 5.1 kts</div>
+                      </div>
+                    </div>
                   </div>
-                  <div class="chamber-node" data-node="2">
-                    <div class="node-time-badge">DAY 0 • 07:30 UTC (T - 10.5h)</div>
-                    <div class="node-title">⚠️ Covert Bilge Discharge (The Crime Moment)</div>
-                    <div class="node-sub">Severe speed drop (15.4 → 5.1 kts) at (22.499° N, 69.075° E) for 45 minutes to dump oily bilge water.</div>
-                    <div class="node-status-tag tag-crime">Speed Anomaly Trigger</div>
+
+                  <!-- PHASE 2: 10.5h DRIFT GAP (Ocean Physics) -->
+                  <div class="phase-column phase-col-drift">
+                    <div class="phase-col-header">
+                      <span class="phase-dot dot-cyan"></span>
+                      <strong>10.5h OCEAN DRIFT</strong>
+                    </div>
+                    <div class="phase-nodes-list">
+                      <!-- Physics Inlet 1 -->
+                      <div class="physics-inlet-chip" data-switch-tab="hycom" title="Click to view HYCOM currents schema">
+                        <span>🌊 NOAA HYCOM Currents (u, v) ↗</span>
+                      </div>
+
+                      <!-- Node 3 -->
+                      <div class="web-node-card node-drift" data-node="3">
+                        <div class="wnc-top">
+                          <span class="wnc-num">03</span>
+                          <span class="wnc-time">10.5h DRIFT DURATION</span>
+                        </div>
+                        <div class="wnc-main">
+                          <span class="wnc-icon">〰️</span>
+                          <div class="wnc-text">
+                            <strong class="wnc-title">Lagrangian Swarm</strong>
+                            <span class="wnc-desc">Drift & Mackay evaporation</span>
+                          </div>
+                        </div>
+                        <div class="wnc-tag tag-physics">16.4 km ENE Transport</div>
+                      </div>
+
+                      <!-- Physics Inlet 2 -->
+                      <div class="physics-inlet-chip" data-switch-tab="wind" title="Click to view ECMWF wind table">
+                        <span>💨 ECMWF 10m Wind (3.2% Leeway) ↗</span>
+                      </div>
+                    </div>
                   </div>
-                  <div class="chamber-node" data-node="3">
-                    <div class="node-time-badge">DAY 0 → 1 • 10.5h SPAN</div>
-                    <div class="node-title">〰️ Lagrangian Ocean Drift & Weathering</div>
-                    <div class="node-sub">Tidal currents (0.28 m/s) + wind leeway (3.2%) drift slick 16.4 km ENE while Mackay evaporation sheds volatiles.</div>
-                    <div class="node-status-tag tag-physics">4th-Order Runge-Kutta</div>
+
+                  <!-- PHASE 3: DAY 1 (Detection & Reverse Rewind) -->
+                  <div class="phase-column phase-col-day1">
+                    <div class="phase-col-header">
+                      <span class="phase-dot dot-purple"></span>
+                      <strong>DAY 1 • SATELLITE & AI</strong>
+                    </div>
+                    <div class="phase-nodes-list">
+                      <!-- Node 4 -->
+                      <div class="web-node-card node-space" data-node="4">
+                        <div class="wnc-top">
+                          <span class="wnc-num">04</span>
+                          <span class="wnc-time">13:10 UTC (T0 DETECTION)</span>
+                        </div>
+                        <div class="wnc-main">
+                          <span class="wnc-icon">🛰️</span>
+                          <div class="wnc-text">
+                            <strong class="wnc-title">Sentinel-1 SAR</strong>
+                            <span class="wnc-desc">C-band microwave overpass</span>
+                          </div>
+                        </div>
+                        <div class="wnc-tag tag-space">-10.2 dB dark patch</div>
+                      </div>
+
+                      <!-- Node 5 -->
+                      <div class="web-node-card node-ai" data-node="5">
+                        <div class="wnc-top">
+                          <span class="wnc-num">05</span>
+                          <span class="wnc-time">13:11 UTC (T0 + 1m)</span>
+                        </div>
+                        <div class="wnc-main">
+                          <span class="wnc-icon">🧠</span>
+                          <div class="wnc-text">
+                            <strong class="wnc-title">PyTorch U-Net</strong>
+                            <span class="wnc-desc">Segmentation & Bonn mass</span>
+                          </div>
+                        </div>
+                        <div class="wnc-tag tag-ai">0.62 km² • 13.6 tons</div>
+                      </div>
+
+                      <!-- Node 6 -->
+                      <div class="web-node-card node-rewind" data-node="6">
+                        <div class="wnc-top">
+                          <span class="wnc-num">06</span>
+                          <span class="wnc-time">13:12 UTC (T0 + 2m)</span>
+                        </div>
+                        <div class="wnc-main">
+                          <span class="wnc-icon">⏪</span>
+                          <div class="wnc-text">
+                            <strong class="wnc-title">Reverse Hindcast</strong>
+                            <span class="wnc-desc">Rewinds 10.5h drift vectors</span>
+                          </div>
+                        </div>
+                        <div class="wnc-tag tag-physics">Crime scene pinpointed</div>
+                      </div>
+                    </div>
                   </div>
-                  <div class="chamber-node" data-node="4">
-                    <div class="node-time-badge">DAY 1 • 13:10 UTC (T0 DETECTION)</div>
-                    <div class="node-title">🛰️ Sentinel-1 Radar Satellite Overpass</div>
-                    <div class="node-sub">Sentinel-1A C-band SAR acquires VV scene. Mineral oil dampens capillary ripples, creating a -10 dB dark patch.</div>
-                    <div class="node-status-tag tag-space">Microwave Radar</div>
+
+                  <!-- PHASE 4: DAY 2 (Attribution & Forecast) -->
+                  <div class="phase-column phase-col-day2">
+                    <div class="phase-col-header">
+                      <span class="phase-dot dot-crimson"></span>
+                      <strong>DAY 2 • VERDICT & ALERT</strong>
+                    </div>
+                    <div class="phase-nodes-list">
+                      <!-- Node 7 -->
+                      <div class="web-node-card node-culprit" data-node="7">
+                        <div class="wnc-top">
+                          <span class="wnc-num">07</span>
+                          <span class="wnc-time">13:13 UTC (T0 + 3m)</span>
+                        </div>
+                        <div class="wnc-main">
+                          <span class="wnc-icon">🎯</span>
+                          <div class="wnc-text">
+                            <strong class="wnc-title">AIS Attribution</strong>
+                            <span class="wnc-desc">MT Neptune Glory confirmed</span>
+                          </div>
+                        </div>
+                        <div class="wnc-tag tag-culprit">92.2% Suspect Score</div>
+                      </div>
+
+                      <div class="wnc-connector-arrow">
+                        <span class="conn-line"></span>
+                        <span class="conn-label">🚨 Forward +24h Drift</span>
+                        <span class="conn-arrow">▼</span>
+                      </div>
+
+                      <!-- Node 8 -->
+                      <div class="web-node-card node-hazard" data-node="8">
+                        <div class="wnc-top">
+                          <span class="wnc-num">08</span>
+                          <span class="wnc-time">+24h TO +48h FORECAST</span>
+                        </div>
+                        <div class="wnc-main">
+                          <span class="wnc-icon">🚨</span>
+                          <div class="wnc-text">
+                            <strong class="wnc-title">Sanctuary Alert</strong>
+                            <span class="wnc-desc">Coral reef collision warning</span>
+                          </div>
+                        </div>
+                        <div class="wnc-tag tag-hazard">Beaching in 14.2h</div>
+                      </div>
+                    </div>
                   </div>
-                  <div class="chamber-node" data-node="5">
-                    <div class="node-time-badge">DAY 1 • 13:11 UTC (T0 + 1 MIN)</div>
-                    <div class="node-title">🧠 Autonomous PyTorch U-Net Segmentation</div>
-                    <div class="node-sub">Convolutional neural network isolates slick polygon (0.62 km²), calculates 13.6 tons crude mass via Bonn Agreement.</div>
-                    <div class="node-status-tag tag-ai">Sub-Second Deep Learning</div>
-                  </div>
-                  <div class="chamber-node" data-node="6">
-                    <div class="node-time-badge">DAY 1 • 13:12 UTC (T0 + 2 MIN)</div>
-                    <div class="node-title">⏪ Reverse Lagrangian Hindcast Rewind</div>
-                    <div class="node-sub">1,000 Monte-Carlo virtual particles advected backwards 10.5 hours to pinpoint release point (22.499° N, 69.075° E).</div>
-                    <div class="node-status-tag tag-physics">Crime Scene Localized</div>
-                  </div>
-                  <div class="chamber-node" data-node="7">
-                    <div class="node-time-badge">DAY 1 • 13:13 UTC (T0 + 3 MIN)</div>
-                    <div class="node-title">🎯 Multi-Factor AIS Kinematic Attribution</div>
-                    <div class="node-sub">Correlates candidate vessels at release point; MT Neptune Glory identified with 92.2% suspect score (CPA 0.0 NM).</div>
-                    <div class="node-status-tag tag-culprit">Culprit Vessel Proven</div>
-                  </div>
-                  <div class="chamber-node" data-node="8">
-                    <div class="node-time-badge">DAY 1 → 2 • +24h FORECAST</div>
-                    <div class="node-title">🚨 Coastline Collision & Sanctuary Warning</div>
-                    <div class="node-sub">Trajectory simulation projects beaching hazard toward Marine National Park Coral Sanctuary within 14.2 hours.</div>
-                    <div class="node-status-tag tag-hazard">Pollution Response Alert</div>
-                  </div>
+
                 </div>
               </div>
 
-              <!-- Right: Detailed Component Deep Dive & "Why is it used?" Card -->
+              <!-- RIGHT: Detailed Component Deep Dive ("Why is it used?") Card -->
               <div class="chamber-detail-card" id="chamberDetailCard">
                 <div class="detail-header">
                   <span class="detail-step-badge" id="detailStepBadge">MILESTONE 1 / 8</span>

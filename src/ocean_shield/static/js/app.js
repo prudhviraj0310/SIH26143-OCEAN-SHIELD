@@ -531,7 +531,7 @@ class OceanShieldApp {
     this.btnCloseQuicklook = document.getElementById('btnCloseQuicklook');
     this.segmentedTabs = document.querySelectorAll('.segmented-item[data-qltab]');
     this.qlPanes = document.querySelectorAll('.ql-pane');
-    this.chamberNodes = document.querySelectorAll('.chamber-node[data-node]');
+    this.chamberNodes = document.querySelectorAll('.chamber-node[data-node], .web-node-card[data-node]');
     
     // Detail Card Elements
     this.detailStepBadge = document.getElementById('detailStepBadge');
