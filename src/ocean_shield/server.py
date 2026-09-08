@@ -167,8 +167,8 @@ async def serve_dashboard():
         return HTMLResponse(content=f.read())
 
 
-@app.get("/techstack", response_class=HTMLResponse)
-@app.get("/architecture", response_class=HTMLResponse)
+@app.api_route("/techstack", methods=["GET", "HEAD"], response_class=HTMLResponse)
+@app.api_route("/architecture", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def serve_techstack():
     """Serves the complete 5-layer engineering pipeline & tech stack breakdown page."""
     techstack_path = os.path.join(TEMPLATES_DIR, "techstack.html")
