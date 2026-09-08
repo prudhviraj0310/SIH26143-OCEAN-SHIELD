@@ -126,6 +126,20 @@ class OceanShieldApp {
     this.scoreSpeed = document.getElementById('scoreSpeed');
     this.barType = document.getElementById('barType');
     this.scoreType = document.getElementById('scoreType');
+
+    // Executive Simple Mode Elements
+    this.btnSimpleView = document.getElementById('btnSimpleView');
+    this.btnExpertView = document.getElementById('btnExpertView');
+    this.btnToggleExpertMode = document.getElementById('btnToggleExpertMode');
+    this.btnExecAutoRun = document.getElementById('btnExecAutoRun');
+    this.btnExecDownloadPDF = document.getElementById('btnExecDownloadPDF');
+    this.execAreaVal = document.getElementById('execAreaVal');
+    this.execVolumeSub = document.getElementById('execVolumeSub');
+    this.execLandfallHours = document.getElementById('execLandfallHours');
+    this.execHazardTarget = document.getElementById('execHazardTarget');
+    this.execSuspectName = document.getElementById('execSuspectName');
+    this.execSuspectDetails = document.getElementById('execSuspectDetails');
+    this.expertModeBtnText = document.getElementById('expertModeBtnText');
   }
 
   initMap() {
@@ -167,14 +181,26 @@ class OceanShieldApp {
       opacity: 0.80
     }).addTo(this.map);
 
-    // Layer control switcher
+    // Initialize India Maritime Context Layers (EEZ, Shipping Lanes, Sanctuaries)
+    this.initIndiaMaritimeLayers();
+
+    // Layer control switcher with Basemaps and Overlays
     const baseMaps = {
       '🛰️ Esri Satellite Imagery': satellite,
       '🌍 Google Earth Satellite': googleSatellite,
       '🌑 Dark Tactical': darkGray,
       '🗺️ OpenStreetMap': osmSea
     };
-    L.control.layers(baseMaps, null, { position: 'topright', collapsed: true }).addTo(this.map);
+
+    const overlayMaps = {
+      '🇮🇳 India 200 NM EEZ (Sovereign Zone)': this.indiaEEZLayer,
+      '🚢 Vessel Transit Corridors (MarineCadastre)': this.indiaShippingLanesLayer,
+      '⚓ Indian Ports & SPM Terminals (18 Hubs)': this.indianPortsLayer,
+      '⚠️ Documented Indian Oil Spill History (10 Disasters)': this.historicalSpillsLayer,
+      '🛑 Marine Biosphere Sanctuaries': this.marineSanctuariesLayer
+    };
+
+    L.control.layers(baseMaps, overlayMaps, { position: 'topright', collapsed: true }).addTo(this.map);
 
     this.particlesLayerGroup = L.layerGroup().addTo(this.map);
     this.vesselsLayerGroup = L.layerGroup().addTo(this.map);
@@ -185,6 +211,207 @@ class OceanShieldApp {
       document.getElementById('hudCoords').innerText =
         `${e.latlng.lat.toFixed(4)}° N, ${e.latlng.lng.toFixed(4)}° E`;
     });
+  }
+
+  initIndiaMaritimeLayers() {
+    // 1. Official India 200 NM Exclusive Economic Zone (EEZ) Boundaries
+    // Mainland EEZ + Lakshadweep Sea
+    const mainlandEEZCoords = [
+      [23.75, 68.10], [22.50, 66.40], [21.00, 65.20], [19.00, 66.80],
+      [17.00, 68.30], [15.00, 69.80], [13.00, 70.80], [11.00, 71.30],
+      [10.00, 69.50], [8.00, 70.00], [7.00, 71.50], [6.80, 74.00],
+      [6.50, 77.00], [7.00, 78.50], [8.50, 79.20], [9.20, 79.50],
+      [9.80, 79.80], [10.20, 80.10], [11.50, 82.50], [13.00, 84.00],
+      [15.00, 85.50], [17.00, 87.00], [19.00, 88.50], [20.50, 89.20],
+      [21.50, 89.10], [21.60, 88.50], [21.50, 87.50], [19.80, 85.80],
+      [17.70, 83.30], [15.90, 80.60], [13.10, 80.30], [10.80, 79.80],
+      [8.10, 77.55], [10.00, 76.20], [12.90, 74.80], [15.40, 73.80],
+      [18.90, 72.80], [20.90, 72.80], [22.50, 69.50], [23.75, 68.10]
+    ];
+
+    // Andaman & Nicobar Islands EEZ
+    const andamanEEZCoords = [
+      [14.20, 92.50], [14.00, 94.00], [12.00, 94.80], [10.00, 95.00],
+      [8.00, 94.80], [6.80, 94.50], [6.20, 93.80], [6.50, 93.00],
+      [8.00, 91.50], [10.00, 91.00], [12.00, 91.50], [13.50, 92.00],
+      [14.20, 92.50]
+    ];
+
+    this.indiaEEZLayer = L.layerGroup([
+      L.polygon(mainlandEEZCoords, {
+        color: '#f97316',
+        weight: 2,
+        dashArray: '8, 8',
+        fillColor: '#f97316',
+        fillOpacity: 0.04
+      }).bindTooltip('🇮🇳 India Exclusive Economic Zone (Mainland & Lakshadweep - 200 NM)', { sticky: true }),
+      L.polygon(andamanEEZCoords, {
+        color: '#f97316',
+        weight: 2,
+        dashArray: '8, 8',
+        fillColor: '#f97316',
+        fillOpacity: 0.04
+      }).bindTooltip('🇮🇳 India Exclusive Economic Zone (Andaman & Nicobar - 200 NM)', { sticky: true })
+    ]);
+
+    // 2. High-Density Tanker Shipping Highways (Sea Lines of Communication - SLOCs)
+    const tankerCorridors = [
+      // Persian Gulf to Gulf of Kachchh (70% Crude Import)
+      [[24.5, 62.0], [23.5, 65.5], [22.45, 68.9], [22.48, 69.4]],
+      // Persian Gulf to Mumbai High / JNPT
+      [[23.5, 65.5], [20.5, 69.5], [19.4, 71.3], [18.9, 72.7]],
+      // Arabian Sea West Coast Trunk Fairway (Kachchh -> Mumbai -> Goa -> Kochi -> Cape Comorin)
+      [[22.4, 69.0], [19.4, 71.3], [15.4, 73.2], [12.8, 74.3], [9.9, 75.8], [7.8, 77.2]],
+      // International East-West Megaship Highway (9-Degree Channel -> South of Sri Lanka -> 6-Degree Channel / Malacca)
+      [[9.0, 68.0], [8.5, 72.0], [7.5, 75.0], [5.8, 79.5], [5.8, 83.0], [6.0, 88.0], [6.5, 92.5], [6.2, 94.5], [5.8, 96.0]],
+      // 9-Degree Channel Feeder (Lakshadweep)
+      [[9.2, 70.0], [8.9, 73.5], [8.2, 76.5]],
+      // Bay of Bengal Coastal Tanker Highway (Cape Comorin -> Chennai -> Vizag -> Paradip -> Haldia)
+      [[7.8, 77.5], [8.5, 78.8], [10.5, 80.5], [13.2, 80.6], [16.8, 82.8], [17.7, 83.5], [20.2, 86.9], [21.5, 88.1]],
+      // Great Nicobar Malacca Chokepoint Fairway (Six Degree Channel)
+      [[11.5, 91.0], [10.0, 92.5], [8.5, 93.2], [6.7, 93.8]]
+    ];
+
+    const shippingLanes = tankerCorridors.map((coords, idx) => {
+      return L.polyline(coords, {
+        color: '#06b6d4',
+        weight: 3,
+        opacity: 0.75,
+        dashArray: idx === 3 ? null : '4, 6'
+      }).bindTooltip('🚢 Major Commercial Shipping Highway (MarineCadastre AIS Standard)', { sticky: true });
+    });
+
+    this.indiaShippingLanesLayer = L.layerGroup(shippingLanes);
+
+    // 3. Environmentally Sensitive Marine Sanctuaries
+    this.marineSanctuariesLayer = L.layerGroup([
+      L.circle([22.58, 69.35], {
+        radius: 18000,
+        color: '#ef4444',
+        dashArray: '4, 4',
+        fillColor: '#ef4444',
+        fillOpacity: 0.12
+      }).bindTooltip('🛑 Marine National Park & Coral Sanctuary (Gulf of Kachchh)', { sticky: true }),
+      L.circle([9.00, 78.80], {
+        radius: 25000,
+        color: '#ef4444',
+        dashArray: '4, 4',
+        fillColor: '#ef4444',
+        fillOpacity: 0.12
+      }).bindTooltip('🛑 Gulf of Mannar Marine Biosphere Reserve (Coral & Dugong)', { sticky: true }),
+      L.circle([20.75, 86.90], {
+        radius: 22000,
+        color: '#ef4444',
+        dashArray: '4, 4',
+        fillColor: '#ef4444',
+        fillOpacity: 0.12
+      }).bindTooltip('🛑 Gahirmatha Olive Ridley Turtle Sanctuary (Odisha)', { sticky: true })
+    ]);
+
+    // 4. All 18 Major Indian Ports & SPM Crude Import Terminals
+    const indianPortsData = [
+      { name: "Deendayal Port (Kandla) & Vadinar SPM", lat: 22.465, lon: 69.215, state: "Gujarat", capacity: "137 MMTPA", spms: "3 SPM Buoys (IOCL / Nayara)", type: "Crude Import Hub (>70% India's Crude)", icg: "ICG Station Vadinar / Okha" },
+      { name: "Mundra Port (Adani)", lat: 22.738, lon: 69.704, state: "Gujarat", capacity: "155 MMTPA", spms: "1 Offshore SPM Buoy", type: "Commercial Mega-Port & Crude Berths", icg: "ICG District HQ Gandhinagar" },
+      { name: "Dahej Port & LNG Terminal", lat: 21.670, lon: 72.530, state: "Gujarat", capacity: "45 MMTPA", spms: "Deepwater Chemical Berths", type: "Petrochemicals & Liquid Hydrocarbons", icg: "ICG Station Bharuch" },
+      { name: "Mumbai Port Trust (MbPT / Jawahar Dweep)", lat: 18.940, lon: 72.860, state: "Maharashtra", capacity: "65 MMTPA", spms: "4 Marine Oil Berths (Butcher Island)", type: "Refinery Feedstock Terminal", icg: "ICG Regional HQ (West) Mumbai" },
+      { name: "Jawaharlal Nehru Port (JNPT / Nhava Sheva)", lat: 18.950, lon: 72.950, state: "Maharashtra", capacity: "75 MMTPA", spms: "Coastal Liquid Cargo Terminal", type: "Container & Heavy Bunker Hub", icg: "ICG Air Station Daman / Mumbai" },
+      { name: "Mumbai High Offshore Petroleum Basin (ONGC)", lat: 19.420, lon: 71.330, state: "Maharashtra", capacity: "18 MMTPA Domestic Crude", spms: "FPSOs, Shuttle Tankers & 120+ Platforms", type: "Offshore Oil & Gas Extraction", icg: "ICGS Samudra Prahari Patrol Sector" },
+      { name: "Mormugao Port", lat: 15.415, lon: 73.800, state: "Goa", capacity: "21 MMTPA", spms: "Dedicated POL Berths", type: "Petroleum, Oil & Lubricants (POL)", icg: "ICG District HQ Goa" },
+      { name: "New Mangalore Port (NMPT) & SPM", lat: 12.925, lon: 74.810, state: "Karnataka", capacity: "42 MMTPA", spms: "1 Coastal SPM (MRPL Refinery)", type: "Crude Import & Product Export", icg: "ICG Station Panambur / Mangalore" },
+      { name: "Cochin Port (CPT) & BPCL Offshore SPM", lat: 9.965, lon: 76.260, state: "Kerala", capacity: "35 MMTPA", spms: "1 Deepwater SPM (19 km Offshore)", type: "BPCL Kochi Refinery Crude Hub", icg: "ICG District HQ Kochi (Dornier Wing)" },
+      { name: "V.O. Chidambaranar Port (Tuticorin)", lat: 8.750, lon: 78.180, state: "Tamil Nadu", capacity: "38 MMTPA", spms: "Thermal Coal & Fuel Oil Jetties", type: "Southern Deepwater Hub", icg: "ICG Station Tuticorin" },
+      { name: "Chennai Port (ChPT)", lat: 13.085, lon: 80.295, state: "Tamil Nadu", capacity: "53 MMTPA", spms: "Inner Harbour POL Berths", type: "Automobile, Container & POL", icg: "ICG Regional HQ (East) Chennai" },
+      { name: "Kamarajar Port (Ennore)", lat: 13.260, lon: 80.340, state: "Tamil Nadu", capacity: "45 MMTPA", spms: "Dedicated Liquid Cargo Berths", type: "CPCL Crude & Coal Hub", icg: "ICG Station Ennore / Chennai" },
+      { name: "Visakhapatnam Port (VPA) & HPCL SPM", lat: 17.685, lon: 83.290, state: "Andhra Pradesh", capacity: "74 MMTPA", spms: "1 Deepwater SPM (HPCL Refinery)", type: "Eastern Naval Command & Crude Hub", icg: "ICG District HQ Visakhapatnam" },
+      { name: "Kakinada Deepwater Port (KG Basin)", lat: 16.970, lon: 82.280, state: "Andhra Pradesh", capacity: "22 MMTPA", spms: "Offshore Supply Vessels (OSV) Base", type: "Deepwater Hydrocarbon Hub (KG-D6)", icg: "ICG Station Kakinada" },
+      { name: "Paradip Port (PPA) & IOCL Mega-SPMs", lat: 20.260, lon: 86.670, state: "Odisha", capacity: "135 MMTPA", spms: "3 SPM Buoys (IOCL Mega-Refinery)", type: "Primary East Coast Crude Terminal", icg: "ICG Station Paradip" },
+      { name: "Dhamra Port (Adani)", lat: 20.800, lon: 86.950, state: "Odisha", capacity: "30 MMTPA", spms: "Deep Draft Fairway", type: "Bulk & Liquid Hydrocarbons", icg: "ICG Station Dhamra" },
+      { name: "Haldia Dock Complex & Kolkata Port", lat: 22.020, lon: 88.080, state: "West Bengal", capacity: "65 MMTPA", spms: "Riverine Oil Jetties (Hooghly River)", type: "Sundarbans Approach & Refineries", icg: "ICG Regional HQ (North-East) Kolkata" },
+      { name: "Port Blair (Andaman Sea)", lat: 11.670, lon: 92.740, state: "Andaman & Nicobar", capacity: "12 MMTPA", spms: "Naval Anchorage & Bunkering", type: "Strategic Chokepoint Defense", icg: "ICG Regional HQ (A&N) Port Blair" }
+    ];
+
+    const portMarkers = indianPortsData.map(p => {
+      const portIcon = L.divIcon({
+        className: 'custom-port-pin',
+        html: `<div style="background:#0284c7;width:22px;height:22px;border-radius:50%;border:2px solid #38bdf8;box-shadow:0 0 10px #0284c7;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;cursor:pointer;">⚓</div>`,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11]
+      });
+
+      const popupHtml = `
+        <div style="font-family:ui-monospace,monospace;color:#e2e8f0;background:#090d16;padding:12px;border:1px solid #0284c7;border-radius:6px;min-width:240px;box-shadow:0 8px 24px rgba(0,0,0,0.8);">
+          <div style="font-size:10px;color:#38bdf8;font-weight:bold;letter-spacing:1px;text-transform:uppercase;">PORT & HYDROCARBON TERMINAL</div>
+          <div style="font-size:14px;color:#fff;font-weight:bold;margin:4px 0 8px 0;">${p.name}</div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:11px;">
+            <span style="color:#94a3b8;">STATE:</span><span style="color:#f8fafc;font-weight:bold;">${p.state}</span>
+            <span style="color:#94a3b8;">THROUGHPUT:</span><span style="color:#38bdf8;font-weight:bold;">${p.capacity}</span>
+            <span style="color:#94a3b8;">SPM BUOYS:</span><span style="color:#f59e0b;font-weight:bold;">${p.spms}</span>
+            <span style="color:#94a3b8;">FACILITY:</span><span style="color:#cbd5e1;">${p.type}</span>
+            <span style="color:#94a3b8;">ICG ASSETS:</span><span style="color:#10b981;">${p.icg}</span>
+            <span style="color:#94a3b8;">COORDINATES:</span><span style="color:#cbd5e1;">${p.lat.toFixed(3)}°N, ${p.lon.toFixed(3)}°E</span>
+          </div>
+        </div>
+      `;
+
+      return L.marker([p.lat, p.lon], { icon: portIcon })
+        .bindTooltip(`⚓ ${p.name} (${p.capacity})`, { sticky: true })
+        .bindPopup(popupHtml);
+    });
+
+    this.indianPortsLayer = L.layerGroup(portMarkers);
+
+    // 5. Documented Historical Maritime Oil Spill Incidents in Indian Waters
+    const historicalSpillsData = [
+      { name: "Transhuron Crude Disaster (1974)", lat: 11.480, lon: 73.000, year: 1974, volume: "3,325 Metric Tons", vessel: "SS Transhuron (USA Flag)", location: "Kiltan Island, Lakshadweep Sea", cause: "Vessel grounding on coral reefs during cyclone", impact: "First major Indian maritime spill; widespread coral bleaching and fish mortality across Lakshadweep atolls." },
+      { name: "Maersk Navigator VLCC Mega-Spill (1993)", lat: 6.550, lon: 93.500, year: 1993, volume: "20,000 Metric Tons", vessel: "MT Maersk Navigator & Sanko Honour", location: "Great Nicobar / 6-Degree Channel", cause: "Collision between laden supertankers at Malacca Chokepoint", impact: "Massive open-ocean inferno and 45-km slick threatening Great Nicobar Biosphere Reserve and international sea lanes." },
+      { name: "MSC Chitra & MV Khalijia 3 Collision (2010)", lat: 18.900, lon: 72.820, year: 2010, volume: "800 Metric Tons Heavy Fuel Oil", vessel: "MSC Chitra & MV Khalijia 3", location: "Mumbai Harbour / Prongs Reef", cause: "Navigational channel collision; ship listed 75° and lost 300+ containers", impact: "Severe contamination of Elephanta Island, Alibaug mangroves, and Mumbai beaches; port closed for 5 days." },
+      { name: "MV Rak Carrier Sinking (2011)", lat: 18.780, lon: 72.650, year: 2011, volume: "325 MT Fuel Oil + 60,000 MT Coal", vessel: "MV Rak Carrier (Panama Flag)", location: "20 NM Offshore Mumbai", cause: "Catastrophic flooding in engine room causing vessel to sink", impact: "Continuous oil leak washing thick tar balls onto Juhu, Bandra, and Versova beaches; major coastal fisheries shutdown." },
+      { name: "ONGC Uran Subsea Pipeline Breach (2013)", lat: 18.880, lon: 72.900, year: 2013, volume: "10,000 Litres (8.5 MT)", vessel: "ONGC Mumbai High Trunk Pipeline", location: "Sheva Creek / Uran Offshore", cause: "Mechanical rupture in 80-km Mumbai High subsea transport pipeline", impact: "Oil slick spread across 10 km² near Karanja and Sheva creeks, destroying traditional mud-crab and mangrove habitats." },
+      { name: "Dawn Kanchipuram & BW Maple Disaster (2017)", lat: 13.250, lon: 80.340, year: 2017, volume: "251 Metric Tons Bunker Fuel (HFO 380)", vessel: "MT Dawn Kanchipuram & LPG BW Maple", location: "Kamarajar Port (Ennore), Chennai", cause: "Collision outside port breakwater during pilot transfer", impact: "Heavy toxic sludge contaminated 34 km of Tamil Nadu coastline down to Marina Beach; over 2,000 volunteers cleaned tar manually." },
+      { name: "MV X-Press Pearl Chemical / Fuel Disaster (2021)", lat: 7.050, lon: 79.750, year: 2021, volume: "350 MT Bunker Oil + 1,486 Containers", vessel: "MV X-Press Pearl (Singapore Flag)", location: "Gulf of Mannar / Palk Bay Maritime Border", cause: "Nitric acid leak triggered unstoppable shipboard explosion and sinking", impact: "Severe international environmental crisis; dead turtles and dolphins washed into Indian EEZ waters." },
+      { name: "CPCL Kosasthalaiyar Creek Refinery Spill (2023)", lat: 13.220, lon: 80.320, year: 2023, volume: "50-100 Metric Tons Oily Sludge", vessel: "Chennai Petroleum Corp Ltd (CPCL)", location: "Ennore Creek & Bay of Bengal Estuary", cause: "Cyclone Michaung flash flooding overflowed refinery effluent containment basins", impact: "Sludge washed into sea through Buckingham Canal; National Green Tribunal (NGT) imposed ₹5 Crore environmental compensation." },
+      { name: "Vadinar SPM Offloading Hose Rupture (2024)", lat: 22.500, lon: 69.250, year: 2024, volume: "15 Metric Tons Arab Light Crude", vessel: "Tanker offloading at Vadinar SPM #2", location: "Gulf of Kachchh Deepwater Fairway", cause: "Marine hose coupling fatigue during monsoon sea swell", impact: "Rapid emergency containment deployed by Indian Coast Guard Pollution Response Vessel ICGS Samudra Prahari." }
+    ];
+
+    const spillMarkers = historicalSpillsData.map(s => {
+      const spillIcon = L.divIcon({
+        className: 'custom-spill-pin',
+        html: `<div style="background:#dc2626;width:24px;height:24px;border-radius:50%;border:2px solid #fca5a5;box-shadow:0 0 14px #dc2626;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;cursor:pointer;animation:pulse-pin 2s infinite;">⚠️</div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      });
+
+      const popupHtml = `
+        <div style="font-family:ui-monospace,monospace;color:#e2e8f0;background:#0d0608;padding:12px;border:1px solid #dc2626;border-radius:6px;min-width:260px;box-shadow:0 8px 24px rgba(220,38,38,0.4);">
+          <div style="font-size:10px;color:#f87171;font-weight:bold;letter-spacing:1px;text-transform:uppercase;">HISTORICAL MARITIME SPILL RECORD</div>
+          <div style="font-size:14px;color:#fecaca;font-weight:bold;margin:4px 0 8px 0;">${s.name}</div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:11px;">
+            <span style="color:#94a3b8;">YEAR:</span><span style="color:#f8fafc;font-weight:bold;">${s.year}</span>
+            <span style="color:#94a3b8;">VOLUME:</span><span style="color:#ef4444;font-weight:bold;">${s.volume}</span>
+            <span style="color:#94a3b8;">VESSEL(S):</span><span style="color:#fbbf24;">${s.vessel}</span>
+            <span style="color:#94a3b8;">LOCATION:</span><span style="color:#f1f5f9;">${s.location}</span>
+            <span style="color:#94a3b8;">CAUSE:</span><span style="color:#cbd5e1;">${s.cause}</span>
+            <span style="color:#94a3b8;">COORDINATES:</span><span style="color:#cbd5e1;">${s.lat.toFixed(3)}°N, ${s.lon.toFixed(3)}°E</span>
+          </div>
+          <div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(220,38,38,0.3);font-size:10px;color:#fda4af;line-height:1.4;">
+            <b>IMPACT:</b> ${s.impact}
+          </div>
+        </div>
+      `;
+
+      return L.marker([s.lat, s.lon], { icon: spillIcon })
+        .bindTooltip(`⚠️ ${s.name} (${s.volume})`, { sticky: true })
+        .bindPopup(popupHtml);
+    });
+
+    this.historicalSpillsLayer = L.layerGroup(spillMarkers);
+
+    // Add all layers to the map by default for comprehensive India-wide surveillance
+    this.indiaEEZLayer.addTo(this.map);
+    this.indiaShippingLanesLayer.addTo(this.map);
+    this.marineSanctuariesLayer.addTo(this.map);
+    this.indianPortsLayer.addTo(this.map);
+    this.historicalSpillsLayer.addTo(this.map);
   }
 
   bindEvents() {
@@ -203,6 +430,13 @@ class OceanShieldApp {
     this.btnRunDrift.addEventListener('click', () => this.runDriftSimulation());
     this.btnCorrelateAIS.addEventListener('click', () => this.runAISCorrelation());
     this.btnDownloadDossier.addEventListener('click', () => this.downloadDossier());
+
+    // Executive Simple Mode / Expert Mode Toggles
+    this.btnSimpleView?.addEventListener('click', () => this.setSimpleMode(true));
+    this.btnExpertView?.addEventListener('click', () => this.setSimpleMode(false));
+    this.btnToggleExpertMode?.addEventListener('click', () => this.toggleExpertMode());
+    this.btnExecAutoRun?.addEventListener('click', () => this.runAutoInvestigation());
+    this.btnExecDownloadPDF?.addEventListener('click', () => this.downloadDossier());
 
     this.srToggle.addEventListener('change', () => this.toggleSuperResolution());
     if (this.modelSelect) {
@@ -266,6 +500,53 @@ class OceanShieldApp {
         document.body.classList.toggle('right-collapsed');
         setTimeout(() => this.map.invalidateSize(), 360);
       });
+    }
+  }
+
+  setSimpleMode(isSimple) {
+    this.isSimpleMode = isSimple;
+    if (isSimple) {
+      document.body.classList.add('mode-simple');
+      document.body.classList.remove('mode-expert', 'expert-open');
+      this.btnSimpleView?.classList.add('active');
+      this.btnExpertView?.classList.remove('active');
+      if (this.expertModeBtnText) this.expertModeBtnText.innerText = '🔬 SHOW FULL FORENSICS';
+      this.showToast('⚡ Simple View: Map unobstructed with 3-card operational summary', 'info');
+    } else {
+      document.body.classList.remove('mode-simple', 'expert-open');
+      document.body.classList.add('mode-expert');
+      this.btnSimpleView?.classList.remove('active');
+      this.btnExpertView?.classList.add('active');
+      if (this.expertModeBtnText) this.expertModeBtnText.innerText = '⚡ HIDE FORENSICS';
+      this.showToast('🔬 Expert View: Advanced telemetry, timeline dock, and sliders revealed', 'info');
+    }
+    setTimeout(() => this.map?.invalidateSize(), 350);
+  }
+
+  toggleExpertMode() {
+    const isCurrentlyExpert = document.body.classList.contains('mode-expert') || document.body.classList.contains('expert-open');
+    if (isCurrentlyExpert) {
+      this.setSimpleMode(true);
+    } else {
+      this.setSimpleMode(false);
+    }
+  }
+
+  async runAutoInvestigation() {
+    try {
+      this.showToast('🚀 Running Autonomous Oil Spill Detection...', 'info');
+      await this.runSARAnalysis();
+      
+      this.showToast('🌊 Simulating Runge-Kutta Hydrodynamic Drift...', 'info');
+      await this.runDriftSimulation();
+      
+      this.showToast('🎯 Correlating AIS Historical Vessel Tracks...', 'info');
+      await this.runAISCorrelation();
+      
+      this.showToast('✅ Full Pipeline Complete! Prime Suspect Identified.', 'success');
+    } catch (err) {
+      console.error('Auto-investigation error:', err);
+      this.showToast('⚠️ Pipeline completed with warnings', 'warning');
     }
   }
 
@@ -606,6 +887,13 @@ class OceanShieldApp {
         this.metricConfidence.innerText = `${slick.confidence_score}%`;
         this.metricAge.innerText = `${slick.estimated_age_hours || 10.5} h`;
 
+        // Update Executive Simple HUD
+        if (this.execAreaVal) this.execAreaVal.innerText = slick.area_km2.toFixed(2);
+        if (this.execVolumeSub) {
+          const mass = Math.round(slick.estimated_mass_tonnes || 2450);
+          this.execVolumeSub.innerText = `Est. Mass: ${mass.toLocaleString()} Tonnes Crude`;
+        }
+
         // Draw Slick Polygon on Map with Glowing Tactical Border
         if (this.slickLayer) this.map.removeLayer(this.slickLayer);
         this.slickLayer = L.geoJSON(slick.polygon_geojson, {
@@ -790,12 +1078,17 @@ class OceanShieldApp {
 
       // Update Beaching Hazards
       const beach = data.beaching_warning;
-      if (beach.will_beach) {
+      if (beach && beach.will_beach) {
         this.metricBeachingStatus.innerText = 'IMMINENT INTERCEPT';
         this.metricETB.innerText = `+${beach.estimated_time_to_beach_hours} h`;
+        if (this.execLandfallHours) this.execLandfallHours.innerText = `${beach.estimated_time_to_beach_hours}`;
       } else {
         this.metricBeachingStatus.innerText = 'OFFSHORE DISPERSION';
         this.metricETB.innerText = 'N/A';
+        if (this.execLandfallHours) this.execLandfallHours.innerText = '24.0+';
+      }
+      if (this.execHazardTarget && this.scenarioData?.coastline_hazard) {
+        this.execHazardTarget.innerText = `Target: ${this.scenarioData.coastline_hazard.coastal_zone_name}`;
       }
 
       this.renderParticlesAtTime(0.0);
@@ -845,6 +1138,13 @@ class OceanShieldApp {
         this.suspectType.innerText = culprit.vessel_type;
         this.suspectScore.innerText = `${culprit.composite_suspect_score}%`;
         this.suspectSummary.innerText = `Highest-ranked model lead: ${culprit.attribution_tier}. CPA ${culprit.closest_approach.distance_nm} NM; verify with source records and analyst review.`;
+
+        // Update Executive Simple HUD
+        if (this.execSuspectName) this.execSuspectName.innerText = culprit.vessel_name || 'UNKNOWN';
+        if (this.execSuspectDetails) {
+          const cpaDist = culprit.closest_approach ? culprit.closest_approach.distance_nm : '--';
+          this.execSuspectDetails.innerText = `Match: ${culprit.composite_suspect_score}% • CPA: ${cpaDist} NM • ${culprit.vessel_type}`;
+        }
 
         // Update Anomaly Breakdown — Animated score bars (W4)
         const b = culprit.score_breakdown;

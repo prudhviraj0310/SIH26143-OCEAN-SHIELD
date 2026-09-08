@@ -1476,3 +1476,278 @@ body.right-collapsed .leaflet-top.leaflet-right {
   from { opacity: 1; transform: translateY(0); }
   to { opacity: 0; transform: translateY(-12px); }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   EXECUTIVE SIMPLE MODE & EXPERT MODE CONTROLS
+   ══════════════════════════════════════════════════════════════════ */
+.view-mode-toggle-wrap {
+  display: flex;
+  background: rgba(10, 16, 30, 0.85);
+  border: 1px solid var(--c2-border);
+  border-radius: 20px;
+  padding: 3px;
+  gap: 2px;
+  margin-right: 8px;
+}
+
+.btn-mode-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-mode-toggle:hover {
+  color: #ffffff;
+}
+
+.btn-mode-toggle.active {
+  background: var(--accent-cyan);
+  color: #060911;
+  font-weight: 700;
+  box-shadow: 0 0 10px var(--accent-cyan-glow);
+}
+
+/* Mode-based layout rules: SIMPLE MODE (Pure Clean Map + 3-Card Mission HUD) */
+body.mode-simple #panelLeft,
+body.mode-simple #panelRight,
+body.mode-simple .dock-left,
+body.mode-simple .dock-right,
+body.mode-simple .floating-dock,
+body.mode-simple .floating-timeline-dock,
+body.mode-simple .map-hud-top {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+
+body.mode-simple .executive-mission-dock {
+  display: flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  opacity: 1 !important;
+}
+
+/* EXPERT MODE (Sidebars and timeline revealed) */
+body.mode-expert #panelLeft,
+body.mode-expert #panelRight,
+body.mode-expert .dock-left,
+body.mode-expert .dock-right,
+body.mode-expert .floating-dock {
+  display: flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  opacity: 1 !important;
+}
+
+body.mode-expert .floating-timeline-dock {
+  display: flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  opacity: 1 !important;
+}
+
+body.mode-expert .executive-mission-dock {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ULTRA-SIMPLE EXECUTIVE MISSION DOCK (BOTTOM CENTER)
+   ══════════════════════════════════════════════════════════════════ */
+.executive-mission-dock {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 950;
+  width: min(92vw, 860px);
+  background: rgba(8, 14, 28, 0.88);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 25px rgba(6, 182, 212, 0.15);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: exec-fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes exec-fade-up {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.exec-hud-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.exec-card {
+  background: rgba(14, 22, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.exec-card:hover {
+  background: rgba(18, 28, 54, 0.9);
+  border-color: rgba(56, 189, 248, 0.4);
+  transform: translateY(-2px);
+}
+
+.exec-card-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.exec-card-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.exec-card-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.exec-card-val {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #ffffff;
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.exec-card-val small {
+  font-size: 0.72rem;
+  color: var(--accent-cyan);
+  font-weight: 600;
+}
+
+.exec-card-sub {
+  font-size: 0.70rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.exec-card-hazard .exec-card-val {
+  color: #f87171;
+}
+
+.exec-card-suspect .exec-card-val {
+  color: var(--accent-cyan);
+}
+
+/* Executive Actions Bar */
+.exec-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.btn-exec {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border: none;
+  font-family: var(--font-sans);
+}
+
+.btn-exec-primary {
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+  flex: 1.2;
+}
+
+.btn-exec-primary:hover {
+  background: linear-gradient(135deg, #047857, #059669);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.5);
+}
+
+.btn-exec-hazard {
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+  flex: 1.2;
+}
+
+.btn-exec-hazard:hover {
+  background: linear-gradient(135deg, #b91c1c, #dc2626);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(239, 68, 68, 0.5);
+}
+
+.btn-exec-ghost {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  flex: 0.9;
+}
+
+.btn-exec-ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-color: var(--accent-cyan);
+}
+
+@media (max-width: 900px) {
+  .executive-mission-dock {
+    width: 95vw;
+    padding: 12px;
+  }
+  .exec-hud-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .exec-actions-bar {
+    flex-direction: column;
+  }
+  .btn-exec {
+    width: 100%;
+  }
+}

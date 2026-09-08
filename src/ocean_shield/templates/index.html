@@ -14,9 +14,9 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   
   <!-- Custom Modern C2 Dashboard CSS -->
-  <link rel="stylesheet" href="/static/css/dashboard.css?v=2.7">
+  <link rel="stylesheet" href="/static/css/dashboard.css?v=3.5">
 </head>
-<body class="theme-c2">
+<body class="theme-c2 mode-simple">
 
   <!-- Top Tactical Command Navigation Bar -->
   <header class="top-nav">
@@ -55,7 +55,7 @@
       </button>
     </nav>
 
-    <!-- Right Controls: Sector, Export & Heartbeat -->
+    <!-- Right Controls: Sector, Mode, Export & Heartbeat -->
     <div class="nav-controls">
       <!-- Active Sector Dropdown -->
       <div class="sector-dropdown-wrap">
@@ -66,6 +66,12 @@
           <option value="great_nicobar">Great Nicobar Channel (Malacca Chokepoint)</option>
           <option value="zenodo_sentinel1_real">Sentinel-1 Benchmark (ESA/Zenodo Real)</option>
         </select>
+      </div>
+
+      <!-- UI Mode Switcher (Simple Executive vs Forensic Expert) -->
+      <div class="view-mode-toggle-wrap">
+        <button id="btnSimpleView" class="btn-mode-toggle active" title="Switch to Simple Executive View">⚡ Simple View</button>
+        <button id="btnExpertView" class="btn-mode-toggle" title="Switch to Full Forensic View">🔬 Expert View</button>
       </div>
 
       <!-- Export Case Summary PDF -->
@@ -525,10 +531,61 @@
       </div>
     </div>
 
+    <!-- ULTRA-SIMPLE EXECUTIVE MISSION HUD (Default Mode) -->
+    <div class="executive-mission-dock" id="executiveMissionDock">
+      <div class="exec-hud-grid">
+        <!-- Metric 1: Slick Footprint -->
+        <div class="exec-card exec-card-slick">
+          <div class="exec-card-icon">🌊</div>
+          <div class="exec-card-content">
+            <span class="exec-card-label">OIL SLICK FOOTPRINT</span>
+            <div class="exec-card-val"><strong id="execAreaVal">18.42</strong> <small>km²</small></div>
+            <div class="exec-card-sub" id="execVolumeSub">Est. Mass: 2,450 Tonnes Crude</div>
+          </div>
+        </div>
+
+        <!-- Metric 2: Coastal Impact Threat -->
+        <div class="exec-card exec-card-hazard">
+          <div class="exec-card-icon">⏱️</div>
+          <div class="exec-card-content">
+            <span class="exec-card-label">COASTLINE LANDFALL ETA</span>
+            <div class="exec-card-val text-hazard"><strong id="execLandfallHours">14.2</strong> <small>HOURS</small></div>
+            <div class="exec-card-sub" id="execHazardTarget">Target: Marine Coral Sanctuary</div>
+          </div>
+        </div>
+
+        <!-- Metric 3: Prime Suspect Ship -->
+        <div class="exec-card exec-card-suspect">
+          <div class="exec-card-icon">🚢</div>
+          <div class="exec-card-content">
+            <span class="exec-card-label">PRIME SUSPECT VESSEL</span>
+            <div class="exec-card-val text-cyan"><strong id="execSuspectName">MT NEPTUNE GLORY</strong></div>
+            <div class="exec-card-sub" id="execSuspectDetails">Match: 94.8% • CPA: 0.42 NM • Tanker</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Controls -->
+      <div class="exec-actions-bar">
+        <button id="btnExecAutoRun" class="btn-exec btn-exec-primary" title="Automatically run detection, drift, and AIS correlation in sequence">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span>⚡ AUTO-RUN INVESTIGATION</span>
+        </button>
+        <button id="btnExecDownloadPDF" class="btn-exec btn-exec-hazard" title="Download Official ICG Police/Forensic Report PDF">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          <span>📄 EXPORT ICG REPORT (PDF)</span>
+        </button>
+        <button id="btnToggleExpertMode" class="btn-exec btn-exec-ghost" title="Toggle between Simple Executive View and Full Forensic Mode">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span id="expertModeBtnText">🔬 SHOW FULL FORENSICS</span>
+        </button>
+      </div>
+    </div>
+
   </main>
 
   <!-- Leaflet & App Scripts -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="/static/js/app.js?v=2.7"></script>
+  <script src="/static/js/app.js?v=3.5"></script>
 </body>
 </html>

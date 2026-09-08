@@ -8,8 +8,8 @@ Enables headless, scriptable, and automated execution of the entire forensic cha
 1. Multi-modal satellite remote sensing (PyTorch SAR U-Net & Optical Sentinel-2 NDOI)
 2. 4th-order Runge-Kutta Lagrangian hydrodynamic drift hindcasting
 3. Mackay ADIOS physical oil weathering
-4. AIS spatiotemporal correlation, kinematic speed-drop scoring & Dark Vessel unmasking
-5. Automated generation of court-admissible Indian Coast Guard statutory violation dossiers
+4. AIS spatiotemporal correlation, kinematic review scoring & radar/AIS mismatch cues
+5. Automated generation of analyst-review case-summary PDFs
 """
 
 import argparse
@@ -46,7 +46,7 @@ def main():
     )
     parser.add_argument(
         "--scenario",
-        choices=["gulf_of_kachchh", "mumbai_high", "great_nicobar"],
+        choices=["gulf_of_kachchh", "mumbai_high", "great_nicobar", "zenodo_sentinel1_real"],
         default="gulf_of_kachchh",
         help="Strategic Indian maritime incident scenario to analyze."
     )
@@ -71,31 +71,19 @@ def main():
     parser.add_argument(
         "--export-pdf",
         action="store_true",
-        help="Compile and export court-admissible Coast Guard legal violation PDF."
+        help="Compile and export an analyst-review case-summary PDF."
     )
     parser.add_argument(
         "--output-dir",
         type=str,
         default="reports",
-        help="Output directory for generated violation dossiers."
+        help="Output directory for generated case summaries."
     )
 
     args = parser.parse_args()
     print_banner()
 
     custom_ais = None
-    if args.ais_csv:
-        try:
-            with open(args.ais_csv, "rb") as handle:
-                parsed_ais = parse_marinecadastre_csv(handle.read(), os.path.basename(args.ais_csv))
-            custom_ais = parsed_ais["vessels"]
-            provenance = parsed_ais["provenance"]
-            print(
-                f"[*] AIS source loaded: {provenance['vessels']} vessels / {provenance['valid_pings']} pings "
-                f"(T=0: {provenance['reference_time_utc']})"
-            )
-        except (OSError, ValueError) as exc:
-            parser.error(f"Could not ingest --ais-csv: {exc}")
 
     t_start = time.time()
     print(f"[*] Initializing forensic pipeline for scenario: '{args.scenario.upper()}'")
@@ -110,6 +98,20 @@ def main():
     sar_img, current_field, scenario_data = get_scenario_sar_and_currents(args.scenario)
     center_lat = scenario_data["center"]["lat"]
     center_lon = scenario_data["center"]["lon"]
+
+    if args.ais_csv:
+        try:
+            reference_time = scenario_data["satellite_metadata"].get("acquisition_time_utc", "").replace(" UTC", "Z").replace(" ", "T")
+            with open(args.ais_csv, "rb") as handle:
+                parsed_ais = parse_marinecadastre_csv(handle.read(), os.path.basename(args.ais_csv), reference_time)
+            custom_ais = parsed_ais["vessels"]
+            provenance = parsed_ais["provenance"]
+            print(
+                f"[*] AIS source loaded: {provenance['vessels']} vessels / {provenance['valid_pings']} pings "
+                f"(aligned to SAR acquisition: {provenance['reference_time_utc']})"
+            )
+        except (OSError, ValueError) as exc:
+            parser.error(f"Could not ingest --ais-csv: {exc}")
 
     # 1. SAR Processing
     sar_res = None
@@ -153,7 +155,7 @@ def main():
     )
     origin = hindcast_res["origin_release_point"]
     print(f"      - Release Epicenter (x₀, y₀): {origin['lat']:.4f}° N, {origin['lon']:.4f}° E")
-    print(f"      - Release Timestamp (t₀): T - {origin['slick_age_hours']:.1f} hours (Confidence: {origin['confidence_percent']}%)")
+    print(f"      - Release Timestamp (t₀): T - {origin['slick_age_hours']:.1f} hours (model spread indicator: {origin['confidence_percent']}%)")
     print(f"      - Reverse Drift Distance: {hindcast_res['total_drift_distance_km']:.1f} km")
 
     # Forward forecast & Weathering
@@ -168,7 +170,7 @@ def main():
     print(f"      - Apparent Volume Expansion Factor: {w['volume_expansion_factor']}x")
     print(f"      - Bulk Dynamic Viscosity: {w['dynamic_viscosity_cP']:.0f} cP ({w['weathering_classification']})")
 
-    # 4. AIS Maritime Correlation & Culprit Attribution
+    # 4. AIS Maritime Correlation & Lead Ranking
     print("\n[4/4] Correlating Maritime AIS Traffic & Cross-Referencing Radar Contacts...")
     vessels = custom_ais if custom_ais is not None else scenario_data.get("ais_vessels", [])
     radar_ships = sar_res.get("radar_detected_ships", []) if sar_res else []
@@ -199,13 +201,13 @@ def main():
     else:
         print("[-] No vessel lead met the configured corridor threshold.")
 
-    # Dark Ships Audit
+    # Radar/AIS correlation review cues
     dark_vessels = ais_res.get("dark_vessels_detected", [])
-    print(f"\n[*] Dark Vessel Surveillance Audit: {len(dark_vessels)} non-cooperative radar contacts flagged.")
+    print(f"\n[*] Radar/AIS review cues: {len(dark_vessels)} contacts require AIS coverage verification.")
     for dv in dark_vessels:
         print(f"   - ⚡ [{dv['target_id']}] Lat: {dv['lat']:.4f}, Lon: {dv['lon']:.4f} | RCS: {dv['radar_rcs_mean_db']} dB | Distance to Spill: {dv.get('distance_to_spill_origin_nm', 'N/A')} NM | {dv.get('threat_classification', 'UNREGISTERED')}")
 
-    # 5. Export PDF Legal Violation Dossier
+    # 5. Export analyst-review case summary
     if args.export_pdf:
         print("\n[*] Compiling analyst-review case summary (PDF)...")
         os.makedirs(args.output_dir, exist_ok=True)
@@ -224,7 +226,7 @@ def main():
         print(f"   - Dossier compiled successfully: {pdf_path} ({os.path.getsize(pdf_path)} bytes)")
 
     elapsed = time.time() - t_start
-    print(f"\n[+] Complete forensic analysis finished in {elapsed:.2f} seconds.")
+    print(f"\n[+] Complete screening analysis finished in {elapsed:.2f} seconds.")
     print("================================================================================\n")
 
 
