@@ -6,6 +6,8 @@ AIS vessel correlation & anomaly scoring, and automated Coast Guard PDF violatio
 
 import os
 import io
+import csv
+import json
 import hashlib
 import math
 import asyncio
@@ -75,8 +77,12 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 os.makedirs(TEMPLATES_DIR, exist_ok=True)
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
-# Mount static folder
+# Mount static and datasets folders
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+DATASETS_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), "datasets")
+if os.path.exists(DATASETS_DIR):
+    app.mount("/datasets", StaticFiles(directory=DATASETS_DIR), name="datasets")
 
 # Shared Engine Singletons
 sar_engine = SAREngine()
@@ -226,6 +232,108 @@ async def _keep_alive_pinger():
 @app.on_event("startup")
 async def start_background_keepalive():
     asyncio.create_task(_keep_alive_pinger())
+
+
+@app.get("/api/datasets/inspect")
+async def inspect_datasets():
+    """Returns structured inspection metadata and sample rows from all 4 authoritative datasets."""
+    datasets_dir = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), "datasets")
+
+    # 1. AIS Sample
+    ais_path = os.path.join(datasets_dir, "marinecadastre_real_ais.csv")
+    ais_rows = []
+    ais_size = 0
+    if os.path.exists(ais_path):
+        ais_size = os.path.getsize(ais_path)
+        try:
+            with open(ais_path, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                ais_rows = [r for _, r in zip(range(12), reader)]
+        except Exception as e:
+            logger.warning(f"Error reading AIS sample: {e}")
+
+    # 2. SAR Image
+    sar_path = os.path.join(datasets_dir, "real_sar", "real_sentinel1_crop_512.png")
+    sar_size = os.path.getsize(sar_path) if os.path.exists(sar_path) else 0
+
+    # 3. HYCOM NetCDF
+    hycom_path = os.path.join(datasets_dir, "ocean_met", "hycom_real_gulf_kachchh.nc")
+    hycom_size = os.path.getsize(hycom_path) if os.path.exists(hycom_path) else 0
+
+    # 4. Open-Meteo Wind
+    wind_path = os.path.join(datasets_dir, "ocean_met", "openmeteo_wind_kachchh.json")
+    wind_size = os.path.getsize(wind_path) if os.path.exists(wind_path) else 0
+    wind_sample = []
+    if os.path.exists(wind_path):
+        try:
+            with open(wind_path, "r", encoding="utf-8") as f:
+                wdata = json.load(f)
+                h = wdata.get("hourly", {})
+                times = h.get("time", [])[:8]
+                speeds = h.get("wind_speed_10m", [])[:8]
+                dirs = h.get("wind_direction_10m", [])[:8]
+                wind_sample = [
+                    {"time": times[i], "speed_kmh": speeds[i], "direction_deg": dirs[i]}
+                    for i in range(min(len(times), len(speeds), len(dirs)))
+                ]
+        except Exception as e:
+            logger.warning(f"Error reading wind sample: {e}")
+
+    return {
+        "status": "success",
+        "datasets": {
+            "sar": {
+                "name": "ESA Sentinel-1 C-SAR Oil Spill Imagery",
+                "authority": "European Space Agency (ESA) & CERN Zenodo",
+                "doi": "10.5281/zenodo.8346860",
+                "portal_url": "https://zenodo.org/records/8346860",
+                "copernicus_url": "https://browser.dataspace.copernicus.eu/",
+                "file_path": "datasets/real_sar/real_sentinel1_crop_512.png",
+                "format": "C-Band SAR GRD (Ground Range Detected), 10m Pixel Spacing",
+                "polarization": "VV (Co-polarization optimal for sea surface roughness)",
+                "size_bytes": sar_size,
+                "preview_url": "/datasets/real_sar/real_sentinel1_crop_512.png",
+                "resolution": "512 x 512 pixels (5.12 km x 5.12 km geographic swath)",
+                "why_used": "Microwave radar penetrates monsoon cloud cover and operates in total darkness (24/7 all-weather maritime surveillance)."
+            },
+            "ais": {
+                "name": "US Coast Guard & NOAA MarineCadastre Real Vessel Tracking",
+                "authority": "NOAA Office for Coastal Management & BOEM",
+                "portal_url": "https://marinecadastre.gov/accessais/",
+                "file_path": "datasets/marinecadastre_real_ais.csv",
+                "format": "NOAA/BOEM Standard CSV (15 attributes, WGS84)",
+                "total_records": 1996,
+                "size_bytes": ais_size,
+                "columns": ["MMSI", "BaseDateTime", "LAT", "LON", "SOG", "COG", "Heading", "VesselName", "IMO", "CallSign", "VesselType", "Status", "Length", "Width", "Draft"],
+                "sample_rows": ais_rows,
+                "why_used": "Contains legal transponder kinematic records (SOG, COG, Heading, Flag) necessary to identify ship speed anomalies and prove illegal discharge."
+            },
+            "ocean_currents": {
+                "name": "NOAA HYCOM GOFS 3.1 4D Hydrodynamic Ocean Currents",
+                "authority": "NOAA / National Centers for Environmental Prediction & Naval Research Lab",
+                "portal_url": "https://www.hycom.org/data/gofs-3-1",
+                "thredds_url": "https://tds.hycom.org/thredds/ncss/GLBy0.08/expt_93.0/sur",
+                "file_path": "datasets/ocean_met/hycom_real_gulf_kachchh.nc",
+                "format": "NetCDF-4 (CF-1.8 compliant multidimensional binary array)",
+                "variables": ["time", "lat", "lon", "water_u", "water_v", "wind_u", "wind_v"],
+                "spatial_grid": "1/12 degree physical resolution (~9.2 km)",
+                "temporal_interval": "3-hourly continuous reanalysis grids",
+                "size_bytes": hycom_size,
+                "why_used": "Supplies physically validated eastward and northward sea-surface current velocities (u, v) for 4th-Order Runge-Kutta Lagrangian particle drift advection."
+            },
+            "wind": {
+                "name": "ECMWF ERA5 / Open-Meteo Marine Atmospheric Wind Reanalysis",
+                "authority": "European Centre for Medium-Range Weather Forecasts (ECMWF)",
+                "portal_url": "https://open-meteo.com/en/docs/marine-weather-api",
+                "file_path": "datasets/ocean_met/openmeteo_wind_kachchh.json",
+                "format": "JSON Hourly Time Series (10-meter surface wind vectors)",
+                "hourly_records_count": 72,
+                "sample_records": wind_sample,
+                "size_bytes": wind_size,
+                "why_used": "Calculates direct atmospheric wind leeway drag (3.2% rule with 0-15 degree Coriolis deflection angle) and Mackay oil evaporation weathering."
+            }
+        }
+    }
 
 
 

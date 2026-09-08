@@ -2250,5 +2250,606 @@ body.mode-expert .map-legend-dock {
   border-radius: 12px;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   VAULT BUTTON (Top Nav)
+   ══════════════════════════════════════════════════════════════════ */
+.btn-vault {
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.2) 0%, rgba(79, 70, 229, 0.25) 100%);
+  border: 1px solid rgba(168, 85, 247, 0.45);
+  color: #c084fc;
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.2);
+  transition: all 0.2s ease;
+}
+
+.btn-vault:hover {
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.35) 0%, rgba(79, 70, 229, 0.45) 100%);
+  border-color: #d8b4fe;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 0 18px rgba(168, 85, 247, 0.45);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   macOS NATIVE QUICKLOOK MODAL & FORENSIC CHAMBER
+   ══════════════════════════════════════════════════════════════════ */
+.macos-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(4, 8, 18, 0.78);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: macosFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.macos-modal-backdrop[hidden] {
+  display: none !important;
+}
+
+@keyframes macosFadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.macos-window {
+  width: 100%;
+  max-width: 1140px;
+  max-height: 90vh;
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(32px) saturate(190%);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.85), 0 0 1px rgba(255, 255, 255, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: macosWindowPop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes macosWindowPop {
+  0% { transform: translateY(16px) scale(0.97); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* macOS Titlebar with Authentic Traffic Lights */
+.macos-titlebar {
+  height: 44px;
+  min-height: 44px;
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.85) 0%, rgba(20, 30, 48, 0.85) 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  user-select: none;
+}
+
+.traffic-lights {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 72px;
+}
+
+.btn-traffic {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+  cursor: pointer;
+  position: relative;
+  transition: filter 0.15s ease;
+}
+
+.btn-traffic:hover {
+  filter: brightness(1.2);
+}
+
+.btn-traffic-close {
+  background: #ff5f56;
+  border: 1px solid #e0443e;
+}
+
+.btn-traffic-close:active {
+  background: #bf3e37;
+}
+
+.btn-traffic-min {
+  background: #ffbd2e;
+  border: 1px solid #dea123;
+}
+
+.btn-traffic-zoom {
+  background: #27c93f;
+  border: 1px solid #1aab29;
+}
+
+.macos-window-title {
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.02em;
+}
+
+.macos-window-title strong {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.macos-window-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 160px;
+}
+
+.pill-badge-os {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+/* macOS Tab Bar / Segmented Control */
+.macos-segmented-bar {
+  display: flex;
+  background: rgba(10, 15, 29, 0.7);
+  padding: 4px;
+  margin: 12px 18px 0 18px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 4px;
+}
+
+.segmented-item {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.segmented-item:hover:not(.active) {
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.segmented-item.active {
+  background: rgba(51, 65, 85, 0.9);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+/* macOS Content Body */
+.macos-body {
+  padding: 16px 18px 20px 18px;
+  max-height: calc(90vh - 120px);
+  overflow-y: auto;
+  flex: 1;
+}
+
+.ql-pane {
+  display: none;
+}
+
+.ql-pane.active {
+  display: block;
+  animation: fadeInPane 0.22s ease-out;
+}
+
+@keyframes fadeInPane {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   PANE 1: PIPELINE CHAMBER WEB (DAY-BY-DAY)
+   ══════════════════════════════════════════════════════════════════ */
+.chamber-intro-banner {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.85) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.chamber-intro-text h3 {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin-bottom: 4px;
+}
+
+.chamber-intro-text p {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.chamber-legend {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.leg-pill {
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.leg-ship { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
+.leg-ocean { background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3); }
+.leg-space { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+.leg-ai { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+
+.chamber-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.chamber-nodes-flow {
+  max-height: 540px;
+  overflow-y: auto;
+  padding-right: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chamber-node {
+  background: rgba(30, 41, 59, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.chamber-node:hover {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(0, 242, 254, 0.4);
+  transform: translateX(4px);
+}
+
+.chamber-node.active {
+  background: rgba(0, 242, 254, 0.09);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 20px rgba(0, 242, 254, 0.2), inset 0 0 12px rgba(0, 242, 254, 0.05);
+}
+
+.node-time-badge {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--accent-cyan);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.node-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-bottom: 4px;
+}
+
+.node-sub {
+  font-size: 0.76rem;
+  color: #94a3b8;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+.node-status-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.tag-normal { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
+.tag-crime { background: rgba(239, 68, 68, 0.18); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+.tag-physics { background: rgba(14, 165, 233, 0.18); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.4); }
+.tag-space { background: rgba(168, 85, 247, 0.18); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); }
+.tag-ai { background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+.tag-culprit { background: rgba(244, 63, 94, 0.22); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.5); font-weight: 700; }
+.tag-hazard { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.45); }
+
+/* Right Component Deep Dive Card */
+.chamber-detail-card {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 0 24px rgba(0, 242, 254, 0.1);
+  border-radius: 12px;
+  padding: 18px;
+  position: sticky;
+  top: 0;
+}
+
+.detail-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+}
+
+.detail-step-badge {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--accent-cyan);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.detail-header h4 {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0;
+}
+
+.detail-body {
+  max-height: 440px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.detail-section {
+  background: rgba(20, 30, 48, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.detail-section h5 {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #38bdf8;
+  margin-bottom: 6px;
+}
+
+.detail-section p {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.detail-code {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  background: rgba(2, 6, 23, 0.85);
+  color: #a5f3fc;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  overflow-x: auto;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   PANES 2-5: DATASET PREVIEWS (SAR, AIS, HYCOM, WIND)
+   ══════════════════════════════════════════════════════════════════ */
+.dataset-view-layout {
+  display: grid;
+  grid-template-columns: 330px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.dataset-meta-sidebar {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.dataset-meta-sidebar h4 {
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+  font-size: 0.76rem;
+  gap: 8px;
+}
+
+.m-lbl {
+  color: #94a3b8;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.m-val {
+  color: #f1f5f9;
+  text-align: right;
+  word-break: break-word;
+}
+
+.m-val a {
+  color: var(--accent-cyan);
+  text-decoration: none;
+}
+
+.m-val a:hover {
+  text-decoration: underline;
+}
+
+.dataset-preview-main {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 14px;
+  overflow: hidden;
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.badge-count {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.sar-preview-frame {
+  text-align: center;
+  padding: 8px;
+}
+
+.sar-img-large {
+  max-width: 100%;
+  max-height: 420px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 242, 254, 0.35);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.65);
+  image-rendering: pixelated;
+}
+
+.sar-loupe-caption {
+  margin-top: 10px;
+  font-size: 0.74rem;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* Tables for AIS and Wind */
+.ais-table-wrap, .wind-records-table-wrap {
+  max-height: 440px;
+  overflow-y: auto;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ais-inspect-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.74rem;
+}
+
+.ais-inspect-table th {
+  position: sticky;
+  top: 0;
+  background: rgba(30, 41, 59, 0.96);
+  backdrop-filter: blur(8px);
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.ais-inspect-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: #e2e8f0;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.ais-inspect-table tr:hover td {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.row-suspect-hl td {
+  background: rgba(239, 68, 68, 0.12) !important;
+  color: #fca5a5 !important;
+  font-weight: 700;
+}
+
+.netcdf-schema-box {
+  background: rgba(2, 6, 23, 0.92);
+  border: 1px solid rgba(14, 165, 233, 0.3);
+  border-radius: 8px;
+  padding: 14px;
+  max-height: 440px;
+  overflow-y: auto;
+}
+
+.netcdf-pre {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: #38bdf8;
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre;
+}
+
+@media (max-width: 980px) {
+  .chamber-grid, .dataset-view-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 
 

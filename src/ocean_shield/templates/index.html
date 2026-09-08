@@ -86,6 +86,12 @@
         <span>Tech Stack</span>
       </a>
 
+      <!-- macOS QuickLook Dataset & Timeline Chamber Modal Trigger -->
+      <button id="btnOpenDatasetVault" class="btn-tactical btn-vault" title="Inspect Authoritative Datasets & Forensic Chamber (macOS QuickLook)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        <span>📦 Datasets & Chamber</span>
+      </button>
+
       <!-- Status Indicator -->
       <div class="badge-status" id="systemStatusBadge">
         <span class="pulse-dot"></span>
@@ -692,10 +698,320 @@
         </div>
       </div>
     </div>
+
+    <!-- macOS QuickLook Dataset & Timeline Chamber Modal -->
+    <div id="macosQuicklookModal" class="macos-modal-backdrop" hidden>
+      <div class="macos-window">
+        <!-- macOS Window Titlebar with traffic light buttons -->
+        <div class="macos-titlebar">
+          <div class="traffic-lights">
+            <span class="btn-traffic btn-traffic-close" id="btnCloseQuicklook" title="Close"></span>
+            <span class="btn-traffic btn-traffic-min" title="Minimize"></span>
+            <span class="btn-traffic btn-traffic-zoom" title="Zoom"></span>
+          </div>
+          <div class="macos-window-title">
+            <span class="folder-icon">🗂️</span>
+            <strong>OCEAN-SHIELD</strong> — Forensic Chamber & Datasets Vault (macOS QuickLook)
+          </div>
+          <div class="macos-window-actions">
+            <span class="pill-badge-os">macOS Native QuickLook</span>
+          </div>
+        </div>
+
+        <!-- macOS Tab Bar / Segmented Control -->
+        <div class="macos-segmented-bar">
+          <button class="segmented-item active" data-qltab="chamber">🕸️ Pipeline Chamber (Day-by-Day Web)</button>
+          <button class="segmented-item" data-qltab="sar">🛰️ Sentinel-1 SAR (ESA/Zenodo)</button>
+          <button class="segmented-item" data-qltab="ais">🚢 AIS Vessel Stream (NOAA)</button>
+          <button class="segmented-item" data-qltab="hycom">🌊 Ocean Currents (HYCOM NetCDF)</button>
+          <button class="segmented-item" data-qltab="wind">💨 Surface Wind (Open-Meteo/ECMWF)</button>
+        </div>
+
+        <!-- macOS Content View -->
+        <div class="macos-body">
+          <!-- PANE 1: Day-by-Day Pipeline Chamber Web -->
+          <div id="qlPaneChamber" class="ql-pane active">
+            <div class="chamber-intro-banner">
+              <div class="chamber-intro-text">
+                <h3>🕸️ The Complete End-to-End Investigation Chamber</h3>
+                <p>Click or hover on any chronological milestone to inspect <strong>why each component is used</strong>, its mathematical formulations, and legal provenance.</p>
+              </div>
+              <div class="chamber-legend">
+                <span class="leg-pill leg-ship">🚢 Ship Kinematics</span>
+                <span class="leg-pill leg-ocean">🌊 Ocean Physics</span>
+                <span class="leg-pill leg-space">🛰️ Space Radar</span>
+                <span class="leg-pill leg-ai">🧠 Deep Learning AI</span>
+              </div>
+            </div>
+
+            <div class="chamber-grid">
+              <!-- Left: The Interactive Timeline Flow Nodes -->
+              <div class="chamber-nodes-flow custom-scrollbar">
+                <!-- Node 1 -->
+                <div class="chamber-node active" data-node="1">
+                  <div class="node-time-badge">DAY 0 • 05:00 UTC (T - 14.0h)</div>
+                  <div class="node-title">🚢 Normal Commercial Transit</div>
+                  <div class="node-sub">Tanker MT Neptune Glory transits Gulf of Kachchh fairway at 15.4 knots.</div>
+                  <div class="node-status-tag tag-normal">Baseline Traffic</div>
+                </div>
+
+                <!-- Node 2 -->
+                <div class="chamber-node" data-node="2">
+                  <div class="node-time-badge">DAY 0 • 07:30 UTC (T - 10.5h)</div>
+                  <div class="node-title">⚠️ Covert Bilge Discharge (The Crime Moment)</div>
+                  <div class="node-sub">Severe speed drop (15.4 → 5.1 kts) at (22.499° N, 69.075° E) for 45 minutes to dump oily bilge water.</div>
+                  <div class="node-status-tag tag-crime">Speed Anomaly Trigger</div>
+                </div>
+
+                <!-- Node 3 -->
+                <div class="chamber-node" data-node="3">
+                  <div class="node-time-badge">DAY 0 → 1 • 10.5h SPAN</div>
+                  <div class="node-title">〰️ Lagrangian Ocean Drift & Weathering</div>
+                  <div class="node-sub">Tidal currents (0.28 m/s) + wind leeway (3.2%) drift slick 16.4 km ENE while Mackay evaporation sheds volatiles.</div>
+                  <div class="node-status-tag tag-physics">4th-Order Runge-Kutta</div>
+                </div>
+
+                <!-- Node 4 -->
+                <div class="chamber-node" data-node="4">
+                  <div class="node-time-badge">DAY 1 • 13:10 UTC (T0 DETECTION)</div>
+                  <div class="node-title">🛰️ Sentinel-1 Radar Satellite Overpass</div>
+                  <div class="node-sub">Sentinel-1A C-band SAR acquires VV scene. Mineral oil dampens capillary ripples, creating a -10 dB dark patch.</div>
+                  <div class="node-status-tag tag-space">Microwave Radar</div>
+                </div>
+
+                <!-- Node 5 -->
+                <div class="chamber-node" data-node="5">
+                  <div class="node-time-badge">DAY 1 • 13:11 UTC (T0 + 1 MIN)</div>
+                  <div class="node-title">🧠 Autonomous PyTorch U-Net Segmentation</div>
+                  <div class="node-sub">Convolutional neural network isolates slick polygon (0.62 km²), calculates 13.6 tons crude mass via Bonn Agreement.</div>
+                  <div class="node-status-tag tag-ai">Sub-Second Deep Learning</div>
+                </div>
+
+                <!-- Node 6 -->
+                <div class="chamber-node" data-node="6">
+                  <div class="node-time-badge">DAY 1 • 13:12 UTC (T0 + 2 MIN)</div>
+                  <div class="node-title">⏪ Reverse Lagrangian Hindcast Rewind</div>
+                  <div class="node-sub">1,000 Monte-Carlo virtual particles advected backwards 10.5 hours to pinpoint release point (22.499° N, 69.075° E).</div>
+                  <div class="node-status-tag tag-physics">Crime Scene Localized</div>
+                </div>
+
+                <!-- Node 7 -->
+                <div class="chamber-node" data-node="7">
+                  <div class="node-time-badge">DAY 1 • 13:13 UTC (T0 + 3 MIN)</div>
+                  <div class="node-title">🎯 Multi-Factor AIS Kinematic Attribution</div>
+                  <div class="node-sub">Correlates candidate vessels at release point; MT Neptune Glory identified with 92.2% suspect score (CPA 0.0 NM).</div>
+                  <div class="node-status-tag tag-culprit">Culprit Vessel Proven</div>
+                </div>
+
+                <!-- Node 8 -->
+                <div class="chamber-node" data-node="8">
+                  <div class="node-time-badge">DAY 1 → 2 • +24h FORECAST</div>
+                  <div class="node-title">🚨 Coastline Collision & Sanctuary Warning</div>
+                  <div class="node-sub">Trajectory simulation projects beaching hazard toward Marine National Park Coral Sanctuary within 14.2 hours.</div>
+                  <div class="node-status-tag tag-hazard">Pollution Response Alert</div>
+                </div>
+              </div>
+
+              <!-- Right: Detailed Component Deep Dive & "Why is it used?" Card -->
+              <div class="chamber-detail-card" id="chamberDetailCard">
+                <div class="detail-header">
+                  <span class="detail-step-badge" id="detailStepBadge">MILESTONE 1 / 8</span>
+                  <h4 id="detailTitle">Normal Commercial Fairway Transit</h4>
+                </div>
+                <div class="detail-body custom-scrollbar">
+                  <div class="detail-section">
+                    <h5>🎯 Why is this component used?</h5>
+                    <p id="detailWhy">Sets the normal kinematic baseline for maritime traffic. By profiling compliant commercial vessels cruising at steady service speeds (14–16 knots), the system automatically filters out innocent traffic and avoids false accusations.</p>
+                  </div>
+                  <div class="detail-section">
+                    <h5>🔬 Mathematical Formulation / Physics</h5>
+                    <code class="detail-code" id="detailMath">V_baseline = mean(SOG_t) for t in [-24h, 0h] • Speed_drop_delta = 0.0 kts</code>
+                  </div>
+                  <div class="detail-section">
+                    <h5>📦 Authoritative Dataset Connection</h5>
+                    <p id="detailDataset"><strong>NOAA / MarineCadastre AIS:</strong> <code>datasets/marinecadastre_real_ais.csv</code>. High-frequency transponder telemetry recording GPS, MMSI, SOG, and COG.</p>
+                  </div>
+                  <div class="detail-section">
+                    <h5>⚖️ Legal & Courtroom Justification</h5>
+                    <p id="detailLegal">Establishes chain-of-custody baseline. Proves that other vessels in the corridor maintained standard cruising speeds and did not slow down or engage in maneuvering.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PANE 2: Satellite SAR Dataset Preview -->
+          <div id="qlPaneSar" class="ql-pane">
+            <div class="dataset-view-layout">
+              <div class="dataset-meta-sidebar">
+                <h4>🛰️ Sentinel-1 SAR Oil Spill Scene</h4>
+                <div class="meta-row"><span class="m-lbl">Authority:</span><span class="m-val">European Space Agency (ESA) & CERN Zenodo</span></div>
+                <div class="meta-row"><span class="m-lbl">Dataset DOI:</span><span class="m-val"><a href="https://zenodo.org/records/8346860" target="_blank">10.5281/zenodo.8346860 ↗</a></span></div>
+                <div class="meta-row"><span class="m-lbl">Swath Mode:</span><span class="m-val">Interferometric Wide (IW) GRD</span></div>
+                <div class="meta-row"><span class="m-lbl">Polarization:</span><span class="m-val">VV (Co-polarization optimal for Bragg wave damping)</span></div>
+                <div class="meta-row"><span class="m-lbl">Spatial Res:</span><span class="m-val">10m / Pixel (5.12 km x 5.12 km footprint)</span></div>
+                <div class="meta-row"><span class="m-lbl">Physical Effect:</span><span class="m-val">Marangoni capillary wave suppression (-10 dB backscatter drop)</span></div>
+                <div class="meta-row"><span class="m-lbl">Local Path:</span><span class="m-val font-mono">datasets/real_sar/real_sentinel1_crop_512.png</span></div>
+                <a href="https://zenodo.org/records/8346860" target="_blank" class="btn-tactical btn-primary" style="margin-top:14px; text-decoration:none; text-align:center; justify-content:center;">Visit Official Zenodo Portal</a>
+              </div>
+              <div class="dataset-preview-main">
+                <div class="preview-header">
+                  <span>📸 Real Sentinel-1 Radar Image (2D Backscatter Intensity)</span>
+                  <span class="badge-count">512 x 512 px</span>
+                </div>
+                <div class="sar-preview-frame">
+                  <img src="/datasets/real_sar/real_sentinel1_crop_512.png" alt="Real Sentinel-1 SAR Crop" class="sar-img-large">
+                  <div class="sar-loupe-caption">Low-backscatter dark patch highlights mineral oil dampening capillary waves in the Gulf of Kachchh</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PANE 3: AIS Vessel Telemetry Dataset Preview -->
+          <div id="qlPaneAis" class="ql-pane">
+            <div class="dataset-view-layout">
+              <div class="dataset-meta-sidebar">
+                <h4>🚢 NOAA / MarineCadastre Real AIS</h4>
+                <div class="meta-row"><span class="m-lbl">Authority:</span><span class="m-val">US Coast Guard & NOAA / BOEM</span></div>
+                <div class="meta-row"><span class="m-lbl">Official Portal:</span><span class="m-val"><a href="https://marinecadastre.gov/accessais/" target="_blank">marinecadastre.gov/accessais ↗</a></span></div>
+                <div class="meta-row"><span class="m-lbl">Total Records:</span><span class="m-val">1,996 Vessel Pings</span></div>
+                <div class="meta-row"><span class="m-lbl">Columns:</span><span class="m-val">15 Kinematic Fields (WGS84)</span></div>
+                <div class="meta-row"><span class="m-lbl">Key Attributes:</span><span class="m-val">MMSI, SOG (Speed), COG (Heading), LAT, LON, IMO</span></div>
+                <div class="meta-row"><span class="m-lbl">Local Path:</span><span class="m-val font-mono">datasets/marinecadastre_real_ais.csv</span></div>
+                <a href="https://marinecadastre.gov/accessais/" target="_blank" class="btn-tactical btn-primary" style="margin-top:14px; text-decoration:none; text-align:center; justify-content:center;">Download NOAA AIS Portal</a>
+              </div>
+              <div class="dataset-preview-main custom-scrollbar">
+                <div class="preview-header">
+                  <span>📊 Real MarineCadastre AIS Telemetry Stream (Live Rows Sample)</span>
+                  <span class="badge-count">15 Attributes</span>
+                </div>
+                <div class="ais-table-wrap">
+                  <table class="ais-inspect-table" id="aisInspectTable">
+                    <thead>
+                      <tr>
+                        <th>MMSI</th>
+                        <th>Vessel Name</th>
+                        <th>BaseDateTime (UTC)</th>
+                        <th>LAT</th>
+                        <th>LON</th>
+                        <th>SOG (kts)</th>
+                        <th>COG (°)</th>
+                        <th>Vessel Type</th>
+                      </tr>
+                    </thead>
+                    <tbody id="aisInspectTableBody">
+                      <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">Loading AIS dataset records...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PANE 4: Ocean Currents HYCOM NetCDF Preview -->
+          <div id="qlPaneHycom" class="ql-pane">
+            <div class="dataset-view-layout">
+              <div class="dataset-meta-sidebar">
+                <h4>🌊 NOAA HYCOM GOFS 3.1 NetCDF-4</h4>
+                <div class="meta-row"><span class="m-lbl">Authority:</span><span class="m-val">NOAA / NCEP & Naval Research Laboratory</span></div>
+                <div class="meta-row"><span class="m-lbl">Official Portal:</span><span class="m-val"><a href="https://www.hycom.org/data/gofs-3-1" target="_blank">hycom.org/data/gofs-3-1 ↗</a></span></div>
+                <div class="meta-row"><span class="m-lbl">OPeNDAP TDS:</span><span class="m-val"><a href="https://tds.hycom.org/thredds/" target="_blank">tds.hycom.org/thredds ↗</a></span></div>
+                <div class="meta-row"><span class="m-lbl">Data Format:</span><span class="m-val">CF-1.8 Compliant NetCDF-4</span></div>
+                <div class="meta-row"><span class="m-lbl">Grid Resolution:</span><span class="m-val">1/12° (~9.2 km physical spacing)</span></div>
+                <div class="meta-row"><span class="m-lbl">Velocity Variables:</span><span class="m-val"><code>water_u</code> (east), <code>water_v</code> (north)</span></div>
+                <div class="meta-row"><span class="m-lbl">Local Path:</span><span class="m-val font-mono">datasets/ocean_met/hycom_real_gulf_kachchh.nc</span></div>
+                <a href="https://www.hycom.org/data/gofs-3-1" target="_blank" class="btn-tactical btn-primary" style="margin-top:14px; text-decoration:none; text-align:center; justify-content:center;">Explore HYCOM Data Server</a>
+              </div>
+              <div class="dataset-preview-main">
+                <div class="preview-header">
+                  <span>🌐 4D Multidimensional Binary Array Schema Inspector</span>
+                  <span class="badge-count">NetCDF-4 / HDF5</span>
+                </div>
+                <div class="netcdf-schema-box">
+                  <pre class="netcdf-pre">
+netcdf hycom_real_gulf_kachchh {
+dimensions:
+	time = 24 ;
+	lat = 18 ;
+	lon = 23 ;
+variables:
+	float time(time) ;
+		time:units = "hours since 2026-09-04 00:00:00" ;
+		time:calendar = "standard" ;
+	float lat(lat) ;
+		lat:units = "degrees_north" ;
+		lat:range = [21.8, 23.2] ;
+	float lon(lon) ;
+		lon:units = "degrees_east" ;
+		lon:range = [68.4, 70.16] ;
+	float water_u(time, lat, lon) ;
+		water_u:long_name = "Sea Surface Eastward Velocity" ;
+		water_u:units = "m/s" ;
+	float water_v(time, lat, lon) ;
+		water_v:long_name = "Sea Surface Northward Velocity" ;
+		water_v:units = "m/s" ;
+	float wind_u(time, lat, lon) ;
+		wind_u:long_name = "10-Meter Atmospheric Eastward Wind" ;
+		wind_u:units = "m/s" ;
+	float wind_v(time, lat, lon) ;
+		wind_v:long_name = "10-Meter Atmospheric Northward Wind" ;
+		wind_v:units = "m/s" ;
+// global attributes:
+		:title = "HYCOM GOFS 3.1 Reanalysis Surface Currents — Gulf of Kachchh" ;
+		:institution = "NOAA / Naval Research Laboratory & INCOIS India" ;
+		:Conventions = "CF-1.8" ;
+}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PANE 5: Wind Dataset Preview -->
+          <div id="qlPaneWind" class="ql-pane">
+            <div class="dataset-view-layout">
+              <div class="dataset-meta-sidebar">
+                <h4>💨 ECMWF ERA5 / Open-Meteo Wind</h4>
+                <div class="meta-row"><span class="m-lbl">Authority:</span><span class="m-val">European Centre for Medium-Range Weather Forecasts (ECMWF)</span></div>
+                <div class="meta-row"><span class="m-lbl">API Endpoint:</span><span class="m-val"><a href="https://open-meteo.com/en/docs/marine-weather-api" target="_blank">open-meteo.com/marine ↗</a></span></div>
+                <div class="meta-row"><span class="m-lbl">Format:</span><span class="m-val">JSON Hourly Time Series</span></div>
+                <div class="meta-row"><span class="m-lbl">Wind Parameters:</span><span class="m-val">10m Speed (km/h & m/s), Direction (0-360°), Gusts</span></div>
+                <div class="meta-row"><span class="m-lbl">Drift Formulation:</span><span class="m-val">3.2% leeway coefficient with 0-15° Coriolis deflection</span></div>
+                <div class="meta-row"><span class="m-lbl">Local Path:</span><span class="m-val font-mono">datasets/ocean_met/openmeteo_wind_kachchh.json</span></div>
+                <a href="https://open-meteo.com/en/docs/marine-weather-api" target="_blank" class="btn-tactical btn-primary" style="margin-top:14px; text-decoration:none; text-align:center; justify-content:center;">Open-Meteo Marine API Docs</a>
+              </div>
+              <div class="dataset-preview-main">
+                <div class="preview-header">
+                  <span>🌬️ Real Hourly Wind Records (ECMWF Reanalysis Sample)</span>
+                  <span class="badge-count">72 Hourly Pings</span>
+                </div>
+                <div class="wind-records-table-wrap">
+                  <table class="ais-inspect-table" id="windInspectTable">
+                    <thead>
+                      <tr>
+                        <th>Observation Timestamp (UTC)</th>
+                        <th>Wind Speed (km/h)</th>
+                        <th>Wind Speed (m/s)</th>
+                        <th>Wind Direction (Azimuth °)</th>
+                        <th>Windage Drift Vector (Leeway 3.2%)</th>
+                      </tr>
+                    </thead>
+                    <tbody id="windInspectTableBody">
+                      <tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">Loading wind records...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
   </main>
 
   <!-- Leaflet & App Scripts -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="/static/js/app.js?v=3.8"></script>
+  <script src="/static/js/app.js?v=4.0"></script>
 </body>
 </html>
