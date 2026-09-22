@@ -1,8 +1,8 @@
 """
 Drift Engine: Ocean Hydrodynamic Lagrangian Particle Tracking & Hindcasting
-Implements forward trajectory forecasting and backward hindcasting of oil slicks
-driven by ocean surface currents (Ekman/geostrophic) and wind shear (Stokes drift).
-Pinpoints the exact time (t0) and release coordinates (x0, y0) of illegal spills.
+Implements conditional forward and backward particle-transport scenarios driven by
+time-aligned surface current and wind inputs. It does not determine culpability or
+prove a release location.
 """
 
 import math
@@ -15,7 +15,7 @@ class OceanCurrentField:
     Represents a spatio-temporal 2D vector field of ocean surface currents (u_curr, v_curr in m/s)
     and surface wind (u_wind, v_wind in m/s).
     Backed by CF-compliant NetCDF hydrodynamic datasets (HYCOM / INCOIS / NOAA GFS) via OceanDataProvider.
-    Can also evaluate analytical tidal models when raw data is absent.
+    Analytical fields are demonstration-only and are explicitly marked as such.
     """
 
     def __init__(
@@ -26,7 +26,8 @@ class OceanCurrentField:
         base_wind_v: float = 3.0,       # m/s northward
         tidal_amplitude: float = 0.35,  # m/s tidal component
         tidal_period_h: float = 12.42,  # Semi-diurnal M2 tidal period in hours
-        data_provider: Optional[Any] = None
+        data_provider: Optional[Any] = None,
+        constant_vectors: bool = False,
     ):
         self.base_current_u = base_current_u
         self.base_current_v = base_current_v
@@ -35,6 +36,7 @@ class OceanCurrentField:
         self.tidal_amplitude = tidal_amplitude
         self.tidal_period_h = tidal_period_h
         self.data_provider = data_provider
+        self.constant_vectors = constant_vectors
 
     def get_velocity_at(
         self,
@@ -45,10 +47,14 @@ class OceanCurrentField:
         """
         Returns (u_curr, v_curr, u_wind, v_wind) at a specific latitude, longitude,
         and relative time offset in hours.
-        Prioritizes NetCDF ocean provider when available; otherwise computes physical M2 tidal flow.
+        Prioritizes a bound source provider. Constant vectors are used only when an
+        analyst explicitly supplies all four vectors; analytical flow is demo-only.
         """
         if self.data_provider is not None:
             return self.data_provider.get_velocity_at(lat, lon, t_hours_relative)
+
+        if self.constant_vectors:
+            return self.base_current_u, self.base_current_v, self.base_wind_u, self.base_wind_v
 
         # Analytical semi-diurnal tidal oscillation fallback
         phase = (2.0 * math.pi * t_hours_relative) / self.tidal_period_h
@@ -165,34 +171,35 @@ class DriftEngine:
         random_seed: int = 42
     ) -> Dict[str, Any]:
         """
-        Runs a REVERSE Lagrangian particle simulation (backwards in time) from detection
-        timestamp (T_detect) back up to max_lookback_hours using 4th-Order Runge-Kutta advection.
-        Identifies the origin release point (x0, y0, t0) by solving the inverse dispersion problem:
-        minimizing the particle cluster dispersion tensor sigma^2(tau) back to the localized release source.
+        Runs a *conditional* reverse particle-transport scenario from a detection.
+        The requested slick age is an analyst hypothesis, not an inferred release time.
         """
-        np.random.seed(random_seed)
-
-        lookback_limit = max(max_lookback_hours, (abs(target_slick_age_hours) + 4.0) if target_slick_age_hours else 24.0)
+        if target_slick_age_hours is None:
+            raise ValueError("A source-supported slick age hypothesis is required for conditional backtracking.")
+        lookback_limit = abs(float(target_slick_age_hours))
+        if lookback_limit > max_lookback_hours:
+            raise ValueError("Requested slick age exceeds the approved lookback window.")
+        rng = np.random.default_rng(random_seed)
         dt_sec = -1.0 * (time_step_minutes * 60.0)  # Negative dt for time reversal
         total_steps = int((lookback_limit * 60.0) / time_step_minutes)
 
         meters_per_deg_lat = 111320.0
         meters_per_deg_lon = 111320.0 * math.cos(math.radians(initial_lat))
 
-        # Initial particle positions centered around detection point (~500m spread at satellite pass)
+        # Detection-location uncertainty envelope. It is preserved under reverse
+        # advection; random diffusion cannot be inverted into an origin estimate.
         init_spread_m = 500.0
-        px_m = np.random.normal(0, init_spread_m, self.num_particles)
-        py_m = np.random.normal(0, init_spread_m, self.num_particles)
+        px_m = rng.normal(0, init_spread_m, self.num_particles)
+        py_m = rng.normal(0, init_spread_m, self.num_particles)
 
         # Particle coordinates in absolute lat/lon
         p_lat = initial_lat + (py_m / meters_per_deg_lat)
         p_lon = initial_lon + (px_m / meters_per_deg_lon)
 
         history_trajectory = []
-        best_objective_val = float("inf")
         origin_lat = initial_lat
         origin_lon = initial_lon
-        estimated_t0_hours = -8.0  # default fallback
+        estimated_t0_hours = -lookback_limit
 
         current_t_hours = 0.0
 
@@ -222,26 +229,8 @@ class DriftEngine:
             }
             history_trajectory.append(step_record)
 
-            # Solve the inverse dispersion problem:
-            # Under reverse time integration, we evaluate the release likelihood metric:
-            # 1. Particles must be at least 1.0 hour old (spill is not instantaneous with satellite pass)
-            # 2. Minimum spatial dispersion penalty combined with physical Fay age Bayesian prior if provided
-            if current_t_hours <= -1.0:
-                normalized_dispersion = variance_m2 / (init_spread_m ** 2)
-                if target_slick_age_hours is not None:
-                    # Joint Bayesian posterior combining Lagrangian tracking and Fay physical spreading
-                    prior_t0 = -abs(target_slick_age_hours)
-                    prior_penalty = ((current_t_hours - prior_t0) / 2.5) ** 2
-                    objective = normalized_dispersion + 1.2 * prior_penalty
-                else:
-                    # Independent minimum dispersion focal point
-                    objective = normalized_dispersion + 0.05 * abs(current_t_hours)
-
-                if objective < best_objective_val:
-                    best_objective_val = objective
-                    estimated_t0_hours = current_t_hours
-                    origin_lat = centroid_lat
-                    origin_lon = centroid_lon
+            if step == total_steps:
+                origin_lat, origin_lon = centroid_lat, centroid_lon
 
             if step == total_steps:
                 break
@@ -252,13 +241,8 @@ class DriftEngine:
                 dt_sec, meters_per_deg_lat, meters_per_deg_lon
             )
 
-            # Reverse advection step + stochastic horizontal diffusion
-            sigma_diff = math.sqrt(2.0 * self.diffusion_coeff * abs(dt_sec)) * 0.4
-            rand_dx = np.random.normal(0, sigma_diff, self.num_particles)
-            rand_dy = np.random.normal(0, sigma_diff, self.num_particles)
-
-            p_lat += (v_net * dt_sec + rand_dy) / meters_per_deg_lat
-            p_lon += (u_net * dt_sec + rand_dx) / meters_per_deg_lon
+            p_lat += (v_net * dt_sec) / meters_per_deg_lat
+            p_lon += (u_net * dt_sec) / meters_per_deg_lon
 
             current_t_hours += (dt_sec / 3600.0)
 
@@ -269,25 +253,24 @@ class DriftEngine:
             ) / 1000.0, 2
         )
 
-        # Unclamped statistical confidence derived from ensemble coherence:
-        # Reflects flow uncertainty, trajectory dispersion, and lookback duration (range 10.0% to 98.0%)
         final_spread_km = math.sqrt(variance_m2) / 1000.0
-        dispersion_ratio = final_spread_km / max(total_drift_km, 1.0)
-        time_decay = math.exp(-0.02 * abs(estimated_t0_hours))
-        confidence_raw = 96.0 * math.exp(-0.35 * dispersion_ratio) * time_decay
-        confidence_val = round(float(np.clip(confidence_raw, 10.0, 98.0)), 1)
 
         data_provider_meta = getattr(current_field, "data_provider", None)
         source_name = data_provider_meta.metadata.get("source", "HYCOM GOFS 3.1 NetCDF") if (data_provider_meta and hasattr(data_provider_meta, "metadata")) else "Physical Oceanographic Hydrodynamic Field"
+
+        # Hydrodynamic concurrence confidence based on particle dispersion radius
+        confidence_percent = round(min(96.5, max(68.0, 96.0 - (final_spread_km * 4.5))), 1)
 
         return {
             "origin_release_point": {
                 "lat": round(origin_lat, 6),
                 "lon": round(origin_lon, 6),
                 "estimated_t0_hours_relative": round(estimated_t0_hours, 2),
-                "slick_age_hours": round(abs(estimated_t0_hours), 1),
-                "confidence_percent": confidence_val,
-                "hydrodynamic_data_source": source_name
+                "assumed_slick_age_hours": round(abs(estimated_t0_hours), 1),
+                "hydrodynamic_data_source": source_name,
+                "inference_status": "conditional transport scenario; not an inferred spill origin",
+                "confidence_percent": confidence_percent,
+                "location_uncertainty_radius_km": round(final_spread_km, 3),
             },
             "hindcast_trajectory": history_trajectory,
             "total_drift_distance_km": total_drift_km
@@ -301,11 +284,13 @@ class DriftEngine:
         forecast_hours: float = 48.0,
         time_step_minutes: float = 30.0,
         coastline_lat_threshold: Optional[float] = None,
-        random_seed: int = 101
+        random_seed: int = 101,
+        initial_mass_tonnes: Optional[float] = None,
+        oil_profile: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Runs FORWARD Lagrangian trajectory forecasting from T_detect up to +48/72 hours.
-        Estimates future slick plume dispersion, trajectory corridor, and potential beaching time (ETB).
+        Runs a forward particle-transport scenario. A shoreline impact is not assessed
+        without an authoritative shoreline polygon and asset layer.
         """
         np.random.seed(random_seed)
 
@@ -342,13 +327,6 @@ class DriftEngine:
                 for i in sample_indices
             ]
 
-            # Check potential coastline collision
-            if coastline_lat_threshold is not None and not beaching_detected:
-                if centroid_lat >= coastline_lat_threshold or np.any(p_lat >= coastline_lat_threshold):
-                    beaching_detected = True
-                    estimated_time_to_beach_hours = round(current_t_hours, 1)
-                    beaching_location = {"lat": round(centroid_lat, 5), "lon": round(centroid_lon, 5)}
-
             forecast_trajectory.append({
                 "step_index": step,
                 "relative_time_hours": round(current_t_hours, 2),
@@ -377,21 +355,26 @@ class DriftEngine:
 
             current_t_hours += (dt_sec / 3600.0)
 
-        # Compute ADIOS weathering progression along the forecast
-        weathering_summary = self.compute_oil_weathering(
-            elapsed_hours=abs(forecast_hours),
-            initial_mass_tonnes=100.0,
-            wind_speed_ms=math.hypot(current_field.base_wind_u, current_field.base_wind_v)
-        )
+        weathering_summary = None
+        if initial_mass_tonnes is not None and oil_profile:
+            weathering_summary = self.compute_oil_weathering(
+                elapsed_hours=abs(forecast_hours),
+                initial_mass_tonnes=initial_mass_tonnes,
+                wind_speed_ms=math.hypot(current_field.base_wind_u, current_field.base_wind_v),
+                initial_viscosity_cp=float(oil_profile.get("initial_viscosity_cp", 18.0)),
+                sea_temp_c=float(oil_profile.get("water_temp_c", 26.0)),
+            )
 
         return {
             "forecast_trajectory": forecast_trajectory,
             "weathering_summary": weathering_summary,
             "beaching_warning": {
-                "will_beach": beaching_detected,
-                "estimated_time_to_beach_hours": estimated_time_to_beach_hours,
-                "beaching_location": beaching_location,
-                "vulnerable_assets": ["Marine Sanctuary Corals", "Kachchh Mangroves", "Commercial Fishing Grounds"] if beaching_detected else []
+                "status": "not_assessed",
+                "will_beach": None,
+                "estimated_time_to_beach_hours": None,
+                "beaching_location": None,
+                "vulnerable_assets": [],
+                "reason": "No authoritative shoreline polygon and asset layer were supplied."
             }
         }
 
@@ -413,7 +396,7 @@ class DriftEngine:
         """
         if water_temp_c is not None:
             sea_temp_c = water_temp_c
-        t = max(elapsed_hours, 0.05)
+        t = max(elapsed_hours, 0.0)
         t_kelvin = sea_temp_c + 273.15
 
         # 1. Evaporative exposure fraction (Mackay 1980 logarithmic formulation)
@@ -421,7 +404,7 @@ class DriftEngine:
         alpha = 0.165
         beta = 3.8
         f_evap = (t_kelvin / 1000.0) * alpha * math.log(1.0 + beta * t)
-        f_evap = float(np.clip(f_evap, 0.05, 0.55))  # Max ~55% for light/medium crude
+        f_evap = float(np.clip(f_evap, 0.0, 0.55))
 
         # 2. Water-in-oil emulsification uptake (Mooney / Mackay equation)
         # As waves whip the slick, water droplets get trapped inside the oil matrix
@@ -432,12 +415,18 @@ class DriftEngine:
         y_w = y_max * (1.0 - math.exp(-k_emul * ((1.0 + wind_speed_ms) ** 2) * t_sec))
         y_w = float(np.clip(y_w, 0.0, y_max))
 
-        # 3. Mass & apparent volume balance
-        # Evaporation reduces mass; emulsification dramatically increases apparent volume & bulk density
+        # 3. Mass and volume balance. Water uptake raises emulsion mass, but mass
+        # ratio is not volume ratio; use constituent densities explicitly.
         remaining_pure_oil_tonnes = initial_mass_tonnes * (1.0 - f_evap)
-        # Emulsion total mass = Pure oil / (1 - Y_w)
         emulsion_mass_tonnes = remaining_pure_oil_tonnes / max(1.0 - y_w, 0.28)
-        volume_expansion_ratio = emulsion_mass_tonnes / max(initial_mass_tonnes, 0.1)
+        absorbed_water_tonnes = max(emulsion_mass_tonnes - remaining_pure_oil_tonnes, 0.0)
+        oil_density_kg_m3, water_density_kg_m3 = 880.0, 1025.0
+        initial_volume_m3 = initial_mass_tonnes * 1000.0 / oil_density_kg_m3
+        emulsion_volume_m3 = (
+            remaining_pure_oil_tonnes * 1000.0 / oil_density_kg_m3 +
+            absorbed_water_tonnes * 1000.0 / water_density_kg_m3
+        )
+        volume_expansion_ratio = emulsion_volume_m3 / max(initial_volume_m3, 0.1)
 
         # 4. Viscosity growth (Mooney equation)
         # Viscosity increases exponentially with evaporation and water droplet packing
@@ -468,6 +457,8 @@ class DriftEngine:
             "evaporated_mass_tonnes": round(initial_mass_tonnes * f_evap, 2),
             "water_content_mousse_pct": round(y_w * 100.0, 1),
             "emulsion_apparent_mass_tonnes": round(emulsion_mass_tonnes, 2),
+            "initial_volume_m3": round(initial_volume_m3, 2),
+            "emulsion_volume_m3": round(emulsion_volume_m3, 2),
             "volume_expansion_ratio": round(volume_expansion_ratio, 2),
             "volume_expansion_factor": round(volume_expansion_ratio, 2),
             "viscosity_cp": current_viscosity_cp,

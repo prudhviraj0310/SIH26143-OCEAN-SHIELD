@@ -1,293 +1,195 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/SIH_2026-Problem_SIH26143-ff6b35?style=for-the-badge"/>
-  <img src="https://img.shields.io/badge/Organization-NTRO-0066cc?style=for-the-badge"/>
-  <img src="https://img.shields.io/badge/Theme-Disaster_Management-critical?style=for-the-badge"/>
-  <img src="https://img.shields.io/badge/Tests-11%2F11_Passing-brightgreen?style=for-the-badge"/>
-</p>
-
-<h1 align="center">🛡️ OCEAN-SHIELD</h1>
-<h3 align="center">Satellite SAR & Optical EO Oil Spill Detection · Hydrodynamic Hindcast · AIS Rogue Vessel Attribution</h3>
-
-<p align="center">
-  <strong>An end-to-end automated pipeline that detects marine oil spills from satellite imagery, traces them backward to their origin using ocean physics, and identifies the responsible vessel using AIS data correlation.</strong>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white"/>
-  <img src="https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?logo=pytorch&logoColor=white"/>
-  <img src="https://img.shields.io/badge/FastAPI-0.100+-009688?logo=fastapi&logoColor=white"/>
-  <img src="https://img.shields.io/badge/OpenCV-4.8+-5C3EE8?logo=opencv&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Leaflet.js-1.9-199900?logo=leaflet&logoColor=white"/>
-</p>
+# 🌊 OCEAN-SHIELD
+### Evidence-Aware Satellite Remote Sensing & AIS Maritime Spill Investigation Workspace
+**Problem Statement ID:** SIH26143 | **Organization:** National Technical Research Organisation (NTRO)  
+**Theme:** Disaster Management & Maritime Environmental Security | **Target Authority:** Indian Coast Guard & DG Shipping
 
 ---
 
-## 📌 Problem Statement
+## 📌 Executive Overview
 
-> **SIH26143:** *"Leveraging satellite imagery to determine Oil spills at sea along with AIS data correlations to identify vessel responsible for the spill."*
->
-> — National Technical Research Organisation (NTRO), Smart India Hackathon 2026
+**OCEAN-SHIELD** is an SIH prototype for investigating unattributed marine oil spills in Indian Exclusive Economic Zones (EEZ) and strategic maritime chokepoints (Gulf of Kachchh, Mumbai High, Great Nicobar Channel). It makes input provenance and model limitations visible, so an analyst can distinguish a demonstration from a field-data screening run.
 
-When rogue commercial vessels flush oily bilge water or wash cargo slop tanks under cover of darkness, they inflict catastrophic damage on marine ecosystems. When they disable AIS transponders, conventional coast guard patrols are blind. **OCEAN-SHIELD** automates the entire investigation chain — from satellite pixel to suspect vessel.
+Illegal or accidental discharges can damage fragile marine sanctuaries, coral reefs, and coastal fishing grounds. AIS coverage can be incomplete for ordinary technical and operational reasons; an AIS gap is a review cue, not evidence of intent.
+
+OCEAN-SHIELD delivers an **end-to-end automated screening and decision-support chain**:
+1. **Multi-Modal Satellite Detection:** Dual C-Band SAR (Sentinel-1) & Electro-Optical Multi-Spectral (Sentinel-2 MSI) screening with a PyTorch U-Net, an adaptive CFAR alternative, and super-resolution visualization.
+2. **Lagrangian 4th-Order Runge-Kutta Hydrodynamic Hindcast:** Backward drift advection using a selected gridded or scenario-grade current field and optional operator-supplied wind vectors to estimate a candidate release origin $(x_0, y_0, t_0)$.
+3. **Mackay ADIOS Physical Oil Weathering Model:** Computes volatile evaporative depletion, Mooney-Mackay water-in-oil chocolate mousse emulsification, dynamic viscosity surge, and volume expansion.
+4. **AIS Correlative Lead Ranking & Radar/AIS Review:** Ingests time-aligned NOAA/MarineCadastre-format AIS data, ranks candidate vessels on CPA distance, temporal coincidence, and speed variation, and highlights radar/AIS mismatches for coverage verification.
+5. **Analyst-review case summary:** A reproducible PDF that records model outputs, caveats, and recommended verification steps. It is not a statutory notice or finding of liability.
 
 ---
 
-## 🏛️ System Architecture
+## 🏛️ System Architecture Topology
 
 ```mermaid
 flowchart TD
-    subgraph INPUT["📡 Multi-Modal Satellite Input"]
-        SAR["Sentinel-1 SAR\n(C-Band VV Radar)"]
-        EO["Sentinel-2 MSI\n(Optical VNIR/SWIR)"]
-        AIS_DATA["Historic AIS Traffic\n(MarineCadastre CSV)"]
-        OCEAN["HYCOM Ocean Currents\n(NetCDF 4D Grid)"]
+    subgraph SATELLITE_REMOTE_SENSING["1. Multi-Modal Satellite Remote Sensing"]
+        S1["Sentinel-1 SAR Radar (C-Band VV)"] --> SPECKLE["Enhanced Lee Speckle Filter"]
+        SPECKLE --> SR["AI Super-Resolution 2X Enhancer"]
+        SR --> UNET["PyTorch SAR U-Net (Zenodo Trained)"]
+        UNET --> SLICK_GEOM["Geometric Characterization\n(Area, Elongation, Mass, Age)"]
+        
+        S1 --> CFAR["CFAR High-Backscatter Ship Detection"]
+        CFAR --> RADAR_CONTACTS["Radar Metallic Ship Targets (RCS dB)"]
+        
+        S2["Sentinel-2 MSI Optical EO (VNIR/SWIR)"] --> NDOI["Normalized Difference Oil Index (NDOI)"]
+        NDOI --> FAI["Floating Algae Index (FAI Lookalike Rejection)"]
     end
 
-    subgraph DETECTION["🔍 Stage 1: Oil Spill Detection"]
-        SAR --> SPECKLE["Enhanced Lee\nSpeckle Filter"]
-        SPECKLE --> UNET["PyTorch U-Net\nDeep Learning"]
-        SPECKLE --> CFAR_OIL["Adaptive CFAR\nClassical Fallback"]
-        UNET --> GEOM["Geometric Analysis\n8 Properties + Age"]
-        CFAR_OIL --> GEOM
-
-        SAR --> CFAR_SHIP["CFAR Ship\nRadar Extraction"]
-
-        EO --> NDOI["NDOI Index\nOil Detection"]
-        NDOI --> FAI["FAI Filter\nLookalike Rejection"]
+    subgraph DRIFT_ENGINE["2. Hydrodynamic & Weathering Core"]
+        OCEAN_VECTORS["Gridded Ocean Currents (u, v)"] & WIND_VECTORS["Surface Wind Fields (10m)"] --> RK4["4th-Order Runge-Kutta Lagrangian Particle Swarm"]
+        SLICK_GEOM --> RK4
+        RK4 --> HINDCAST["Reverse Hindcast -> Origin Epicenter (x0, y0, t0)"]
+        RK4 --> FORECAST["Forward Forecast -> Coastal Intercept & ETB"]
+        RK4 --> ADIOS["Mackay ADIOS Physical Weathering Model\n(Evaporation, Mousse, Viscosity, Volume)"]
     end
 
-    subgraph DRIFT["🌊 Stage 2: Hydrodynamic Drift"]
-        OCEAN --> RK4["RK4 Lagrangian\nParticle Tracking"]
-        GEOM --> RK4
-        RK4 --> HINDCAST["⬅️ Backward Hindcast\nOrigin x₀ y₀ t₀"]
-        RK4 --> FORECAST["➡️ Forward Forecast\nCoastal Intercept"]
-        RK4 --> ADIOS["Mackay ADIOS\nOil Weathering"]
+    subgraph AIS_ENGINE["3. Vessel Lead Ranking & Radar/AIS Review"]
+        AIS_STREAM["Historic AIS Traffic (NOAA / MarineCadastre)"] --> CORRIDOR_FILTER["Spatiotemporal Corridor Filtering (CPA, Delta-t)"]
+        HINDCAST --> CORRIDOR_FILTER
+        CORRIDOR_FILTER --> KINEMATICS["Kinematic Review Scoring\n(Speed Variation, Vessel Class)"]
+        KINEMATICS --> SUSPECT_RANKING["Composite Investigative-lead Ranking"]
+        
+        RADAR_CONTACTS & AIS_STREAM --> DARK_DETECTOR["Time-aligned Radar-to-AIS Cross-Referencing"]
+        DARK_DETECTOR --> DARK_VESSELS["Radar/AIS Mismatch Cues\n(Analyst Verification Required)"]
     end
 
-    subgraph ATTRIBUTION["🚢 Stage 3: Vessel Attribution"]
-        HINDCAST --> CORRIDOR["Spatiotemporal\nCorridor Filter"]
-        AIS_DATA --> CORRIDOR
-        CORRIDOR --> SCORING["5-Factor Composite\nSuspect Scoring"]
-        CFAR_SHIP --> DARK["Dark Vessel\nDetection"]
-        SCORING --> RANKED["Ranked Suspect\nVessel List"]
+    subgraph REVIEW["4. Operational Review & Case Summary"]
+        SUSPECT_RANKING & DARK_VESSELS & ADIOS --> COCKPIT["Maritime Command Cockpit (Web GIS HUD)"]
+        COCKPIT --> PDF["Analyst-Review Case Summary (PDF)"]
     end
-
-    subgraph OUTPUT_STAGE["📋 Stage 4: Operational Output"]
-        RANKED --> DASHBOARD["Web Dashboard\nLeaflet GIS Map"]
-        RANKED --> PDF["PDF Case\nDossier Report"]
-        DARK --> DASHBOARD
-        ADIOS --> DASHBOARD
-    end
-
-    style INPUT fill:#1a1a2e,color:#fff
-    style DETECTION fill:#16213e,color:#fff
-    style DRIFT fill:#0f3460,color:#fff
-    style ATTRIBUTION fill:#533483,color:#fff
-    style OUTPUT_STAGE fill:#e94560,color:#fff
 ```
 
 ---
 
-## ⚡ Quickstart
+## 📊 Deep Learning & Physical Validation Metrics
 
-### 1. Install
+### 1. PyTorch SAR U-Net Architecture
+- **Architecture:** 4-stage encoder-decoder with DoubleConv, BatchNorm, ReLU, MaxPool downsampling, Bilinear upsampling, and skip connections (`src/ocean_shield/models/unet.py`).
+- **Loss Function:** Combined `DiceBCELoss` ($\mathcal{L} = \text{BCE} + (1 - \text{Dice})$) for severe class imbalance handling.
+- **Tiled Sliding Window Inference:** Seamless 2D Hann-window overlap blending (`stride=192, tile=256`) to process large satellite swaths without GPU out-of-memory errors.
+- **Model Checkpoint:** `models/sar_unet_best.pt` provided for proof-of-concept pipeline execution and tensor flow validation.
+- **Production Roadmap:** Operational deployment requires end-to-end training against full-resolution (84+ GB) Sentinel-1 GRD imagery from the Copernicus Open Access Hub with rigorous geographical train/validation/test splits.
+
+### 2. Mackay ADIOS Physical Weathering Model
+Simulates the chemical & rheological transformation of spilled crude oil:
+- **Volatile Evaporation:** $F_{\text{evap}} = \left(\frac{T}{1000}\right) \alpha \ln(1 + \beta t)$ ($22\% \to 35\%$ loss).
+- **Mooney-Mackay Emulsification:** $Y_w = Y_{\max}\left(1 - \exp\left(-k_{\text{emul}}(1 + W)^2 t_{\text{sec}}\right)\right)$ ($Y_{\max} = 75\%$ water mousse).
+- **Dynamic Viscosity Surge:** $\mu(t) = \mu_0 \exp\left(\frac{2.5 Y_w}{1 - 0.65 Y_w}\right) \exp(8 F_{\text{evap}})$ (grows from 18 cP to $>4,000\text{ cP}$).
+- **Apparent Volume Expansion:** $V(t) / V_0 > 2.5\times$ due to water incorporation.
+
+### 3. Electro-Optical (EO) Multi-Spectral Validation
+- **Normalized Difference Oil Index (NDOI):** $\text{NDOI} = \frac{\text{NIR} - \text{Red}}{\text{NIR} + \text{Red}}$ (sunglint crude oil refractive index $n \approx 1.50$ vs water $n \approx 1.34$).
+- **Floating Algae Index (FAI):** Rejects biogenic algal blooms (red-edge chlorophyll absorption vs flat hydrocarbon absorption curve).
+
+---
+
+## ⚡ Quickstart & Installation
+
+### 1. Environment Setup
 ```bash
+# Clone repository
 git clone https://github.com/prudhviraj0310/SIH26143-OCEAN-SHIELD.git
 cd SIH26143-OCEAN-SHIELD
 
-python3 -m venv .venv && source .venv/bin/activate
+# Create and activate Python virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install production dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Launch Dashboard
+### 2. Launch Interactive Command Center (Web Cockpit)
 ```bash
 python server.py
-# → http://127.0.0.1:8090
+# Server will start immediately at: http://127.0.0.1:8090
 ```
+Open **`http://127.0.0.1:8090`** in any web browser to access:
+- Live Leaflet tactical map with selectable basemap
+- Model selector: Toggle between **PyTorch U-Net (Deep Learning)** and **Adaptive CFAR (Tactical Edge)**
+- Modelled oil-weathering card
+- Interactive Timeline Scrubber ($-18\text{h}$ hindcast to $+24\text{h}$ future forecast)
+- AIS lead ranking and radar/AIS review cues
+- Provenance-first input panel with SAR raster upload, historic AIS CSV ingestion, and optional met-ocean vector override
+- One-click analyst-review case summary PDF download
 
-### 3. Run CLI Pipeline
+### 3. Run Headless CLI Attribution (No Browser Required)
 ```bash
+# Run full forensic pipeline from terminal
 python ocean_shield_cli.py --scenario gulf_of_kachchh --engine unet --export-pdf
+
+# Ingest custom NOAA / MarineCadastre AIS CSV
+python ocean_shield_cli.py --scenario gulf_of_kachchh --ais-csv datasets/marinecadastre_sample_ais.csv
 ```
 
-### 4. Run Tests
+### 4. Field-data workflow
+
+1. Select **Add SAR raster** and provide the documented scene centre and pixel size (PNG/JPEG/single-band TIFF).
+2. Select **Ingest historic AIS CSV**. The parser requires `MMSI`, `BaseDateTime`, `LAT`, and `LON`, preserves actual ping timing, and labels the file with a SHA-256 hash.
+3. Optionally enter time-aligned met-ocean vectors; the interface marks this as an operator-supplied override.
+4. Treat every score as an investigative lead. Preserve original calibrated source products and obtain analyst review before escalation.
+
+### 5. Live source configuration
+
+The **Live Ingestion** panel never substitutes a demo object when a provider is unavailable:
+
+- NASA ASF catalogue metadata and Open-Meteo modelled marine context work without credentials.
+- Set `AISSTREAM_API_KEY` in the server environment to plot received AIS PositionReports.
+- Set `OIL_SPILL_FEED_URL` (and, if required, `OIL_SPILL_FEED_TOKEN`) to an authority-approved JSON/GeoJSON incident feed.
+- NGA World Port Index is a monthly refreshed reference catalogue, not a live port-operations feed.
+
+Use [`.env.example`](.env.example) as a variable reference, then export the values in the server environment. Secrets are never sent to the browser. A live catalogue result is not a SAR raster: upload an authenticated source scene and its metadata before running the analytical pipeline.
+
+### 5. Execute Automated Verification Suite
 ```bash
-PYTHONPATH=. python -m unittest src.ocean_shield.tests.test_pipeline -v
-# 11/11 tests pass in ~7 seconds
+python -m unittest src/ocean_shield/tests/test_pipeline.py -v
 ```
-
----
-
-## 🔌 REST API Reference
-
-All endpoints served by FastAPI with auto-generated OpenAPI docs at `/docs`.
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/` | Web dashboard (Leaflet.js tactical map) |
-| `GET` | `/api/health` | System health check |
-| `GET` | `/api/scenarios` | List all pre-configured maritime scenarios |
-| `GET` | `/api/scenario/{id}` | Full scenario details + SAR image (base64) |
-| `POST` | `/api/analyze-sar` | Run SAR oil spill detection (U-Net or CFAR) |
-| `POST` | `/api/analyze-sar-upload` | Upload custom SAR raster for analysis |
-| `POST` | `/api/analyze-eo` | Run multispectral EO detection (NDOI/FAI) |
-| `POST` | `/api/simulate-drift` | Run hindcast + forecast drift simulation |
-| `POST` | `/api/correlate-ais` | AIS vessel attribution & suspect ranking |
-| `GET` | `/api/export-dossier/{id}` | Download PDF case dossier |
-| `POST` | `/api/export-case-summary` | Generate custom PDF case summary |
-| `POST` | `/api/upload-ais-csv` | Ingest MarineCadastre AIS CSV data |
-
----
-
-## 🧠 Technical Deep Dive
-
-### SAR Oil Spill Detection (Dual Pipeline)
-
-| Engine | Method | File |
-|--------|--------|------|
-| **PyTorch U-Net** | 4-stage encoder-decoder with DoubleConv, BatchNorm, skip connections. Tiled Hann-window blending for large swaths. | `src/ocean_shield/models/unet.py` |
-| **Adaptive CFAR** | Constant False Alarm Rate segmentation with Enhanced Lee speckle filter. | `src/ocean_shield/sar_engine.py` |
-| **ESPCN Super-Resolution** | Sub-Pixel CNN that enhances SAR imagery 2x before detection. | `src/ocean_shield/models/super_resolution.py` |
-
-### Geometric Properties Computed
-`area_km²` · `perimeter_km` · `elongation` · `orientation_deg` · `complexity_index` · `estimated_volume_m³` · `estimated_mass_tonnes` · `polygon_geojson`
-
-### Slick Age Estimation
-Fay's 3-Stage Spreading Theory (Fay 1971, Lehr 1984, Mackay 1980) with Mackay wind shear correction. Bounds: 0.5h – 48h.
-
-### Lagrangian Drift Engine
-- **4th-Order Runge-Kutta** (RK4) advection with 4-stage velocity evaluation
-- 1000-particle Monte Carlo ensemble with turbulent diffusion
-- 3.2% Stokes wind drift + 15° Ekman deflection
-- Dispersion tensor minimization to locate origin
-- HYCOM NetCDF ingestion + analytical tidal fallback
-
-### AIS Vessel Attribution Scoring
-
-```
-Score = 0.35 × S_proximity + 0.25 × S_temporal + 0.20 × S_speed + 0.10 × S_course + 0.10 × S_type
-```
-
-| Factor | Method |
-|--------|--------|
-| **Proximity** | Gaussian spatial decay |
-| **Temporal** | Gaussian time decay from origin t₀ |
-| **Speed Anomaly** | Slow-speed discharge profile (2–5 kn) |
-| **Course Anomaly** | Zigzag / erratic heading detection |
-| **Vessel Type** | Risk weighting (Tanker > Bulk > Container) |
-| **AIS Gap** | +15 penalty for transponder blackout > 45 min |
-
-Suspects tiered: 🔴 HIGH-PRIORITY · 🟡 MEDIUM-PRIORITY · 🟢 LOW-PRIORITY
-
-### Mackay ADIOS Oil Weathering
-- Volatile evaporation (22% → 35% mass loss)
-- Mooney-Mackay emulsification (up to 75% water mousse)
-- Dynamic viscosity surge (18 cP → 4,000+ cP)
-- Volume expansion (> 2.5x from water incorporation)
+The suite covers the pipeline and AIS CSV ingestion. Install the declared dependencies before running it.
 
 ---
 
 ## 📂 Repository Structure
 
 ```
-SIH26143-OCEAN-SHIELD/
-├── server.py                       # Root web gateway (port 8090)
-├── ocean_shield_cli.py             # Headless CLI interface
-├── requirements.txt                # Dependencies
-│
+planning for sih/
+├── server.py                                    # Root web gateway (port 8090)
+├── ocean_shield_cli.py                          # Headless operational CLI interface
+├── requirements.txt                             # Production dependencies (PyTorch, OpenCV, ReportLab, FastAPI)
 ├── models/
-│   ├── sar_unet_best.pt            # Trained U-Net weights
-│   └── sar_espcn_best.pt           # ESPCN SR weights
-│
+│   └── sar_unet_best.pt                         # Trained PyTorch U-Net weights (50.1 MB)
 ├── datasets/
-│   ├── marinecadastre_*.csv        # NOAA AIS vessel traffic
-│   ├── ocean_met/                  # HYCOM NetCDF ocean currents
-│   ├── real_sar/                   # Sentinel-1 SAR samples
-│   └── real_eo/                    # Sentinel-2 multispectral
-│
+│   ├── marinecadastre_sample_ais.csv            # Official NOAA/BOEM AIS vessel traffic dataset
+│   ├── README.md                                # Official dataset schemas and citations
+│   └── zenodo_sentinel1_sar/                    # Zenodo Sentinel-1 ground truth masks & samples
 ├── scripts/
-│   ├── train_sar_unet.py           # U-Net training pipeline
-│   ├── train_espcn.py              # ESPCN training pipeline
-│   └── download_real_data.py       # Dataset download utility
-│
-├── reports/                        # Generated PDF dossiers
-│
-└── src/ocean_shield/
-    ├── models/
-    │   ├── unet.py                 # SAR_UNet + DiceBCELoss
-    │   └── super_resolution.py     # ESPCN sub-pixel CNN
-    ├── sar_engine.py               # SAR detection — 653 lines
-    ├── eo_engine.py                # EO detection — 221 lines
-    ├── drift_engine.py             # RK4 drift + ADIOS — 483 lines
-    ├── ais_engine.py               # AIS attribution — 449 lines
-    ├── ocean_data.py               # HYCOM provider — 434 lines
-    ├── scenarios.py                # 6 Indian Ocean scenarios
-    ├── ais_ingestion.py            # MarineCadastre CSV parser
-    ├── report_generator.py         # PDF generator — 476 lines
-    ├── server.py                   # FastAPI REST — 595 lines
-    ├── templates/index.html        # Dashboard (417 lines)
-    ├── static/css/dashboard.css    # CSS (938 lines)
-    ├── static/js/app.js            # Leaflet.js (1065 lines)
-    └── tests/test_pipeline.py      # 11 tests (296 lines)
+│   ├── train_sar_unet.py                        # Complete PyTorch U-Net training pipeline
+│   └── download_zenodo_dataset.py               # Safe Zenodo archive extraction utility
+├── reports/
+│   └── Test_Verification_Dossier.pdf           # Sample analyst-review case summary
+└── src/
+    └── ocean_shield/
+        ├── models/                              # PyTorch neural network modules (SAR_UNet, DiceBCELoss)
+        ├── sar_engine.py                        # Sentinel-1 C-band SAR processing & CFAR ship extraction
+        ├── eo_engine.py                         # Sentinel-2 multispectral optical EO (NDOI / FAI)
+        ├── drift_engine.py                      # Lagrangian RK4 drift & Mackay ADIOS oil weathering
+        ├── ais_engine.py                        # Spatiotemporal correlation, kinematics & Dark Vessel detection
+        ├── scenarios.py                         # Benchmark maritime sectors (Kachchh, Mumbai High, Nicobar)
+        ├── report_generator.py                  # Analyst-review ReportLab case-summary generator
+        ├── server.py                            # FastAPI REST service
+        ├── cli.py                               # Terminal command logic
+        ├── templates/index.html                 # Tactical Command Center cockpit interface
+        ├── static/css/dashboard.css             # Military glassmorphism design system
+        ├── static/js/app.js                     # Tactical GIS Leaflet controller & particle animation
+        └── tests/test_pipeline.py               # Full unit & integration test suite
 ```
 
-**Total: ~3,300 lines core Python · ~2,400 lines frontend**
-
 ---
 
-## 🧪 Test Suite (11/11 Passing)
+## ⚖️ Operational and legal boundary
 
-| # | Test | Validates |
-|---|------|-----------|
-| 1 | `test_sar_engine_segmentation_and_super_resolution` | Lee filter, CFAR segmentation, SR enhancement |
-| 2 | `test_pytorch_unet_deep_learning_pipeline` | Real PyTorch U-Net architecture and inference |
-| 3 | `test_tiled_sliding_window_unet_inference` | Hann-window overlap for large scenes |
-| 4 | `test_eo_engine_optical_multispectral_processing` | NDOI/FAI detection + lookalike rejection |
-| 5 | `test_drift_engine_hindcast_and_forecast` | Reverse + forward Lagrangian drift |
-| 6 | `test_adios_physical_oil_weathering_model` | Evaporation, emulsification, viscosity |
-| 7 | `test_ais_correlation_and_culprit_attribution` | Corridor filter + scoring + ranking |
-| 8 | `test_radar_ship_detection_and_ais_review_cues` | CFAR ship extraction + radar/AIS correlation |
-| 9 | `test_marinecadastre_ais_csv_ingestion` | Time-preserving CSV parsing |
-| 10 | `test_real_hycom_netcdf_ingestion_and_provenance` | NOAA HYCOM NetCDF ingestion |
-| 11 | `test_all_scenarios_and_dossier_pdf` | End-to-end pipeline + PDF generation |
+OCEAN-SHIELD does not issue enforcement orders, establish chain of custody, prove a discharge, or make a legal finding. Any real investigation must retain calibrated source data and follow the competent authority's approved procedures, legal review, and applicable evidence rules.
 
 ---
-
-## 📊 Data Sources
-
-| Dataset | Source | Usage |
-|---------|--------|-------|
-| Sentinel-1 SAR GRD | ESA Copernicus | C-Band radar oil detection |
-| Sentinel-2 MSI L2A | ESA Copernicus | Optical multispectral validation |
-| HYCOM GOFS 3.1 | NOAA / INCOIS | Ocean surface currents |
-| AIS Vessel Traffic | MarineCadastre.gov | Historic vessel positions |
-| GFS Surface Winds | NOAA NCEP | Wind vectors for Stokes drift |
-
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Deep Learning | PyTorch 2.0+, U-Net, ESPCN |
-| Computer Vision | OpenCV 4.8+ |
-| Numerical Physics | NumPy, SciPy |
-| Ocean Data | netCDF4 |
-| Backend | FastAPI + Uvicorn |
-| Frontend | HTML5, Vanilla JS, Leaflet.js, CSS3 |
-| PDF Reports | ReportLab |
-| Testing | Python unittest |
-
----
-
-## ⚖️ Legal Boundary
-
-> OCEAN-SHIELD is a **decision-support screening tool**, not an enforcement system. Every score is an investigative lead. Real investigations must retain calibrated source data and follow approved procedures with legal review.
-
----
-
-<p align="center">
-  <strong>Smart India Hackathon 2026 (SIH26143)</strong><br/>
-  National Technical Research Organisation (NTRO) · Indian Coast Guard · DG Shipping<br/><br/>
-  <img src="https://img.shields.io/badge/Made_with-❤️_in_India-ff6b35?style=for-the-badge"/>
-</p>
+*Developed for Smart India Hackathon 2026 (SIH26143) &bull; National Technical Research Organisation (NTRO)*

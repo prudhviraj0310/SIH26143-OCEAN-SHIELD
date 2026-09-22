@@ -14,7 +14,7 @@ import asyncio
 import urllib.request
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 import numpy as np
 import cv2
 from fastapi import FastAPI, HTTPException, Request
@@ -31,25 +31,35 @@ if __package__ is None or __package__ == "":
         sys.path.insert(0, _pkg_root)
     from src.ocean_shield.sar_engine import SAREngine
     from src.ocean_shield.drift_engine import DriftEngine, OceanCurrentField
+    from src.ocean_shield.ocean_data import DataCoverageError
     from src.ocean_shield.ais_engine import AISEngine
     from src.ocean_shield.eo_engine import EOEngine
     from src.ocean_shield.scenarios import (
         get_all_scenarios, get_scenario_sar_and_currents, get_scenario_eo_data,
-        image_to_base64_png, generate_synthetic_sar_image
+        image_to_base64_png
     )
     from src.ocean_shield.report_generator import DossierReportGenerator
     from src.ocean_shield.ais_ingestion import MAX_AIS_UPLOAD_BYTES, parse_marinecadastre_csv
+    from src.ocean_shield.live_fetcher import (
+        fetch_live_satellite_passes, fetch_live_ocean_weather, fetch_live_ais_traffic,
+        fetch_world_port_index, fetch_live_oil_spill_incidents, live_provider_status
+    )
 else:
     from .sar_engine import SAREngine
     from .drift_engine import DriftEngine, OceanCurrentField
+    from .ocean_data import DataCoverageError
     from .ais_engine import AISEngine
     from .eo_engine import EOEngine
     from .scenarios import (
         get_all_scenarios, get_scenario_sar_and_currents, get_scenario_eo_data,
-        image_to_base64_png, generate_synthetic_sar_image
+        image_to_base64_png
     )
     from .report_generator import DossierReportGenerator
     from .ais_ingestion import MAX_AIS_UPLOAD_BYTES, parse_marinecadastre_csv
+    from .live_fetcher import (
+        fetch_live_satellite_passes, fetch_live_ocean_weather, fetch_live_ais_traffic,
+        fetch_world_port_index, fetch_live_oil_spill_incidents, live_provider_status
+    )
 
 logger = logging.getLogger("ocean_shield.keep_alive")
 
@@ -66,6 +76,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# GZip compress responses > 500 bytes (app.js 122KB → ~25KB, HTML 70KB → ~15KB)
+from starlette.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # Base directories
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -93,6 +107,17 @@ report_gen = DossierReportGenerator(output_dir=REPORTS_DIR)
 
 MAX_SAR_UPLOAD_BYTES = 25 * 1024 * 1024
 
+_scenario_cache: Dict[str, Tuple[np.ndarray, Any, Dict[str, Any]]] = {}
+
+def resolve_scenario_sar_and_currents(scenario_id: str) -> Tuple[np.ndarray, OceanCurrentField, Dict[str, Any]]:
+    """Resolve a benchmark scenario or a user-uploaded source scene.
+    Results are cached in-memory to avoid repeated NetCDF/AIS parsing on every API call."""
+    if scenario_id in _scenario_cache:
+        return _scenario_cache[scenario_id]
+    result = get_scenario_sar_and_currents(scenario_id)
+    _scenario_cache[scenario_id] = result
+    return result
+
 
 def _validated_coordinate(value: float, low: float, high: float, name: str) -> float:
     if not math.isfinite(value) or not low <= value <= high:
@@ -115,6 +140,13 @@ def _decode_uploaded_sar(content: bytes) -> np.ndarray:
 
 
 # --- Request Models ---
+class LiveMissionRequest(BaseModel):
+    lat: float = Field(default=22.585, ge=-90.0, le=90.0)
+    lon: float = Field(default=69.185, ge=-180.0, le=180.0)
+    title: str = "Live Operational AOI"
+    region: str = "Live Satellite & Ocean Stream"
+
+
 class AnalyzeSARRequest(BaseModel):
     scenario_id: str = "gulf_of_kachchh"
     use_super_resolution: bool = True
@@ -128,19 +160,25 @@ class AnalyzeEORequest(BaseModel):
 
 class SimulateDriftRequest(BaseModel):
     scenario_id: str = "gulf_of_kachchh"
+    demo_mode: bool = False
     slick_lat: float
     slick_lon: float
-    slick_age_hours: Optional[float] = None
+    scene_acquired_at_utc: Optional[str] = None
+    slick_age_hours: Optional[float] = Field(default=None, gt=0.0, le=168.0)
     max_lookback_hours: float = Field(default=24.0, ge=1.0, le=168.0)
     forecast_hours: float = Field(default=48.0, ge=1.0, le=168.0)
     current_u_ms: Optional[float] = Field(default=None, ge=-5.0, le=5.0)
     current_v_ms: Optional[float] = Field(default=None, ge=-5.0, le=5.0)
     wind_u_ms: Optional[float] = Field(default=None, ge=-60.0, le=60.0)
     wind_v_ms: Optional[float] = Field(default=None, ge=-60.0, le=60.0)
+    met_ocean_reference: Optional[str] = Field(default=None, max_length=300)
+    initial_mass_tonnes: Optional[float] = Field(default=None, gt=0.0, le=1_000_000.0)
+    oil_profile: Optional[Dict[str, float]] = None
 
 
 class CorrelateAISRequest(BaseModel):
     scenario_id: str = "gulf_of_kachchh"
+    demo_mode: bool = False
     origin_lat: float
     origin_lon: float
     origin_time_rel_h: float
@@ -306,7 +344,7 @@ async def inspect_datasets():
                 "size_bytes": ais_size,
                 "columns": ["MMSI", "BaseDateTime", "LAT", "LON", "SOG", "COG", "Heading", "VesselName", "IMO", "CallSign", "VesselType", "Status", "Length", "Width", "Draft"],
                 "sample_rows": ais_rows,
-                "why_used": "Contains legal transponder kinematic records (SOG, COG, Heading, Flag) necessary to identify ship speed anomalies and prove illegal discharge."
+                "why_used": "Provides source navigation records for time-aligned corridor screening; it cannot independently establish a discharge or responsibility."
             },
             "ocean_currents": {
                 "name": "NOAA HYCOM GOFS 3.1 4D Hydrodynamic Ocean Currents",
@@ -342,6 +380,7 @@ async def list_scenarios():
     """Returns list of available pre-configured operational maritime scenarios."""
     scenarios = get_all_scenarios()
     summary_list = []
+    
     for sid, sc in scenarios.items():
         is_real = sc.get("is_real_zenodo_dataset", False)
         sat_origin = sc.get("satellite_metadata", {}).get("data_origin", "Provenance resolved when the scenario scene is loaded")
@@ -364,27 +403,41 @@ async def list_scenarios():
 @app.get("/api/scenario/{scenario_id}")
 async def get_scenario_details(scenario_id: str):
     """Fetches comprehensive scenario parameters, SAR imagery, and AIS tracks."""
-    sar_img, current_field, scenario_data = get_scenario_sar_and_currents(scenario_id)
-
-    # Base64 image encoding for frontend preview
-    raw_sar_b64 = image_to_base64_png(sar_img)
-
-    # Super-Resolution enhanced SAR (Addressing NTRO YouTube reference)
-    sr_sar_img = sar_engine.enhance_sar_super_resolution(sar_img, scale_factor=2)
-    sr_sar_b64 = image_to_base64_png(sr_sar_img)
+    sar_img, current_field, scenario_data = resolve_scenario_sar_and_currents(scenario_id)
 
     return {
         "scenario": scenario_data,
-        "sar_image_base64": raw_sar_b64,
-        "sr_sar_image_base64": sr_sar_b64,
+        "sar_preview_url": f"/api/scenario/{scenario_id}/sar-preview.png",
+        "sr_preview_url": f"/api/scenario/{scenario_id}/sr-preview.png",
         "dimensions": {"width": sar_img.shape[1], "height": sar_img.shape[0]}
     }
+
+
+@app.get("/api/scenario/{scenario_id}/sar-preview.png")
+async def get_sar_preview(scenario_id: str):
+    """Serve raw SAR preview as a PNG image (not base64-in-JSON)."""
+    from fastapi.responses import Response
+    sar_img, _, _ = resolve_scenario_sar_and_currents(scenario_id)
+    _, buf = cv2.imencode('.png', sar_img)
+    return Response(content=buf.tobytes(), media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.get("/api/scenario/{scenario_id}/sr-preview.png")
+async def get_sr_preview(scenario_id: str):
+    """Serve super-resolution SAR preview as a PNG image (computed on demand)."""
+    from fastapi.responses import Response
+    sar_img, _, _ = resolve_scenario_sar_and_currents(scenario_id)
+    sr_img = sar_engine.enhance_sar_super_resolution(sar_img, scale_factor=2)
+    _, buf = cv2.imencode('.png', sr_img)
+    return Response(content=buf.tobytes(), media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=3600"})
 
 
 @app.post("/api/analyze-sar")
 async def analyze_sar(req: AnalyzeSARRequest):
     """Executes SAR radar speckle suppression, PyTorch U-Net or CFAR segmentation, and geometric extraction."""
-    sar_img, current_field, scenario_data = get_scenario_sar_and_currents(req.scenario_id)
+    sar_img, current_field, scenario_data = resolve_scenario_sar_and_currents(req.scenario_id)
 
     pixel_size = float(scenario_data.get("satellite_metadata", {}).get("pixel_spacing_m", 10.0))
     center_lat = scenario_data["center"]["lat"]
@@ -535,24 +588,50 @@ async def analyze_eo(req: AnalyzeEORequest):
 @app.post("/api/simulate-drift")
 async def simulate_drift(req: SimulateDriftRequest):
     """
-    Executes backward Lagrangian hindcasting to find spill release origin (x0, y0, t0),
-    forward forecasting to estimate coastal collision, and Mackay ADIOS physical oil weathering.
+    Runs a conditional transport scenario. It refuses stale, unbounded, synthetic, or
+    unaligned source inputs rather than returning a polished but invalid forecast.
     """
-    _, current_field, scenario_data = get_scenario_sar_and_currents(req.scenario_id)
+    _, current_field, scenario_data = resolve_scenario_sar_and_currents(req.scenario_id)
+
+    if req.slick_age_hours is None:
+        raise HTTPException(status_code=422, detail="An analyst-supported slick_age_hours hypothesis is required; a single SAR scene cannot supply it.")
+    if not req.demo_mode:
+        if not req.scene_acquired_at_utc:
+            raise HTTPException(status_code=422, detail="scene_acquired_at_utc is required to bind met-ocean data to the source scene.")
+        try:
+            datetime.fromisoformat(req.scene_acquired_at_utc.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="scene_acquired_at_utc must be ISO-8601 UTC.") from exc
 
     # Dynamic provenance label reflecting actual hydrodynamic & atmospheric sources
-    if current_field.data_provider and current_field.data_provider.is_loaded:
+    if req.demo_mode:
+        condition = scenario_data["ocean_conditions"]
+        current_field = OceanCurrentField(
+            base_current_u=condition["base_current_u"],
+            base_current_v=condition["base_current_v"],
+            base_wind_u=condition["base_wind_u"],
+            base_wind_v=condition["base_wind_v"],
+            constant_vectors=True,
+        )
+        met_ocean_source = "Benchmark demonstration vectors (simulated; not live or observed)"
+    elif current_field.data_provider and current_field.data_provider.is_loaded:
         dp_meta = current_field.data_provider.metadata
         base_source = dp_meta.get("data_origin") or dp_meta.get("source") or dp_meta.get("title") or "CF-1.8 NetCDF hydrodynamic grid"
         if getattr(current_field.data_provider, "_has_real_wind", False):
-            met_ocean_source = f"{base_source} + Open-Meteo real hourly wind observations"
+            met_ocean_source = f"{base_source} + time-aligned Open-Meteo hourly wind"
         else:
             met_ocean_source = base_source
     else:
         met_ocean_source = "scenario demonstration analytical field"
 
     overrides = (req.current_u_ms, req.current_v_ms, req.wind_u_ms, req.wind_v_ms)
-    if any(value is not None for value in overrides):
+    if any(value is not None for value in overrides) and not all(value is not None for value in overrides):
+        raise HTTPException(status_code=422, detail="Provide all four current/wind vectors or none; partial overrides mix incompatible fields.")
+    if req.demo_mode and any(value is not None for value in overrides):
+        raise HTTPException(status_code=422, detail="Benchmark mode uses its isolated fixture vectors; use Live Ingestion for operator-supplied data.")
+    if all(value is not None for value in overrides):
+        if not req.met_ocean_reference:
+            raise HTTPException(status_code=422, detail="met_ocean_reference is required with operator-supplied vectors.")
         current_field = OceanCurrentField(
             base_current_u=req.current_u_ms if req.current_u_ms is not None else current_field.base_current_u,
             base_current_v=req.current_v_ms if req.current_v_ms is not None else current_field.base_current_v,
@@ -560,19 +639,22 @@ async def simulate_drift(req: SimulateDriftRequest):
             base_wind_v=req.wind_v_ms if req.wind_v_ms is not None else current_field.base_wind_v,
             tidal_amplitude=current_field.tidal_amplitude,
             tidal_period_h=current_field.tidal_period_h,
+            constant_vectors=True,
         )
-        met_ocean_source = "operator-supplied current and wind vectors"
+        met_ocean_source = f"operator-supplied vectors — {req.met_ocean_reference}"
+    elif not req.demo_mode:
+        if current_field.data_provider is None:
+            raise HTTPException(status_code=422, detail="No source-backed hydrodynamic provider is available. Supply validated vectors with a reference.")
+        try:
+            current_field.data_provider.bind_detection_time(
+                req.scene_acquired_at_utc, req.max_lookback_hours, req.forecast_hours
+            )
+            # Fail before integration if either currents or wind is unavailable at T0.
+            current_field.get_velocity_at(req.slick_lat, req.slick_lon, 0.0)
+        except (DataCoverageError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=f"Met-ocean validation failed: {exc}") from exc
 
-    # Determine target release age: from operator request, or physical age estimate from SAR detection
-    target_age = req.slick_age_hours
-    if target_age is None:
-        sar_img, _, _ = get_scenario_sar_and_currents(req.scenario_id)
-        sar_res = sar_engine.process_sar_scene(
-            sar_img, req.slick_lat, req.slick_lon,
-            pixel_size_m=float(scenario_data.get("satellite_metadata", {}).get("pixel_spacing_m", 10.0))
-        )
-        target_age = sar_res.get("primary_slick", {}).get("estimated_age_hours", 12.0)
-    target_age = float(np.clip(target_age, 2.0, 36.0))
+    target_age = float(req.slick_age_hours)
 
     # Backward Hindcast
     hindcast_res = drift_engine.run_hindcast(
@@ -582,11 +664,11 @@ async def simulate_drift(req: SimulateDriftRequest):
     )
 
     # Forward Forecast + ADIOS Weathering
-    coast_thresh = scenario_data.get("coastline_hazard", {}).get("coastline_lat_threshold")
     forecast_res = drift_engine.run_forecast(
         req.slick_lat, req.slick_lon, current_field,
         forecast_hours=req.forecast_hours,
-        coastline_lat_threshold=coast_thresh
+        initial_mass_tonnes=req.initial_mass_tonnes,
+        oil_profile=req.oil_profile,
     )
 
     return {
@@ -602,33 +684,37 @@ async def simulate_drift(req: SimulateDriftRequest):
             "current_v_ms": current_field.base_current_v,
             "wind_u_ms": current_field.base_wind_u,
             "wind_v_ms": current_field.base_wind_v,
+            "scene_acquired_at_utc": req.scene_acquired_at_utc,
+            "coverage_validated": not req.demo_mode,
+            "mode": "benchmark_demo" if req.demo_mode else "source_input",
         },
-        "screening_notice": "Drift output is scenario-grade unless supplied vectors are validated against authoritative met-ocean observations.",
+        "screening_notice": (
+            "BENCHMARK DEMONSTRATION: simulated inputs and outputs; not live data or an operational forecast."
+            if req.demo_mode else
+            "Conditional transport scenario only. It is not a release-origin inference, shoreline-impact assessment, or responsibility finding."
+        ),
     }
 
 
 @app.post("/api/correlate-ais")
 async def correlate_ais(req: CorrelateAISRequest):
     """Ranks time-aligned AIS leads and emits radar/AIS review cues."""
-    _, current_field, scenario_data = get_scenario_sar_and_currents(req.scenario_id)
-    vessels = req.vessels if req.vessels is not None else scenario_data.get("ais_vessels", [])
+    _, current_field, scenario_data = resolve_scenario_sar_and_currents(req.scenario_id)
+    if req.demo_mode:
+        vessels = scenario_data.get("ais_vessels", [])
+        if not vessels:
+            raise HTTPException(status_code=422, detail="This benchmark has no fixture AIS trajectories.")
+    elif not req.vessels or not req.ais_provenance:
+        raise HTTPException(status_code=422, detail="Time-aligned AIS source records and provenance are required; benchmark trajectories are not eligible for attribution.")
+    else:
+        vessels = req.vessels
 
     hindcast_traj = req.hindcast_trajectory
     if not hindcast_traj:
-        drift_res = drift_engine.run_hindcast(
-            scenario_data["center"]["lat"], scenario_data["center"]["lon"],
-            current_field, target_slick_age_hours=abs(req.origin_time_rel_h)
-        )
-        hindcast_traj = drift_res["hindcast_trajectory"]
+        raise HTTPException(status_code=422, detail="A validated conditional hindcast trajectory is required for AIS correlation.")
 
-    # Ingest radar targets if provided, else simulate realistic radar ship hull detection
-    radar_tgts = req.radar_targets
-    if radar_tgts is None:
-        sar_img, _, _ = get_scenario_sar_and_currents(req.scenario_id)
-        radar_tgts = sar_engine.detect_radar_ship_targets(
-            sar_img, scenario_data["center"]["lat"], scenario_data["center"]["lon"],
-            pixel_size_m=float(scenario_data.get("satellite_metadata", {}).get("pixel_spacing_m", 10.0))
-        )
+    # Radar/AIS comparison is optional; never synthesize contacts.
+    radar_tgts = req.radar_targets or []
     radar_tgts = [dict(target, relative_time_hours=target.get("relative_time_hours", 0.0)) for target in radar_tgts]
 
     results = ais_engine.attribute_oil_spill(
@@ -640,11 +726,13 @@ async def correlate_ais(req: CorrelateAISRequest):
     )
 
     results["ais_provenance"] = req.ais_provenance or {
-        "source_kind": scenario_data.get("ais_data_origin", "embedded demonstration scenario"),
+        "source_kind": "benchmark AIS trajectories (simulated; not live AIS)",
         "scenario_id": req.scenario_id,
         "total_vessels_in_region": len(vessels)
     }
+    results["demo_mode"] = req.demo_mode
     results["screening_notice"] = (
+        ("BENCHMARK DEMONSTRATION: simulated AIS lead ranking; not live data. " if req.demo_mode else "") +
         "AIS ranking is an investigative lead, not a finding of responsibility. "
         "Corroborate with calibrated imagery, chain-of-custody records, and human review."
     )
@@ -653,55 +741,9 @@ async def correlate_ais(req: CorrelateAISRequest):
 
 @app.get("/api/export-dossier/{scenario_id}")
 async def export_dossier(scenario_id: str):
-    """Generates a demo case summary for the selected preconfigured scenario."""
-    sar_img, current_field, scenario_data = get_scenario_sar_and_currents(scenario_id)
-
-    # Run full pipeline to compile all legal facts
-    sar_res = sar_engine.process_sar_scene(
-        sar_img, scenario_data["center"]["lat"], scenario_data["center"]["lon"]
-    )
-    slick = sar_res["primary_slick"]
-    target_age = float(np.clip(slick.get("estimated_age_hours", 12.0), 2.0, 36.0))
-
-    drift_hindcast = drift_engine.run_hindcast(
-        slick["centroid"]["lat"], slick["centroid"]["lon"],
-        current_field, target_slick_age_hours=target_age
-    )
-    origin = drift_hindcast["origin_release_point"]
-
-    coast_thresh = scenario_data.get("coastline_hazard", {}).get("coastline_lat_threshold")
-    drift_forecast = drift_engine.run_forecast(
-        slick["centroid"]["lat"], slick["centroid"]["lon"],
-        current_field, coastline_lat_threshold=coast_thresh
-    )
-
-    ais_res = ais_engine.attribute_oil_spill(
-        scenario_data.get("ais_vessels", []),
-        origin["lat"], origin["lon"], origin["estimated_t0_hours_relative"],
-        radar_targets=sar_res.get("radar_detected_ships", [])
-    )
-
-    # Generate PDF
-    pdf_path = report_gen.generate_pdf_dossier(
-        scenario_data, sar_res,
-        {
-            "origin_release_point": origin,
-            "total_drift_distance_km": drift_hindcast["total_drift_distance_km"],
-            "forecast_warning": drift_forecast["beaching_warning"],
-            "weathering_summary": drift_forecast.get("weathering_summary", {})
-        },
-        ais_res
-    )
-
-    if not os.path.exists(pdf_path):
-        raise HTTPException(status_code=500, detail="Failed to generate case summary PDF")
-
-    filename = os.path.basename(pdf_path)
-    return FileResponse(
-        pdf_path,
-        media_type="application/pdf",
-        filename=filename,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    raise HTTPException(
+        status_code=410,
+        detail="Benchmark dossier export is disabled. Export only a browser case summary assembled from documented source inputs."
     )
 
 
@@ -773,10 +815,108 @@ async def upload_ais_csv(request: Request):
     }
 
 
+# ============================================================================
+# LIVE AUTOMATED DATA INGESTION ENDPOINTS (NO MANUAL UPLOADS REQUIRED)
+# ============================================================================
+
+@app.get("/api/live/status")
+async def get_live_provider_status():
+    """Provider readiness only; credentials are never returned to the browser."""
+    return live_provider_status()
+
+@app.get("/api/live/satellite-passes")
+async def get_live_satellite_passes(lat: float, lon: float, days_back: int = 14):
+    """Query public ASF catalogue metadata. This does not create or download a SAR raster."""
+    _validated_coordinate(lat, -90.0, 90.0, "lat")
+    _validated_coordinate(lon, -180.0, 180.0, "lon")
+    return await asyncio.to_thread(fetch_live_satellite_passes, lat, lon, days_back)
+
+
+@app.get("/api/live/ocean-weather")
+async def get_live_ocean_weather(lat: float, lon: float):
+    """Fetch current modelled marine and wind conditions without manufactured values."""
+    _validated_coordinate(lat, -90.0, 90.0, "lat")
+    _validated_coordinate(lon, -180.0, 180.0, "lon")
+    return await asyncio.to_thread(fetch_live_ocean_weather, lat, lon)
+
+
+@app.get("/api/live/ais-traffic")
+async def get_live_ais_traffic(lat: float, lon: float, radius_nm: float = 25.0, collection_seconds: float = 8.0):
+    """Collect received AIS position reports; an unconfigured provider returns no fake vessels."""
+    _validated_coordinate(lat, -90.0, 90.0, "lat")
+    _validated_coordinate(lon, -180.0, 180.0, "lon")
+    if not 1.0 <= radius_nm <= 120.0:
+        raise HTTPException(status_code=422, detail="radius_nm must be between 1 and 120.")
+    if not 1.0 <= collection_seconds <= 20.0:
+        raise HTTPException(status_code=422, detail="collection_seconds must be between 1 and 20.")
+    return await fetch_live_ais_traffic(lat, lon, radius_nm=radius_nm, duration_s=collection_seconds)
+
+
+@app.get("/api/live/ports")
+async def get_reference_ports(
+    min_lon: float = 66.0,
+    min_lat: float = 5.0,
+    max_lon: float = 100.0,
+    max_lat: float = 38.0,
+):
+    """Query the current NGA WPI reference catalogue for a bounded geographic envelope."""
+    _validated_coordinate(min_lon, -180.0, 180.0, "min_lon")
+    _validated_coordinate(max_lon, -180.0, 180.0, "max_lon")
+    _validated_coordinate(min_lat, -90.0, 90.0, "min_lat")
+    _validated_coordinate(max_lat, -90.0, 90.0, "max_lat")
+    if min_lon >= max_lon or min_lat >= max_lat:
+        raise HTTPException(status_code=422, detail="The port query bounds must describe a non-empty envelope.")
+    return await asyncio.to_thread(fetch_world_port_index, min_lon, min_lat, max_lon, max_lat)
+
+
+@app.get("/api/live/incidents")
+async def get_live_incidents():
+    """Return only incidents received from the configured authority feed."""
+    return await asyncio.to_thread(fetch_live_oil_spill_incidents)
+
+
+@app.post("/api/live/create-mission")
+async def create_live_mission(req: LiveMissionRequest):
+    """
+    Snapshot source-backed AOI context. No synthetic scene is made and no detection
+    pipeline runs until a genuine SAR raster has been supplied.
+    """
+    _validated_coordinate(req.lat, -90.0, 90.0, "lat")
+    _validated_coordinate(req.lon, -180.0, 180.0, "lon")
+    satellite, met_ocean, ais = await asyncio.gather(
+        asyncio.to_thread(fetch_live_satellite_passes, req.lat, req.lon),
+        asyncio.to_thread(fetch_live_ocean_weather, req.lat, req.lon),
+        fetch_live_ais_traffic(req.lat, req.lon),
+    )
+    return {
+        "status": "ready_for_source_scene",
+        "processing_ready": False,
+        "aoi": {"lat": req.lat, "lon": req.lon, "title": req.title, "region": req.region},
+        "satellite": satellite,
+        "met_ocean": met_ocean,
+        "ais": ais,
+        "providers": live_provider_status()["providers"],
+        "message": "AOI sources refreshed. Upload an authentic SAR raster with scene metadata before running spill detection, drift, or AIS attribution."
+    }
+
+
+@app.post("/api/live/ingest-and-run")
+async def ingest_and_run_live(req: LiveMissionRequest):
+    """
+    This route intentionally refuses to fabricate a SAR scene. Use the source
+    snapshot route followed by the authenticated SAR-upload workflow.
+    """
+    _validated_coordinate(req.lat, -90.0, 90.0, "lat")
+    _validated_coordinate(req.lon, -180.0, 180.0, "lon")
+    raise HTTPException(
+        status_code=409,
+        detail="Live feeds alone are not a SAR scene. Upload an authentic source raster and metadata before analysis; no synthetic scene is substituted."
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8090))
     host = os.environ.get("HOST", "0.0.0.0")
     print(f"Starting OCEAN-SHIELD on http://{host}:{port}")
     uvicorn.run(app, host=host, port=port)
-

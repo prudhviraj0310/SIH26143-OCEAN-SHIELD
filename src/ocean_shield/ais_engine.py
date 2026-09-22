@@ -1,8 +1,8 @@
 """
-AIS Engine: Automatic Identification System Maritime Traffic Correlation & Culprit Attribution
+AIS Engine: Automatic Identification System Maritime Traffic Correlation
 Ingests historical vessel transponder trajectories, filters irrelevant maritime traffic,
 reconstructs spatio-temporal vessel positions around the spill origin window (x0, y0, t0),
-and computes multi-criteria behavioral anomaly scores to identify and rank culprit vessels.
+and produces analyst-review traffic leads. It does not determine responsibility.
 """
 
 import math
@@ -14,7 +14,7 @@ import numpy as np
 class AISEngine:
     """
     Spatio-Temporal AIS Trajectory Ingestion, Spatial Indexing,
-    Kinematic Anomaly Detection, and Culprit Vessel Attribution.
+    Kinematic Screening, and Analyst-Review Lead Ranking.
     """
 
     # Baseline capacity priors: modest 10% weight so attribution is evidence-driven (CPA, time, kinematics)
@@ -88,7 +88,7 @@ class AISEngine:
         filtered_candidates = []
 
         for v in vessels:
-            track = v.get("trajectory", [])
+            track = sorted(v.get("trajectory", []), key=lambda point: point.get("relative_time_hours", 0.0))
             if not track:
                 continue
 
@@ -102,8 +102,9 @@ class AISEngine:
                     min_dist_nm = d_nm
                     best_point = pt
 
-            # 2. If trajectory provided and outside origin radius, check space-time match along drift path
-            if hindcast_trajectory and min_dist_nm > spatial_radius_nm:
+            # 2. Match the trajectory in both space and time.  A spatially close
+            # ping at the wrong time is not a corridor match.
+            if hindcast_trajectory:
                 for pt in track:
                     pt_t = pt.get("relative_time_hours", 0.0)
                     for step in hindcast_trajectory:
@@ -141,12 +142,10 @@ class AISEngine:
         origin_time_relative_h: float
     ) -> Dict[str, Any]:
         """
-        Analyzes vessel telemetry for behavioral anomalies:
-        1. Speed drops (cruising at 15 kts -> dropping to 4-7 kts during covert bilge discharge)
-        2. Sudden course alterations / erratic maneuvering
-        3. AIS transponder gaps (turning off AIS while dumping)
+        Computes navigation context only. Speed changes, course changes, and AIS
+        reporting gaps have many benign causes and are not evidence of discharge.
         """
-        track = vessel.get("trajectory", [])
+        track = sorted(vessel.get("trajectory", []), key=lambda point: point.get("relative_time_hours", 0.0))
         if len(track) < 3:
             return {
                 "speed_drop_knots": 0.0,
@@ -178,11 +177,10 @@ class AISEngine:
         min_near_speed = float(np.min(near_speeds)) if near_speeds else cruise_speed
         speed_drop = max(0.0, cruise_speed - min_near_speed)
 
-        # Speed anomaly scoring:
-        # Cruising tankers usually don't drop from 15 kts to 5 kts in open sea unless maneuvering/discharging
+        # Navigation-context score; never describe it as a discharge profile.
         if speed_drop >= 7.0 and 3.5 <= min_near_speed <= 8.5:
-            speed_score = 96.0  # Classic illegal discharge profile
-            speed_comment = f"Severe speed drop ({cruise_speed:.1f} -> {min_near_speed:.1f} kts) matching illegal bilge purge profile"
+            speed_score = 70.0
+            speed_comment = f"Large speed change ({cruise_speed:.1f} -> {min_near_speed:.1f} kts); requires navigation-context review"
         elif speed_drop >= 4.0:
             speed_score = 75.0
             speed_comment = f"Moderate deceleration ({speed_drop:.1f} kts drop) detected near origin window"
@@ -212,7 +210,7 @@ class AISEngine:
             course_score = 15.0
             course_comment = "Straight-line transit following navigational channel"
 
-        # Check for AIS gap (> 45 min gap between reports in open sea)
+        # Report coverage gaps without treating them as transponder-disable evidence.
         has_ais_gap = False
         max_time_gap_min = 0.0
         for i in range(1, len(times)):
@@ -243,9 +241,9 @@ class AISEngine:
         origin_time_relative_h: float
     ) -> List[Dict[str, Any]]:
         """
-        Computes composite attribution score for all candidate vessels:
-        Score = w_prox*S_prox + w_time*S_time + w_speed*S_speed + w_course*S_course + w_type*S_type
-        Returns ranked list of vessels from highest probability suspect to lowest.
+        Computes an uncalibrated lead-priority score. Only spatio-temporal
+        co-location affects ranking; vessel class and navigation context are shown
+        for review but never treated as responsibility evidence.
         """
         ranked_vessels = []
 
@@ -260,28 +258,13 @@ class AISEngine:
             # 2. Temporal coincidence score (Gaussian temporal decay)
             s_time = 100.0 * math.exp(-(time_diff_h ** 2) / (2.0 * (self.temporal_sigma_hours ** 2)))
 
-            # 3. Kinematics analysis
+            # Navigation context is descriptive, not an attribution factor.
             kinematics = self.analyze_vessel_kinematics(v, origin_time_relative_h)
             s_speed = kinematics["speed_anomaly_score"]
             s_course = kinematics["course_anomaly_score"]
-
-            # Bonus penalty if transponder had suspicious blackout gap near origin
-            if kinematics["has_ais_gap"]:
-                s_speed = min(100.0, s_speed + 15.0)
-
-            # 4. Vessel type risk factor
             v_type = v.get("vessel_type", "Other / Unknown")
-            s_type = self.VESSEL_TYPE_WEIGHTS.get(v_type, 40.0)
-
-            # Composite Score
-            composite_score = (
-                self.w_prox * s_prox +
-                self.w_time * s_time +
-                self.w_speed * s_speed +
-                self.w_course * s_course +
-                self.w_type * s_type
-            )
-            composite_score = round(min(max(composite_score, 0.0), 99.8), 1)
+            s_type = None
+            composite_score = round(0.6 * s_prox + 0.4 * s_time, 1)
 
             # Lead-priority tier. Scores are heuristic ranking signals, not a
             # calibrated probability or a finding of responsibility.
@@ -302,9 +285,10 @@ class AISEngine:
                 "call_sign": v.get("call_sign", "N/A"),
                 "flag_state": v.get("flag_state", "Unknown"),
                 "vessel_type": v_type,
-                "length_m": v.get("length_m", 180),
-                "width_m": v.get("width_m", 32),
-                "dwt_tonnes": v.get("dwt_tonnes", 45000),
+                "length_m": v.get("length_m"),
+                "width_m": v.get("width_m"),
+                "dwt_tonnes": v.get("dwt_tonnes"),
+                "lead_priority_score": composite_score,
                 "composite_suspect_score": composite_score,
                 "total_score": composite_score,
                 "attribution_tier": attribution_tier,
@@ -314,7 +298,7 @@ class AISEngine:
                     "temporal_score": round(s_time, 1),
                     "speed_anomaly_score": round(s_speed, 1),
                     "course_anomaly_score": round(s_course, 1),
-                    "vessel_type_score": round(s_type, 1)
+                    "vessel_type_score": None
                 },
                 "closest_approach": cpa,
                 "kinematics": kinematics,
@@ -325,7 +309,7 @@ class AISEngine:
             ranked_vessels.append(v_result)
 
         # Sort by composite suspect score descending
-        ranked_vessels.sort(key=lambda x: x["composite_suspect_score"], reverse=True)
+        ranked_vessels.sort(key=lambda x: x["lead_priority_score"], reverse=True)
         return ranked_vessels
 
     def correlate_radar_targets_with_ais(
@@ -436,7 +420,8 @@ class AISEngine:
         return {
             "total_vessels_in_region": len(raw_vessels),
             "vessels_evaluated_in_corridor": len(ranked),
-            "primary_culprit": primary_suspect,
+            "primary_review_lead": primary_suspect,
+            "primary_culprit": None,
             "ranked_suspects": ranked,
             "dark_vessels_detected": dark_vessels,
             "dark_vessels_count": len(dark_vessels),
@@ -444,5 +429,6 @@ class AISEngine:
                 "origin_lat": origin_lat,
                 "origin_lon": origin_lon,
                 "origin_time_relative_h": origin_time_relative_h
-            }
+            },
+            "screening_notice": "Lead-priority ranking is not a probability, allegation, or finding of responsibility."
         }

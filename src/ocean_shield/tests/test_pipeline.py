@@ -49,13 +49,22 @@ class TestOceanShieldPipeline(unittest.TestCase):
         slick = results["primary_slick"]
         self.assertIsNotNone(slick)
         self.assertGreater(slick["area_km2"], 0.0)
-        self.assertGreater(slick["estimated_mass_tonnes"], 0.0)
+        self.assertIsNone(slick["estimated_mass_tonnes"])
+        self.assertIsNone(slick["estimated_age_hours"])
         self.assertIn("polygon_geojson", slick)
-        self.assertGreaterEqual(slick["confidence_score"], 60.0, "Mineral oil should have high confidence")
+        self.assertIsNotNone(slick["confidence_score"])
+        self.assertGreaterEqual(slick["confidence_score"], 50.0)
+        self.assertIn("screening_score", slick)
+        self.assertIn("limitations", slick)
 
     def test_drift_engine_hindcast_and_forecast(self):
         """Validates reverse Lagrangian particle hindcasting and forward forecasting."""
-        sar_img, current_field, scenario_data = get_scenario_sar_and_currents("gulf_of_kachchh")
+        _, _, scenario_data = get_scenario_sar_and_currents("gulf_of_kachchh")
+        current_field = OceanCurrentField(
+            base_current_u=0.25, base_current_v=0.15,
+            base_wind_u=4.5, base_wind_v=3.0,
+            constant_vectors=True,
+        )
         center_lat = scenario_data["center"]["lat"]
         center_lon = scenario_data["center"]["lon"]
 
@@ -65,7 +74,10 @@ class TestOceanShieldPipeline(unittest.TestCase):
             max_lookback_hours=18.0, target_slick_age_hours=10.5
         )
         origin = hindcast["origin_release_point"]
-        self.assertAlmostEqual(origin["slick_age_hours"], 10.5, delta=1.5)
+        self.assertEqual(origin["assumed_slick_age_hours"], 10.5)
+        self.assertIsNotNone(origin["confidence_percent"])
+        self.assertGreaterEqual(origin["confidence_percent"], 50.0)
+        self.assertEqual(origin["inference_status"], "conditional transport scenario; not an inferred spill origin")
         self.assertGreater(hindcast["total_drift_distance_km"], 0.0)
         self.assertGreater(len(hindcast["hindcast_trajectory"]), 10)
 
@@ -73,16 +85,17 @@ class TestOceanShieldPipeline(unittest.TestCase):
         forecast = self.drift_engine.run_forecast(
             center_lat, center_lon, current_field,
             forecast_hours=24.0,
-            coastline_lat_threshold=scenario_data["coastline_hazard"]["coastline_lat_threshold"]
         )
         self.assertIn("forecast_trajectory", forecast)
         self.assertIn("beaching_warning", forecast)
         # A real met-ocean field may route the slick offshore; verify the model
         # reports the condition rather than asserting a scenario-specific outcome.
-        self.assertIsInstance(forecast["beaching_warning"]["will_beach"], bool)
+        self.assertIsNone(forecast["beaching_warning"]["will_beach"])
+        self.assertEqual(forecast["beaching_warning"]["status"], "not_assessed")
+        self.assertIsNone(forecast["weathering_summary"])
 
-    def test_ais_correlation_and_culprit_attribution(self):
-        """Validates spatio-temporal corridor filtering, kinematic anomalies, and rogue ship attribution."""
+    def test_ais_correlation_produces_review_lead_not_culprit(self):
+        """Validates corridor screening without asserting a responsibility finding."""
         _, _, scenario_data = get_scenario_sar_and_currents("gulf_of_kachchh")
 
         # Test candidate release coordinates derived from drift hindcast
@@ -97,13 +110,12 @@ class TestOceanShieldPipeline(unittest.TestCase):
             release_time_h
         )
 
-        culprit = results["primary_culprit"]
-        self.assertIsNotNone(culprit)
-        self.assertEqual(culprit["vessel_name"], "MT NEPTUNE GLORY")
-        self.assertEqual(culprit["imo"], 9384722)
-        self.assertGreaterEqual(culprit["composite_suspect_score"], 80.0, "Culprit should have high suspect score")
-        self.assertLess(culprit["closest_approach"]["distance_nm"], 1.0, "Culprit should be directly over origin")
-        self.assertGreaterEqual(culprit["kinematics"]["speed_drop_knots"], 6.0, "Culprit should exhibit speed drop")
+        lead = results["primary_review_lead"]
+        self.assertIsNotNone(lead)
+        self.assertIsNone(results["primary_culprit"])
+        self.assertIn("lead_priority_score", lead)
+        self.assertIn("not a probability", results["screening_notice"])
+        self.assertLess(lead["closest_approach"]["distance_nm"], 1.0)
 
     def test_all_scenarios_and_dossier_pdf(self):
         """Validates all Indian and benchmark maritime sectors and generates an analyst-review PDF."""
@@ -272,23 +284,30 @@ class TestOceanShieldPipeline(unittest.TestCase):
         from src.ocean_shield.ocean_data import OceanDataProvider
         provider = OceanDataProvider(real_nc, center_lat=22.465, center_lon=69.215)
         self.assertTrue(provider.is_loaded)
-        self.assertTrue(provider.metadata.get("is_real_observed"))
+        self.assertTrue(provider.metadata.get("is_model_or_reanalysis"))
+        self.assertFalse(provider.metadata.get("is_synthetic"))
         self.assertIn("Fleet Numerical", provider.metadata.get("institution", ""))
 
-        # Velocity extraction at open ocean location
-        u_c, v_c, u_w, v_w = provider.get_velocity_at(22.48, 69.20, t_hours_relative=0.0)
-        self.assertIsInstance(u_c, float)
-        self.assertIsInstance(v_c, float)
-        # Ensure fill values (-30000.0) were properly masked
-        self.assertGreater(u_c, -5.0)
-        self.assertLess(u_c, 5.0)
-        self.assertGreater(v_c, -5.0)
-        self.assertLess(v_c, 5.0)
+        # Unbound absolute grids cannot be treated as an incident-relative field.
+        from src.ocean_shield.ocean_data import DataCoverageError
+        with self.assertRaises(DataCoverageError):
+            provider.get_velocity_at(22.48, 69.20, t_hours_relative=0.0)
 
-        # Provenance telemetry check
-        telem = provider.get_telemetry_summary(22.48, 69.20, 0.0)
-        self.assertTrue(telem["is_real_observed_currents"])
-        self.assertIn("institution", telem)
+        # Bind an acquisition time within the archived HYCOM coverage. Its wind
+        # archive is intentionally from another date, so operational validation
+        # must reject the mixed source window.
+        with self.assertRaises(DataCoverageError):
+            provider.bind_detection_time("2024-01-02T00:00:00Z", 6.0, 6.0)
+
+        # The grid itself retains explicit bounds for source validation.
+        self.assertIsNotNone(provider.metadata.get("source_start_utc"))
+        self.assertIsNotNone(provider.metadata.get("source_end_utc"))
+        self.assertLess(provider.metadata["time_min"], 0.0)
+        self.assertGreater(provider.metadata["time_max"], 0.0)
+
+        # No unbounded velocity extraction is permitted.
+        self.assertFalse(provider.has_coverage(6.0, 6.0))
+
 
 
 if __name__ == "__main__":

@@ -5,18 +5,34 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OCEAN-SHIELD &bull; Maritime Spill Investigation Workspace (SIH26143)</title>
   
-  <!-- Preconnect and Modern Typography: Inter (UI/Headings) & JetBrains Mono (Data/Telemetry) -->
+  <!-- Preconnect to all external origins for parallel loading -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin>
+  
+  <!-- Google Fonts — loaded async so they don't block first paint -->
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
   
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   
   <!-- Custom Modern C2 Dashboard CSS -->
-  <link rel="stylesheet" href="/static/css/dashboard.css?v=3.8">
+  <link rel="stylesheet" href="/static/css/dashboard.css?v=4.5">
 </head>
 <body class="theme-c2 mode-simple">
+
+<!-- Instant splash screen — visible before any JS/CSS loads, fades when app ready -->
+<div id="appSplash" style="position:fixed;inset:0;z-index:99999;background:#0a0e1a;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 0.4s ease">
+  <div style="font-size:2.5rem;margin-bottom:12px">🌊</div>
+  <div style="color:#00f2fe;font-family:system-ui,sans-serif;font-size:1.1rem;font-weight:700;letter-spacing:2px">OCEAN-SHIELD</div>
+  <div style="color:#64748b;font-family:system-ui,sans-serif;font-size:0.75rem;margin-top:6px">SIH26143 • NTRO Maritime Intelligence</div>
+  <div style="margin-top:24px;width:120px;height:3px;background:#1e293b;border-radius:3px;overflow:hidden">
+    <div style="width:100%;height:100%;background:linear-gradient(90deg,#00f2fe,#0ea5e9);animation:splashPulse 1s ease-in-out infinite"></div>
+  </div>
+</div>
+<style>@keyframes splashPulse{0%,100%{transform:translateX(-100%)}50%{transform:translateX(0)}}</style>
 
   <!-- Top Tactical Command Navigation Bar -->
   <header class="top-nav">
@@ -65,6 +81,16 @@
           <option value="mumbai_high">Mumbai High Offshore (Arabian Sea)</option>
           <option value="great_nicobar">Great Nicobar Channel (Malacca Chokepoint)</option>
           <option value="zenodo_sentinel1_real">Sentinel-1 Benchmark (ESA/Zenodo Real)</option>
+          <option value="lakshadweep_sea">Lakshadweep Sea (Minicoy Passage)</option>
+          <option value="palk_strait">Palk Strait (India–Sri Lanka Channel)</option>
+          <option value="paradip_odisha">Paradip Port (Odisha / Bay of Bengal)</option>
+          <option value="visakhapatnam_offshore">Visakhapatnam (KG Basin Petroleum)</option>
+          <option value="kochi_channel">Kochi Channel (Cochin Refinery & LNG)</option>
+          <option value="sundarbans_delta">Sundarbans Delta (Hooghly Estuary)</option>
+          <option value="mangalore_port">New Mangalore Port (MRPL Refinery)</option>
+          <option value="chennai_ennore">Chennai–Ennore (Kamarajar Oil Terminal)</option>
+          <option value="goa_mormugao">Goa (Mormugao Port & Zuari Estuary)</option>
+          <option value="tuticorin_gulf_mannar">Tuticorin (Gulf of Mannar Coral Zone)</option>
         </select>
       </div>
 
@@ -85,6 +111,12 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
         <span>Tech Stack</span>
       </a>
+
+      <!-- Real-Time Automated Live Ingestion Center Trigger -->
+      <button id="btnOpenLiveIngestion" class="btn-tactical btn-live-pulse" title="Trigger Automated Real-Time Data Ingestion (NASA ASF / Open-Meteo / Live AIS)">
+        <span class="pulse-dot-cyan"></span>
+        <span>🌐 Live Ingestion</span>
+      </button>
 
       <!-- macOS QuickLook Dataset & Timeline Chamber Modal Trigger -->
       <button id="btnOpenDatasetVault" class="btn-tactical btn-vault" title="Inspect Authoritative Datasets & Forensic Chamber (macOS QuickLook)">
@@ -149,7 +181,7 @@
             <span class="legend-badge-symbol symbol-origin-pin">📍</span>
             <div class="legend-desc">
               <div class="legend-label">Red Pulsing Pin</div>
-              <div class="legend-sub">Spill Epicenter (Where ship dumped oil T - 12h)</div>
+              <div class="legend-sub">Modelled release candidate (requires analyst verification)</div>
             </div>
           </div>
         </div>
@@ -168,28 +200,28 @@
             <span class="legend-line-sample line-amber-dashed"></span>
             <div class="legend-desc">
               <div class="legend-label">Amber Dashed Line</div>
-              <div class="legend-sub">Future Forecast (Where oil will hit in 24h)</div>
+              <div class="legend-sub">Forward model trajectory; uncertainty must be reviewed</div>
             </div>
           </div>
           <div class="legend-item">
             <span class="legend-line-sample line-red-solid"></span>
             <div class="legend-desc">
               <div class="legend-label">Solid Red Line</div>
-              <div class="legend-sub">Prime Suspect Ship (Decelerated to dump bilge)</div>
+              <div class="legend-sub">Highest-ranked screening lead; not a finding</div>
             </div>
           </div>
           <div class="legend-item">
             <span class="legend-line-sample line-green-solid"></span>
             <div class="legend-desc">
               <div class="legend-label">Solid Green Line</div>
-              <div class="legend-sub">Innocent Vessels (Normal speed, low score)</div>
+              <div class="legend-sub">Other ranked AIS screening leads</div>
             </div>
           </div>
           <div class="legend-item">
             <span class="legend-line-sample line-cyan-dashed"></span>
             <div class="legend-desc">
               <div class="legend-label">Cyan Dashed Line</div>
-              <div class="legend-sub">India 200 NM EEZ & Shipping Highway</div>
+              <div class="legend-sub">Live AIS position-report layer when configured</div>
             </div>
           </div>
         </div>
@@ -201,14 +233,14 @@
             <span class="legend-zone-sample zone-red"></span>
             <div class="legend-desc">
               <div class="legend-label">Red Dotted Circle</div>
-              <div class="legend-sub">Marine Coral Sanctuary (High-risk hazard)</div>
+              <div class="legend-sub">Authority incident markers when a feed is configured</div>
             </div>
           </div>
           <div class="legend-item">
             <span class="legend-zone-sample zone-green"></span>
             <div class="legend-desc">
-              <div class="legend-label">Green / Open Water</div>
-              <div class="legend-sub">Safe Navigable Commercial Sea</div>
+              <div class="legend-label">Source-backed map layers</div>
+              <div class="legend-sub">Layers are blank when a provider is unavailable or unconfigured</div>
             </div>
           </div>
         </div>
@@ -274,7 +306,7 @@
               <div class="control-row">
                 <span class="control-label">Super-Resolution 2X Enhancer</span>
                 <label class="modern-switch">
-                  <input type="checkbox" id="srToggle" checked>
+                  <input type="checkbox" id="srToggle">
                   <span class="switch-slider"></span>
                 </label>
               </div>
@@ -310,7 +342,7 @@
                 <div id="metricElongation" class="tile-val font-mono">--</div>
               </div>
               <div class="metric-tile">
-                <div class="tile-label" id="labelConfidence">Screening Score</div>
+                <div class="tile-label" id="labelConfidence">Detection Confidence</div>
                 <div id="metricConfidence" class="tile-val emerald font-mono">-- %</div>
               </div>
             </div>
@@ -336,8 +368,8 @@
                 <div id="metricWind" class="tile-val font-mono">-- m/s</div>
               </div>
               <div class="metric-tile">
-                <div class="tile-label">Estimated Slick Age</div>
-                <div id="metricAge" class="tile-val crimson font-mono">-- Hours</div>
+                <div class="tile-label">Age Hypothesis</div>
+                <div id="metricAge" class="tile-val crimson font-mono">Not supplied</div>
               </div>
               <div class="metric-tile">
                 <div class="tile-label">Drift Distance</div>
@@ -361,47 +393,47 @@
             <div class="metric-tiles-grid">
               <div class="metric-tile">
                 <div class="tile-label">Volatiles Evaporated</div>
-                <div id="metricEvap" class="tile-val amber font-mono">28.4%</div>
+                <div id="metricEvap" class="tile-val amber font-mono">—</div>
               </div>
               <div class="metric-tile">
                 <div class="tile-label">Mousse Water Uptake</div>
-                <div id="metricMousse" class="tile-val cyan font-mono">62.1%</div>
+                <div id="metricMousse" class="tile-val cyan font-mono">—</div>
               </div>
               <div class="metric-tile">
                 <div class="tile-label">Bulk Viscosity</div>
-                <div id="metricViscosity" class="tile-val font-mono">480 cP</div>
+                <div id="metricViscosity" class="tile-val font-mono">—</div>
               </div>
               <div class="metric-tile">
                 <div class="tile-label">Volume Expansion</div>
-                <div id="metricVolExp" class="tile-val font-mono">1.88x</div>
+                <div id="metricVolExp" class="tile-val font-mono">—</div>
               </div>
             </div>
 
             <div class="weathering-state-row">
               <span class="state-label">Physical State:</span>
-              <span id="metricWeatheringState" class="state-badge">Heavy Chocolate Mousse Emulsion</span>
+              <span id="metricWeatheringState" class="state-badge">Requires oil profile and reported mass</span>
             </div>
           </div>
 
           <!-- Coastal Hazard & Beaching Threat -->
           <div class="card-box card-hazard-border">
             <div class="card-header-row">
-              <span class="card-title-text">Coastal Sanctuary Threat</span>
-              <span class="tag tag-hazard">IMPACT WARNING</span>
+              <span class="card-title-text">Coastal Impact</span>
+              <span class="tag tag-blue">NOT ASSESSED</span>
             </div>
 
             <div id="hazardZoneName" class="hazard-desc">
-              Evaluating coastal collision trajectory...
+              Requires an authoritative shoreline and asset layer.
             </div>
 
             <div class="metric-tiles-grid">
               <div class="metric-tile">
                 <div class="tile-label">Beaching Alert</div>
-                <div id="metricBeachingStatus" class="tile-val crimson font-mono">IMMINENT</div>
+                <div id="metricBeachingStatus" class="tile-val crimson font-mono">NOT ASSESSED</div>
               </div>
               <div class="metric-tile">
                 <div class="tile-label">Est. Time to Beaching</div>
-                <div id="metricETB" class="tile-val amber font-mono">-- h</div>
+                <div id="metricETB" class="tile-val amber font-mono">—</div>
               </div>
             </div>
           </div>
@@ -462,14 +494,18 @@
 
             <!-- Custom Met-Ocean Ingestion Drawer -->
             <div id="metOceanForm" class="drawer-panel" hidden>
-              <div class="drawer-title">Validated Vector Override (m/s)</div>
+              <div class="drawer-title">Validated Met-Ocean Inputs</div>
               <div class="form-grid form-grid-4">
                 <label>Current U<input id="currentU" type="number" step="0.01" placeholder="east +"></label>
                 <label>Current V<input id="currentV" type="number" step="0.01" placeholder="north +"></label>
                 <label>Wind U<input id="windU" type="number" step="0.1" placeholder="east +"></label>
                 <label>Wind V<input id="windV" type="number" step="0.1" placeholder="north +"></label>
               </div>
-              <p class="drawer-hint">Enter authoritative, time-aligned measurements; blanks retain scenario grids.</p>
+              <div class="form-grid">
+                <label>Age hypothesis (h)<input id="slickAgeHours" type="number" min="0.1" max="168" step="0.1" placeholder="analyst-supported"></label>
+                <label>Source reference<input id="metOceanReference" type="text" placeholder="provider, run ID, or bulletin"></label>
+              </div>
+              <p class="drawer-hint">Use a complete four-vector set from a documented, time-aligned source. Blank vectors do not fall back to scenario grids.</p>
             </div>
           </div>
         </div>
@@ -490,7 +526,7 @@
         <div class="card-box dossier-card" id="suspectBanner">
           <div class="card-header-row">
             <span class="card-title-text">Lead Attribution Dossier</span>
-            <span class="tag tag-hazard">PRIMARY CULPRIT</span>
+            <span class="tag tag-hazard">TOP REVIEW LEAD</span>
           </div>
 
           <div class="suspect-identity-row">
@@ -514,15 +550,15 @@
           </div>
 
           <div class="suspect-forensic-summary font-mono" id="suspectSummary">
-            Run Step 3 (Rank Vessel Leads) to correlate historic AIS trajectories against the backwards-hindcasted release origin (x₀, y₀, t₀).
+            Source AIS and a validated conditional transport scenario are required before ranking review leads.
           </div>
         </div>
 
         <!-- KINEMATIC ANOMALY BREAKDOWN CARD -->
         <div class="card-box" id="anomalyBreakdownContainer">
           <div class="card-header-row">
-            <span class="card-title-text">Kinematic Anomaly Breakdown</span>
-            <span class="tag tag-blue">4-FACTOR FORENSIC</span>
+            <span class="card-title-text">Navigation Context</span>
+            <span class="tag tag-blue">REVIEW ONLY</span>
           </div>
 
           <!-- Factor 1: Proximity -->
@@ -550,7 +586,7 @@
           <!-- Factor 3: Speed Variation -->
           <div class="anomaly-metric-row">
             <div class="anomaly-label-row">
-              <span class="anomaly-name">Kinematic Speed Variation</span>
+              <span class="anomaly-name">Speed Variation (not scored)</span>
               <span id="scoreSpeed" class="anomaly-score-val font-mono">-- / 100</span>
             </div>
             <div class="modern-progress-track">
@@ -561,7 +597,7 @@
           <!-- Factor 4: Vessel Class Prior -->
           <div class="anomaly-metric-row">
             <div class="anomaly-label-row">
-              <span class="anomaly-name">Vessel Class Risk Prior</span>
+              <span class="anomaly-name">Vessel Class (not scored)</span>
               <span id="scoreType" class="anomaly-score-val font-mono">-- / 100</span>
             </div>
             <div class="modern-progress-track">
@@ -641,9 +677,9 @@
         <div class="exec-card exec-card-slick">
           <div class="exec-card-icon">🌊</div>
           <div class="exec-card-content">
-            <span class="exec-card-label">OIL SLICK FOOTPRINT</span>
-            <div class="exec-card-val"><strong id="execAreaVal">18.42</strong> <small>km²</small></div>
-            <div class="exec-card-sub" id="execVolumeSub">Est. Mass: 2,450 Tonnes Crude</div>
+            <span class="exec-card-label">SCREENING FOOTPRINT</span>
+            <div class="exec-card-val"><strong id="execAreaVal">—</strong> <small>km²</small></div>
+            <div class="exec-card-sub" id="execVolumeSub">Load a documented SAR scene to analyse</div>
           </div>
         </div>
 
@@ -651,32 +687,32 @@
         <div class="exec-card exec-card-hazard">
           <div class="exec-card-icon">⏱️</div>
           <div class="exec-card-content">
-            <span class="exec-card-label">COASTLINE LANDFALL ETA</span>
-            <div class="exec-card-val text-hazard"><strong id="execLandfallHours">14.2</strong> <small>HOURS</small></div>
-            <div class="exec-card-sub" id="execHazardTarget">Target: Marine Coral Sanctuary</div>
+            <span class="exec-card-label">DRIFT FORECAST</span>
+            <div class="exec-card-val text-hazard"><strong id="execLandfallHours">—</strong> <small>HOURS</small></div>
+            <div class="exec-card-sub" id="execHazardTarget">Requires time-aligned met-ocean input</div>
           </div>
         </div>
 
-        <!-- Metric 3: Prime Suspect Ship -->
+        <!-- Metric 3: Highest ranked review lead -->
         <div class="exec-card exec-card-suspect">
           <div class="exec-card-icon">🚢</div>
           <div class="exec-card-content">
-            <span class="exec-card-label">PRIME SUSPECT VESSEL</span>
-            <div class="exec-card-val text-cyan"><strong id="execSuspectName">MT NEPTUNE GLORY</strong></div>
-            <div class="exec-card-sub" id="execSuspectDetails">Match: 94.8% • CPA: 0.42 NM • Tanker</div>
+            <span class="exec-card-label">TOP REVIEW LEAD</span>
+            <div class="exec-card-val text-cyan"><strong id="execSuspectName">—</strong></div>
+            <div class="exec-card-sub" id="execSuspectDetails">Requires source AIS data and analyst review</div>
           </div>
         </div>
       </div>
 
       <!-- Quick Action Controls -->
       <div class="exec-actions-bar">
-        <button id="btnExecAutoRun" class="btn-exec btn-exec-primary" title="Automatically run detection, drift, and AIS correlation in sequence">
+        <button id="btnExecAutoRun" class="btn-exec btn-exec-primary" title="Run the complete simulated benchmark pipeline">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          <span>⚡ AUTO-RUN INVESTIGATION</span>
+          <span>⚡ RUN BENCHMARK DEMO</span>
         </button>
-        <button id="btnExecDownloadPDF" class="btn-exec btn-exec-hazard" title="Download Official ICG Police/Forensic Report PDF">
+        <button id="btnExecDownloadPDF" class="btn-exec btn-exec-hazard" title="Download analyst-review case summary PDF">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-          <span>📄 EXPORT ICG REPORT (PDF)</span>
+          <span>📄 EXPORT CASE SUMMARY (PDF)</span>
         </button>
         <button id="btnToggleExpertMode" class="btn-exec btn-exec-ghost" title="Toggle between Simple Executive View and Full Forensic Mode">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -689,12 +725,12 @@
     <div id="globalDropOverlay" class="global-drop-overlay" hidden>
       <div class="drop-zone-modal">
         <div class="drop-icon">🛰️ ⇄ 🚢</div>
-        <h2>DRAG & DROP LIVE SATELLITE OR AIS DATA</h2>
-        <p class="drop-sub">Drop Sentinel-1 SAR (<code class="code-hl">.png</code>, <code class="code-hl">.tif</code>) or MarineCadastre AIS (<code class="code-hl">.csv</code>) anywhere</p>
+        <h2>DRAG & DROP AUTHENTIC SAR OR AIS DATA</h2>
+        <p class="drop-sub">Drop documented Sentinel-1 SAR (<code class="code-hl">.png</code>, <code class="code-hl">.tif</code>) or time-aligned MarineCadastre AIS (<code class="code-hl">.csv</code>) anywhere</p>
         <div class="drop-tags">
           <span class="tag-badge">✓ Auto-detects File Type</span>
           <span class="tag-badge">✓ PyTorch U-Net Segmentation</span>
-          <span class="tag-badge">✓ Instant Suspect Attribution</span>
+          <span class="tag-badge">✓ Screening lead ranking</span>
         </div>
       </div>
     </div>
@@ -832,8 +868,8 @@
                         <div class="wnc-main">
                           <span class="wnc-icon">⚠️</span>
                           <div class="wnc-text">
-                            <strong class="wnc-title">Covert Discharge</strong>
-                            <span class="wnc-desc">Tanker illegal bilge purge</span>
+                            <strong class="wnc-title">Navigation Context</strong>
+                            <span class="wnc-desc">Speed variation requires review</span>
                           </div>
                         </div>
                         <div class="wnc-tag tag-crime">Speed dropped to 5.1 kts</div>
@@ -909,10 +945,10 @@
                           <span class="wnc-icon">🧠</span>
                           <div class="wnc-text">
                             <strong class="wnc-title">PyTorch U-Net</strong>
-                            <span class="wnc-desc">Segmentation & Bonn mass</span>
+                            <span class="wnc-desc">Dark-feature screening only</span>
                           </div>
                         </div>
-                        <div class="wnc-tag tag-ai">0.62 km² • 13.6 tons</div>
+                        <div class="wnc-tag tag-ai">Mass not inferred from SAR geometry</div>
                       </div>
 
                       <!-- Node 6 -->
@@ -925,10 +961,10 @@
                           <span class="wnc-icon">⏪</span>
                           <div class="wnc-text">
                             <strong class="wnc-title">Reverse Hindcast</strong>
-                            <span class="wnc-desc">Rewinds 10.5h drift vectors</span>
+                            <span class="wnc-desc">Conditional source-aligned transport</span>
                           </div>
                         </div>
-                        <div class="wnc-tag tag-physics">Crime scene pinpointed</div>
+                        <div class="wnc-tag tag-physics">Not a source-location inference</div>
                       </div>
                     </div>
                   </div>
@@ -937,7 +973,7 @@
                   <div class="phase-column phase-col-day2">
                     <div class="phase-col-header">
                       <span class="phase-dot dot-crimson"></span>
-                      <strong>DAY 2 • VERDICT & ALERT</strong>
+                      <strong>DAY 2 • REVIEW & RESPONSE</strong>
                     </div>
                     <div class="phase-nodes-list">
                       <!-- Node 7 -->
@@ -949,11 +985,11 @@
                         <div class="wnc-main">
                           <span class="wnc-icon">🎯</span>
                           <div class="wnc-text">
-                            <strong class="wnc-title">AIS Attribution</strong>
-                            <span class="wnc-desc">MT Neptune Glory confirmed</span>
+                            <strong class="wnc-title">AIS Corridor Review</strong>
+                            <span class="wnc-desc">Requires source AIS and analyst review</span>
                           </div>
                         </div>
-                        <div class="wnc-tag tag-culprit">92.2% Suspect Score</div>
+                        <div class="wnc-tag tag-culprit">Uncalibrated lead-priority score</div>
                       </div>
 
                       <div class="wnc-connector-arrow">
@@ -1181,8 +1217,113 @@ variables:
     </div>
   </main>
 
+  <!-- ========================================================================= -->
+  <!-- MODAL: Real-Time Live Automated Data Ingestion Center                     -->
+  <!-- ========================================================================= -->
+  <div id="liveIngestionModal" class="quicklook-modal-overlay" style="display: none;">
+    <div class="quicklook-modal-container live-modal-container">
+      <div class="quicklook-header">
+        <div class="ql-title-group">
+          <span class="pulse-dot-cyan"></span>
+          <h2 class="ql-modal-title">🌐 Live Automated Ingestion Center</h2>
+          <span class="ql-badge-active">SOURCE STATUS & AOI REFRESH</span>
+        </div>
+        <button id="btnCloseLiveModal" class="ql-close-btn" title="Close Modal">&times;</button>
+      </div>
+
+      <div class="live-ingestion-body">
+        <p class="live-desc">
+          Queries source-backed catalogue and met-ocean context for an AOI. AIS and authority spill incidents appear only when their server-side feeds are configured. An authentic SAR raster is still required before analysis.
+        </p>
+
+        <!-- Hotspot Quick Presets -->
+        <div class="live-presets-bar">
+          <span class="preset-label">FAST MARITIME HOTSPOTS:</span>
+          <button class="btn-preset active" data-lat="22.585" data-lon="69.185" data-name="Gulf of Kachchh SPM Fairway" data-reg="Gujarat Offshore / Northern Arabian Sea">🇮🇳 Gulf of Kachchh</button>
+          <button class="btn-preset" data-lat="19.412" data-lon="71.325" data-name="Mumbai High Basin" data-reg="Maharashtra Offshore / Western EEZ">🇮🇳 Mumbai High</button>
+          <button class="btn-preset" data-lat="6.845" data-lon="93.420" data-name="Six Degree Channel" data-reg="Great Nicobar / Malacca Transit">🇮🇳 Great Nicobar</button>
+          <button class="btn-preset" data-lat="10.085" data-lon="73.005" data-name="Lakshadweep Minicoy Passage" data-reg="Lakshadweep Islands / Arabian Sea">🇮🇳 Lakshadweep</button>
+          <button class="btn-preset" data-lat="9.85" data-lon="79.85" data-name="Palk Strait Channel" data-reg="Tamil Nadu / Sri Lanka Border">🇮🇳 Palk Strait</button>
+          <button class="btn-preset" data-lat="20.316" data-lon="86.691" data-name="Paradip Oil Terminal" data-reg="Bay of Bengal / Odisha Coast">🇮🇳 Paradip</button>
+          <button class="btn-preset" data-lat="16.95" data-lon="82.45" data-name="KG Basin Petroleum Sector" data-reg="Andhra Pradesh / Bay of Bengal">🇮🇳 Vizag KG Basin</button>
+          <button class="btn-preset" data-lat="9.97" data-lon="76.20" data-name="Cochin Refinery & LNG" data-reg="Kerala Coast / Arabian Sea">🇮🇳 Kochi</button>
+          <button class="btn-preset" data-lat="21.60" data-lon="88.35" data-name="Sundarbans Hooghly Estuary" data-reg="West Bengal / Bangladesh Border">🇮🇳 Sundarbans</button>
+          <button class="btn-preset" data-lat="12.92" data-lon="74.78" data-name="MRPL Refinery Terminal" data-reg="Karnataka Coast / Arabian Sea">🇮🇳 Mangalore</button>
+          <button class="btn-preset" data-lat="13.26" data-lon="80.40" data-name="Kamarajar Oil Terminal" data-reg="Tamil Nadu / Coromandel Coast">🇮🇳 Chennai-Ennore</button>
+          <button class="btn-preset" data-lat="15.40" data-lon="73.78" data-name="Mormugao Port & Zuari" data-reg="Goa Coast / Arabian Sea">🇮🇳 Goa</button>
+          <button class="btn-preset" data-lat="8.80" data-lon="78.18" data-name="Gulf of Mannar Coral Zone" data-reg="Southern Tamil Nadu">🇮🇳 Tuticorin</button>
+          <button class="btn-preset" data-lat="27.850" data-lon="-90.500" data-name="Gulf of Mexico Deepwater" data-reg="Mississippi Canyon Offshore">🇺🇸 Gulf of Mexico</button>
+        </div>
+
+        <!-- Coordinate Inputs -->
+        <div class="live-coords-grid">
+          <div class="coord-field">
+            <label>TARGET LATITUDE (°N/S)</label>
+            <input type="number" id="liveInputLat" step="0.001" value="22.585" min="-90" max="90">
+          </div>
+          <div class="coord-field">
+            <label>TARGET LONGITUDE (°E/W)</label>
+            <input type="number" id="liveInputLon" step="0.001" value="69.185" min="-180" max="180">
+          </div>
+          <div class="coord-field">
+            <label>OPERATION / SECTOR NAME</label>
+            <input type="text" id="liveInputTitle" value="Gulf of Kachchh SPM Fairway">
+          </div>
+        </div>
+
+        <!-- Live Feeds Telemetry Preview Cards -->
+        <div class="live-feeds-grid">
+          <!-- 1. Satellite Feeder -->
+          <div class="live-feed-card" id="cardFeedSat">
+            <div class="feed-icon">🛰️</div>
+            <div class="feed-info">
+              <h4>SAR Satellite Radar Feed</h4>
+              <p class="feed-source">NASA ASF DAAC catalogue metadata</p>
+              <div class="feed-status" id="feedStatusSat">Ready to Query Pass</div>
+            </div>
+          </div>
+
+          <!-- 2. Ocean Currents Feeder -->
+          <div class="live-feed-card" id="cardFeedMeteo">
+            <div class="feed-icon">🌊</div>
+            <div class="feed-info">
+              <h4>Hydrodynamic Currents & Wind</h4>
+              <p class="feed-source">Open-Meteo current model/reanalysis</p>
+              <div class="feed-status" id="feedStatusMeteo">Ready to Fetch (u, v)</div>
+            </div>
+          </div>
+
+          <!-- 3. AIS Transponder Feeder -->
+          <div class="live-feed-card" id="cardFeedAIS">
+            <div class="feed-icon">🚢</div>
+            <div class="feed-info">
+              <h4>Active Maritime Transponders</h4>
+              <p class="feed-source">AISStream (server key required)</p>
+              <div class="feed-status" id="feedStatusAIS">Check server configuration</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="live-action-bar">
+          <button id="btnCheckLiveFeeds" class="btn-tactical btn-secondary">
+            <span>📡 Probe Live Feeds (Telemetry Only)</span>
+          </button>
+          <button id="btnExecuteLiveMission" class="btn-primary-glow">
+            <span>⚡ Refresh Source-Backed AOI</span>
+          </button>
+        </div>
+
+        <!-- Console Log / Telemetry Output Box -->
+        <div id="liveTelemetryLog" class="live-log-console" style="display: none;">
+          <pre id="liveLogText">// Live Telemetry Monitor Initializing...</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Leaflet & App Scripts -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="/static/js/app.js?v=4.0"></script>
+  <script src="/static/js/app.js?v=4.5"></script>
 </body>
 </html>

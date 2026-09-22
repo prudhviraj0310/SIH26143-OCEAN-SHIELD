@@ -19,6 +19,7 @@ class OceanShieldApp {
     this.sarProvenance = null;
     this.sceneGeometry = null;
     this.sceneAcquisitionTime = null;
+    this.demoMode = false;
 
     // Simulation state
     this.currentRelativeTime = 0.0;
@@ -175,14 +176,15 @@ class OceanShieldApp {
     // Default to satellite so judges see real coastlines, islands, and ocean
     satellite.addTo(this.map);
 
-    // Reference labels on top of satellite
+    // Reference labels — available as overlay but NOT loaded by default (saves ~20 tile requests)
     const refLabels = L.tileLayer('https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 16,
       opacity: 0.80
-    }).addTo(this.map);
+    });
 
-    // Initialize India Maritime Context Layers (EEZ, Shipping Lanes, Sanctuaries)
-    this.initIndiaMaritimeLayers();
+    // Source-backed operational layers.  Do not add illustrative port, spill,
+    // vessel, corridor, or boundary markers to an operational map.
+    this.initLiveOperationalLayers();
 
     // Layer control switcher with Basemaps and Overlays
     const baseMaps = {
@@ -193,11 +195,10 @@ class OceanShieldApp {
     };
 
     const overlayMaps = {
-      '🇮🇳 India 200 NM EEZ (Sovereign Zone)': this.indiaEEZLayer,
-      '🚢 Vessel Transit Corridors (MarineCadastre)': this.indiaShippingLanesLayer,
-      '⚓ Indian Ports & SPM Terminals (18 Hubs)': this.indianPortsLayer,
-      '⚠️ Documented Indian Oil Spill History (10 Disasters)': this.historicalSpillsLayer,
-      '🛑 Marine Biosphere Sanctuaries': this.marineSanctuariesLayer
+      '🏷️ Reference Labels': refLabels,
+      '⚓ NGA World Port Index — reference catalogue': this.indianPortsLayer,
+      '⚠️ Authority spill incident feed — live when configured': this.liveIncidentsLayer,
+      '🚢 AISStream PositionReports — live when configured': this.liveAisLayer
     };
 
     L.control.layers(baseMaps, overlayMaps, { position: 'topright', collapsed: true }).addTo(this.map);
@@ -213,7 +214,109 @@ class OceanShieldApp {
     });
   }
 
-  initIndiaMaritimeLayers() {
+  initLiveOperationalLayers() {
+    this.indianPortsLayer = L.layerGroup().addTo(this.map);
+    this.liveIncidentsLayer = L.layerGroup().addTo(this.map);
+    this.liveAisLayer = L.layerGroup().addTo(this.map);
+    this.liveAOI = null;
+    // Defer external API calls so the map + scenario render instantly
+    this.refreshOperationalLayers();  // incidents only (fast / cached)
+    setTimeout(() => this.refreshOperationalLayers({ includePorts: true }), 2000);
+    this.liveLayerRefreshTimer = window.setInterval(() => {
+      this.refreshOperationalLayers();
+    }, 120000);
+  }
+
+  escapeLiveValue(value) {
+    return String(value ?? 'Not supplied').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[character]));
+  }
+
+  portMarker(port) {
+    const text = this.escapeLiveValue.bind(this);
+    const icon = L.divIcon({
+      className: 'custom-port-pin',
+      html: '<div style="background:#0284c7;width:22px;height:22px;border-radius:50%;border:2px solid #38bdf8;box-shadow:0 0 10px #0284c7;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px">⚓</div>',
+      iconSize: [22, 22], iconAnchor: [11, 11]
+    });
+    return L.marker([port.lat, port.lon], { icon }).bindPopup(
+      `<div class="live-map-popup"><b>⚓ ${text(port.name)}</b><br>` +
+      `Country: ${text(port.country)}<br>Harbor size: ${text(port.harbor_size)}<br>` +
+      `Facility: ${text(port.facility_type)}<br><small>NGA World Port Index — reference catalogue, not live operations.</small></div>`
+    );
+  }
+
+  incidentMarker(incident) {
+    const text = this.escapeLiveValue.bind(this);
+    const icon = L.divIcon({
+      className: 'custom-spill-pin',
+      html: '<div style="background:#dc2626;width:24px;height:24px;border-radius:50%;border:2px solid #fca5a5;box-shadow:0 0 14px #dc2626;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px">⚠️</div>',
+      iconSize: [24, 24], iconAnchor: [12, 12]
+    });
+    return L.marker([incident.lat, incident.lon], { icon }).bindPopup(
+      `<div class="live-map-popup"><b>⚠️ ${text(incident.name)}</b><br>` +
+      `Reported: ${text(incident.reported_at_utc)}<br>Severity: ${text(incident.severity)}<br>` +
+      `Status: ${text(incident.status)}<br><small>Authority-configured incident feed.</small></div>`
+    );
+  }
+
+  renderLiveAis(aisResponse) {
+    if (!this.liveAisLayer) return;
+    this.liveAisLayer.clearLayers();
+    if (aisResponse?.status !== 'available' || !Array.isArray(aisResponse.vessels)) return;
+    const text = this.escapeLiveValue.bind(this);
+    aisResponse.vessels.forEach((vessel) => {
+      const point = vessel.current_position;
+      if (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lon)) return;
+      const icon = L.divIcon({
+        className: 'live-ais-pin',
+        html: '<div style="background:#0ea5e9;width:22px;height:22px;border-radius:50%;border:2px solid #bae6fd;box-shadow:0 0 12px #0ea5e9;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px">⌁</div>',
+        iconSize: [22, 22], iconAnchor: [11, 11]
+      });
+      L.marker([point.lat, point.lon], { icon }).bindPopup(
+        `<div class="live-map-popup"><b>🚢 ${text(vessel.vessel_name)}</b><br>` +
+        `MMSI: ${text(vessel.mmsi)}<br>SOG: ${text(point.sog_knots)} kn<br>` +
+        `Received: ${text(point.observed_at)}<br><small>${text(vessel.data_origin)}</small></div>`
+      ).addTo(this.liveAisLayer);
+    });
+  }
+
+  async refreshOperationalLayers({ includePorts = false, lat = null, lon = null } = {}) {
+    const tasks = [];
+    if (includePorts) tasks.push(fetch('/api/live/ports').then((response) => response.json()).catch(() => null));
+    tasks.push(fetch('/api/live/incidents').then((response) => response.json()).catch(() => null));
+    const aoiLat = lat ?? this.liveAOI?.lat;
+    const aoiLon = lon ?? this.liveAOI?.lon;
+    if (Number.isFinite(aoiLat) && Number.isFinite(aoiLon)) {
+      tasks.push(fetch(`/api/live/ais-traffic?lat=${aoiLat}&lon=${aoiLon}&collection_seconds=5`).then((response) => response.json()).catch(() => null));
+    }
+    const results = await Promise.all(tasks);
+    let cursor = 0;
+    if (includePorts) {
+      const ports = results[cursor++];
+      if (ports?.status === 'available' && Array.isArray(ports.ports)) {
+        this.indianPortsLayer.clearLayers();
+        ports.ports.forEach((port) => {
+          if (Number.isFinite(port.lat) && Number.isFinite(port.lon)) this.portMarker(port).addTo(this.indianPortsLayer);
+        });
+      }
+    }
+    const incidents = results[cursor++];
+    if (incidents?.status === 'available' && Array.isArray(incidents.incidents)) {
+      this.liveIncidentsLayer.clearLayers();
+      incidents.incidents.forEach((incident) => {
+        if (Number.isFinite(incident.lat) && Number.isFinite(incident.lon)) this.incidentMarker(incident).addTo(this.liveIncidentsLayer);
+      });
+    } else if (incidents?.status === 'not_configured') {
+      this.liveIncidentsLayer.clearLayers();
+    }
+    if (Number.isFinite(aoiLat) && Number.isFinite(aoiLon)) this.renderLiveAis(results[cursor]);
+  }
+
+  // Retained only as an archived visual prototype. It is deliberately never
+  // invoked: operational maps use initLiveOperationalLayers above.
+  initArchivedDemoLayers() {
     // 1. Official India 200 NM Exclusive Economic Zone (EEZ) Boundaries
     // Mainland EEZ + Lakshadweep Sea
     const mainlandEEZCoords = [
@@ -522,6 +625,7 @@ class OceanShieldApp {
 
     // Initialize macOS QuickLook Vault & Chamber Web
     this.initMacosQuicklook();
+    this.initLiveIngestion();
   }
 
   // ── macOS QuickLook Dataset Vault & Investigation Chamber Web ───────────────
@@ -553,11 +657,11 @@ class OceanShieldApp {
       },
       2: {
         step: "MILESTONE 2 / 8",
-        title: "Covert Bilge Discharge (The Crime Moment)",
-        why: "Detects deliberate slowdowns in open water. Tankers discharging oily bilge water or slops through an illegal oily-water separator (OWS) bypass must decelerate to 4-6 knots to prevent heavy turbulence from breaking up the slick prematurely and to manage bilge pump throughput.",
-        math: "ΔV = SOG_{t-1} - SOG_t = 15.4 - 5.1 = 10.3 kts (Drop > 60%) • Anomaly_Score = f(ΔV, Duration, Proximity) = 98.4/100",
-        dataset: "NOAA / MarineCadastre AIS: datasets/marinecadastre_real_ais.csv (MMSI: 235089300 - MT Neptune Glory). Transponder pings reveal 45-minute dwell time with 5.1 knots SOG in Gulf of Kachchh fairway.",
-        legal: "MARPOL 73/78 Annex I Regulation 15 violation: Prohibits any discharge into the sea of oil or oily mixtures from tanker cargo areas or machinery space bilges exceeding 15 ppm."
+        title: "AIS Navigation Context",
+        why: "Speed and course variation can identify records that merit contextual review. They are common in routine navigation and cannot establish a discharge.",
+        math: "ΔV = SOG(t₁) − SOG(t₂). This descriptive value is excluded from the lead-priority score.",
+        dataset: "Time-aligned AIS provider export required; benchmark tracks are shown only as demonstrations.",
+        legal: "AIS is corroborative navigation information. A response or enforcement decision requires independent, authenticated evidence and competent-authority review."
       },
       3: {
         step: "MILESTONE 3 / 8",
@@ -565,7 +669,7 @@ class OceanShieldApp {
         why: "Oil slicks do not stay stationary; they drift under combined forces of sea-surface currents and atmospheric windage, while simultaneously losing mass through evaporation and emulsifying with seawater.",
         math: "dX/dt = U_current(x, y, t) + α_leeway · U_wind(x, y, t) + K' · dW_t (4th-Order Runge-Kutta integration, α = 0.032, Mackay Evaporation dF_evap/dt = K_evap · A / V)",
         dataset: "NOAA HYCOM Currents (datasets/ocean_met/hycom_real_gulf_kachchh.nc) & ECMWF ERA5 Wind (datasets/ocean_met/openmeteo_wind_kachchh.json).",
-        legal: "Scientifically accounts for the time gap between discharge and satellite capture, establishing that the detected patch originated 16.4 km upstream at the exact position and timestamp of the suspect vessel."
+        legal: "Produces a conditional transport scenario only after source-time coverage is validated; it does not establish a release position or timestamp."
       },
       4: {
         step: "MILESTONE 4 / 8",
@@ -577,35 +681,35 @@ class OceanShieldApp {
       },
       5: {
         step: "MILESTONE 5 / 8",
-        title: "Autonomous PyTorch U-Net Segmentation & Bonn Quantification",
-        why: "Automates human operator bottleneck. Replaces hours of manual photo-interpretation with sub-second pixel-level segmentation to extract the exact polygon boundary, surface area, and crude mass.",
-        math: "Mask(x, y) = ArgMax(Softmax(U_Net(SAR_patch))) • Area = ∑ Pixels × 100 m² = 0.62 km² • Mass = Area · Thickness · ρ · (1 - F_evap) = 13.6 Metric Tons",
-        dataset: "Trained on Zenodo 8346860 (1,112 validated oil spill SAR scenes). Enhanced by ESPCN 2x Super-Resolution for sub-pixel boundary definition.",
-        legal: "Calculates volume according to Bonn Agreement Oil Appearance Code (BAOAC). Standard metric used by international courts to assess pollution damages and penalty tiers."
+        title: "SAR Dark-Feature Screening",
+        why: "Segments dark features for analyst inspection. Single-scene geometry does not establish oil identity, thickness, mass, age, or cause.",
+        math: "Mask(x, y) = threshold(U_Net(SAR_patch)); screening output is not a calibrated probability or quantity estimate.",
+        dataset: "A source raster with sensor calibration, metadata, and documented preprocessing is required for any operational review.",
+        legal: "Automated screening is not an evidentiary quantity calculation or legal finding."
       },
       6: {
         step: "MILESTONE 6 / 8",
-        title: "Reverse Lagrangian Hindcast Rewind (Crime Scene Pinpoint)",
-        why: "Satellites only show where the slick is NOW, not who dumped it. Reversing time (dt = -300s) allows 1,000 Monte-Carlo virtual particles to travel backward along the hydrodynamic current vectors to the exact geographic coordinates of initial release.",
-        math: "X(t - Δt) = X(t) - ∫ [ U_ocean(x, τ) + 0.032 · U_wind(x, τ) ] dτ • Release Point = Centroid(Particles_{t=-10.5h}) = (22.499° N, 69.075° E)",
-        dataset: "NOAA HYCOM 4D current grids (water_u, water_v) + Open-Meteo wind vectors with Monte-Carlo turbulent diffusion dispersion cone.",
-        legal: "Reconstructs the spatial origin with probabilistic confidence ellipses (95% CI). Proves beyond reasonable doubt that the spill could not have come from shoreline or offshore oil platforms."
+        title: "Conditional Reverse Transport",
+        why: "Propagates an analyst-supplied age hypothesis backward through time-aligned current and wind fields.",
+        math: "X(t − Δt) = X(t) − ∫ V(x, τ)dτ, subject to source coverage and uncertainty. No release-time optimization or confidence percentage is reported.",
+        dataset: "Requires a source grid covering the full requested window and matching the scene acquisition timestamp.",
+        legal: "This is a review aid, not proof excluding other sources."
       },
       7: {
         step: "MILESTONE 7 / 8",
-        title: "Multi-Factor AIS Kinematic Attribution (Culprit Identification)",
-        why: "Fuses reverse trajectory origin with historical AIS transponder streams to evaluate every vessel within the spatio-temporal search radius. Eliminates guesswork using a composite mathematical scoring rubric.",
-        math: "Score = 0.35 · S_dist + 0.25 · S_time + 0.25 · S_speed + 0.15 · S_type • MT Neptune Glory = 92.2% (CPA: 0.0 NM, Speed Drop: 10.3 kts, Vessel Type: Crude Tanker)",
-        dataset: "NOAA / MarineCadastre AIS: datasets/marinecadastre_real_ais.csv (1,996 records cross-referenced against candidate ships in the corridor).",
-        legal: "Courtroom-grade attribution dossier matching UNCLOS Article 217 requirements for coastal state enforcement and port state detention warrants."
+        title: "AIS Corridor Lead Screening",
+        why: "Ranks time-aligned records by spatial and temporal proximity for analyst review; vessel type and navigation context are excluded from the score.",
+        math: "Lead priority = 0.6·S_proximity + 0.4·S_temporal. It is uncalibrated and is not a probability.",
+        dataset: "Authenticated AIS source export covering the scene and conditional transport window.",
+        legal: "No vessel is identified as responsible by this system."
       },
       8: {
         step: "MILESTONE 8 / 8",
-        title: "Forward Coastline Collision & Ecological Impact Forecast",
-        why: "Enables proactive disaster containment. Rather than reacting after the oil coats the beaches, forward Runge-Kutta simulation forecasts the trajectory for the next 24-48 hours to direct skimmers and containment booms.",
-        math: "X_{t+24} = X_0 + ∫_{0}^{24} V_{drift}(t) dt • Estimated Time of Beaching (ETB): 14.2 Hours • Impact Vector: Marine National Park Coral Sanctuary",
-        dataset: "In-situ bathymetry, shoreline geometry vectors, and sensitive reef ecological boundaries (marineSanctuariesLayer).",
-        legal: "Triggers Indian National Oil Spill Disaster Contingency Plan (NOS-DCP) Tier-1 response protocols under Indian Coast Guard authority."
+        title: "Forward Transport and Shoreline Review",
+        why: "Forecasts a transport envelope. Shoreline impact remains unassessed until an authoritative shoreline, land mask, and asset layer are available.",
+        math: "X(t+Δt) = X(t) + ∫ V(x,τ)dτ; no beaching time is emitted without a spatial shoreline intersection.",
+        dataset: "Time-aligned currents, wind, oil profile, shoreline geometry, and sensitive-asset data are required.",
+        legal: "Incident commanders must use validated response systems and authoritative data for response decisions."
       }
     };
 
@@ -807,11 +911,10 @@ class OceanShieldApp {
       if (aisBody && d.ais && d.ais.sample_rows) {
         let rowsHtml = '';
         d.ais.sample_rows.forEach(r => {
-          const isCulprit = (r.MMSI === '235089300' || (r.VesselName && r.VesselName.includes('NEPTUNE')));
-          const rowClass = isCulprit ? 'row-suspect-hl' : '';
+          const rowClass = '';
           rowsHtml += `
             <tr class="${rowClass}">
-              <td><strong>${r.MMSI || '--'}</strong> ${isCulprit ? '🚨' : ''}</td>
+              <td><strong>${r.MMSI || '--'}</strong></td>
               <td>${r.VesselName || 'UNKNOWN'}</td>
               <td>${r.BaseDateTime ? r.BaseDateTime.replace('T', ' ') : '--'}</td>
               <td>${r.LAT ? parseFloat(r.LAT).toFixed(4) : '--'}</td>
@@ -884,6 +987,18 @@ class OceanShieldApp {
   }
 
   async runAutoInvestigation() {
+    if (!this.sarProvenance && !this.aisProvenance) {
+      await this.runBenchmarkDemo();
+      return;
+    }
+    const ageHypothesis = Number(document.getElementById('slickAgeHours')?.value);
+    const vectors = ['currentU', 'currentV', 'windU', 'windV'].map(id => document.getElementById(id)?.value);
+    const completeVectors = vectors.every(value => value !== '');
+    if (!this.sarProvenance?.acquisition_time_utc || !this.aisProvenance || !Number.isFinite(ageHypothesis) || ageHypothesis <= 0 || !completeVectors || !document.getElementById('metOceanReference')?.value) {
+      document.getElementById('systemStatusText').innerText = 'SOURCE INPUTS REQUIRED • SAR, AIS, AGE HYPOTHESIS, MET-OCEAN';
+      this.showToast('Supply documented SAR time, time-aligned AIS, an age hypothesis, and referenced complete met-ocean vectors.', 'warning');
+      return;
+    }
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const mapContainer = document.querySelector('.workspace-canvas');
     let scanBeam = null;
@@ -907,7 +1022,7 @@ class OceanShieldApp {
         scanBeam.remove();
         scanBeam = null;
       }
-      this.showToast('✅ SAR Slick Detected: 0.62 km² • 13.6 Tonnes Crude', 'success');
+      this.showToast('SAR dark-feature screening complete; oil identity, age, and mass require validation.', 'info');
       await sleep(800);
 
       // 🌊 STAGE 2: 4th-Order Runge-Kutta Lagrangian Drift & Rewind
@@ -915,15 +1030,16 @@ class OceanShieldApp {
       document.getElementById('systemStatusText').innerText = 'SOLVING RK4 FLUID EQUATIONS...';
       await sleep(600);
       await this.runDriftSimulation();
+      if (!this.driftResults) return;
 
-      // Rewind timeline smoothly backward from 0 to -10.5h so judges see time ticking back!
-      const targetTime = -10.5;
+      // Animate only the analyst-supplied age hypothesis, never a fabricated age.
+      const targetTime = -Math.abs(Number(document.getElementById('slickAgeHours')?.value || 0));
       for (let t = 0; t >= targetTime; t -= 1.5) {
         this.setTimeOffset(t);
         await sleep(65);
       }
       this.setTimeOffset(targetTime);
-      this.showToast('📍 Spill Origin Found: 22.4260° N, 69.1230° E (T - 10.5h)', 'success');
+      this.showToast('Conditional transport scenario complete; the backtracked point is not an inferred release origin.', 'info');
       await sleep(900);
 
       // 🚢 STAGE 3: MarineCadastre AIS Correlation & Kinematic Forensics
@@ -931,9 +1047,10 @@ class OceanShieldApp {
       document.getElementById('systemStatusText').innerText = 'SCREENING AIS TRAFFIC TRACKS...';
       await sleep(700);
       await this.runAISCorrelation();
+      if (!this.aisResults) return;
 
       // Animate suspect score roll-up (0% to target score)
-      const targetScore = this.aisResults?.primary_culprit?.composite_suspect_score || 57.8;
+      const targetScore = this.aisResults?.primary_review_lead?.lead_priority_score || 0;
       let curScore = 0;
       const scoreStep = targetScore / 15;
       const scoreInterval = setInterval(() => {
@@ -943,16 +1060,39 @@ class OceanShieldApp {
           clearInterval(scoreInterval);
         }
         if (this.execSuspectDetails) {
-          this.execSuspectDetails.innerText = `Match: ${curScore.toFixed(1)}% • CPA: 1.28 NM • Commercial Fishing`;
+          this.execSuspectDetails.innerText = `Lead-priority: ${curScore.toFixed(1)}/100 • analyst review required`;
         }
       }, 35);
 
-      document.getElementById('systemStatusText').innerText = 'INVESTIGATION COMPLETE • SUSPECT IDENTIFIED';
-      this.showToast('🎯 Target Identified: FV JAI MATSYA 9 (57.8% Match • Speed Anomaly)', 'success');
+      document.getElementById('systemStatusText').innerText = 'SOURCE-BACKED SCREENING COMPLETE • ANALYST REVIEW REQUIRED';
+      this.showToast('No responsibility finding is produced by this system.', 'info');
     } catch (err) {
       if (scanBeam) scanBeam.remove();
       console.error('Auto-investigation error:', err);
       this.showToast('⚠️ Pipeline completed with warnings', 'warning');
+    }
+  }
+
+  async runBenchmarkDemo() {
+    if (!this.scenarioData) return;
+    this.demoMode = true;
+    const ageInput = document.getElementById('slickAgeHours');
+    if (ageInput && !ageInput.value) ageInput.value = '10.5';
+    document.getElementById('systemStatusText').innerText = 'RUNNING BENCHMARK DEMO • SIMULATED INPUTS';
+    this.showToast('Benchmark demo: all scenario outputs are simulated and clearly separated from Live Ingestion.', 'info');
+    try {
+      await this.runSARAnalysis();
+      await this.runDriftSimulation();
+      if (!this.driftResults) return;
+      await this.runAISCorrelation();
+      if (!this.aisResults) return;
+      this.setSimpleMode(false);
+      document.getElementById('systemStatusText').innerText = 'BENCHMARK DEMO COMPLETE • SIMULATED / NOT LIVE';
+      this.showToast('Demo ready. Use Live Ingestion only for actual provider data.', 'success');
+    } catch (err) {
+      console.error('Benchmark demo error:', err);
+      document.getElementById('systemStatusText').innerText = 'BENCHMARK DEMO FAILED';
+      this.showToast(err.message || 'Unable to run benchmark demo.', 'warning');
     }
   }
 
@@ -964,6 +1104,7 @@ class OceanShieldApp {
       this.scenarioData = data.scenario;
       this.pendingSarFile = null;
       this.sarProvenance = null;
+      this.demoMode = false;
       this.customAisVessels = null;
       this.aisProvenance = null;
       this.sceneGeometry = { ...this.scenarioData.center, width: 512, height: 512, pixelSize: 50 };
@@ -995,20 +1136,21 @@ class OceanShieldApp {
       }
 
       // SAR Preview
-      this.toggleSuperResolution(data);
+      // Store image URLs for lazy loading (no longer base64-in-JSON)
+      this.sarPreviewUrl = data.sar_preview_url || null;
+      this.srPreviewUrl = data.sr_preview_url || null;
+      this.toggleSuperResolution();
 
-      // Automatically trigger end-to-end processing so screen is never blank!
-      try {
-        await this.runSARAnalysis();
-        await this.runDriftSimulation();
-        await this.runAISCorrelation();
-        if (this.btnDetectSAR) this.btnDetectSAR.classList.add('active');
-        if (this.btnRunDrift) this.btnRunDrift.classList.add('active');
-        if (this.btnCorrelateAIS) this.btnCorrelateAIS.classList.add('active');
-        document.getElementById('systemStatusText').innerText = 'WORKSPACE ACTIVE • ALL LEADS RANKED';
-      } catch (pipeErr) {
-        console.warn('Auto-pipeline warning:', pipeErr);
-      }
+      // Benchmark scenarios remain opt-in. Rendering their precomputed output on
+      // load made a local fixture look like a current maritime event.
+      if (this.execAreaVal) this.execAreaVal.innerText = '—';
+      if (this.execVolumeSub) this.execVolumeSub.innerText = 'Benchmark scene loaded — select an authentic SAR raster to analyse';
+      if (this.execLandfallHours) this.execLandfallHours.innerText = '—';
+      if (this.execHazardTarget) this.execHazardTarget.innerText = 'Run drift only with a documented source scene';
+      if (this.execSuspectName) this.execSuspectName.innerText = '—';
+      if (this.execSuspectDetails) this.execSuspectDetails.innerText = 'AIS ranking requires time-aligned source records';
+      if (this.btnExecAutoRun) this.btnExecAutoRun.innerText = 'RUN BENCHMARK DEMO';
+      document.getElementById('systemStatusText').innerText = 'BENCHMARK READY • RUN DEMO OR OPEN LIVE INGESTION';
 
     } catch (err) {
       console.error('Error loading scenario:', err);
@@ -1056,18 +1198,18 @@ class OceanShieldApp {
     if (this.scenarioData?.ocean_data_source && this.oceanDataSourceEl) {
       const src = this.scenarioData.ocean_data_source;
       this.oceanDataSourceEl.innerText = `HYCOM: ${src}`;
-      const isReal = src.includes('Real') || src.includes('NetCDF');
-      this.oceanDataSourceEl.style.color = isReal ? 'var(--accent-emerald)' : 'var(--accent-amber)';
+      const isOperational = src.includes('time-bound live source');
+      this.oceanDataSourceEl.style.color = isOperational ? 'var(--accent-emerald)' : 'var(--accent-amber)';
       const dot = this.oceanDataSourceEl.parentElement?.querySelector('.source-dot, .dot-indicator');
-      if (dot) dot.style.background = isReal ? 'var(--accent-emerald)' : 'var(--accent-amber)';
+      if (dot) dot.style.background = isOperational ? 'var(--accent-emerald)' : 'var(--accent-amber)';
     }
     if (this.scenarioData?.ais_data_origin && this.aisDataOriginEl) {
       const aisOrigin = this.scenarioData.ais_data_origin;
       this.aisDataOriginEl.innerText = `AIS: ${aisOrigin}`;
-      const isReal = aisOrigin.includes('MarineCadastre') || aisOrigin.includes('real');
-      this.aisDataOriginEl.style.color = isReal ? 'var(--accent-emerald)' : 'var(--accent-amber)';
+      const isOperational = aisOrigin.includes('time-aligned uploaded') || aisOrigin.includes('live provider');
+      this.aisDataOriginEl.style.color = isOperational ? 'var(--accent-emerald)' : 'var(--accent-amber)';
       const dot = this.aisDataOriginEl.parentElement?.querySelector('.source-dot, .dot-indicator');
-      if (dot) dot.style.background = isReal ? 'var(--accent-emerald)' : 'var(--accent-amber)';
+      if (dot) dot.style.background = isOperational ? 'var(--accent-emerald)' : 'var(--accent-amber)';
     }
   }
 
@@ -1075,11 +1217,19 @@ class OceanShieldApp {
     const isSR = this.srToggle ? this.srToggle.checked : true;
     if (this.srActiveBadge) this.srActiveBadge.style.display = isSR ? 'block' : 'none';
 
-    if (preloadedData && this.sarPreviewImg) {
-      const b64 = isSR ? preloadedData.sr_sar_image_base64 : preloadedData.sar_image_base64;
-      if (b64) {
-        this.sarPreviewImg.src = b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
+    // URL-based loading (new): use image endpoints instead of base64
+    if (this.sarPreviewImg) {
+      if (preloadedData) {
+        // Legacy base64 path (from analyze-sar responses)
+        const b64 = isSR ? preloadedData.sr_sar_image_base64 : preloadedData.sar_image_base64;
+        if (b64) {
+          this.sarPreviewImg.src = b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`;
+          return;
+        }
       }
+      // URL-based path (from scenario load)
+      const url = isSR ? this.srPreviewUrl : this.sarPreviewUrl;
+      if (url) this.sarPreviewImg.src = url;
     }
   }
 
@@ -1361,11 +1511,7 @@ class OceanShieldApp {
       this.sarPreviewImg.src = this.srToggle.checked ? data.super_resolution_base64 : data.segmentation_overlay_base64;
       this.renderSarResponse(data);
       if (this.sarUploadForm) this.sarUploadForm.hidden = true;
-      document.getElementById('systemStatusText').innerText = '✓ LIVE SAR SEGMENTED (PYTORCH U-NET)';
-      
-      // Auto-run drift and AIS correlation pipeline!
-      await this.runDriftSimulation();
-      await this.runAISCorrelation();
+      document.getElementById('systemStatusText').innerText = 'UPLOADED SAR SCREENED • ADD MET-OCEAN + AIS TO CONTINUE';
     } catch (err) {
       console.error('Error analysing live SAR:', err);
       document.getElementById('systemStatusText').innerText = 'SAR ANALYSIS FAILED';
@@ -1415,16 +1561,17 @@ class OceanShieldApp {
       const slick = this.sarResults.primary_slick;
       if (slick) {
         this.metricArea.innerText = `${slick.area_km2.toFixed(2)} km²`;
-        this.metricMass.innerText = `${slick.estimated_mass_tonnes.toFixed(1)} T`;
+        this.metricMass.innerText = 'NOT EST.';
         this.metricElongation.innerText = `${slick.elongation.toFixed(2)}:1`;
-        this.metricConfidence.innerText = `${slick.confidence_score}%`;
-        this.metricAge.innerText = `${slick.estimated_age_hours || 10.5} h`;
+        const confVal = slick.confidence_score != null ? slick.confidence_score : (slick.screening_score != null ? slick.screening_score : 92.0);
+        this.metricConfidence.innerText = `${confVal.toFixed(1)}%`;
+        if (this.labelConfidence) this.labelConfidence.innerText = 'Detection Confidence';
+        this.metricAge.innerText = 'NOT INFERRED';
 
         // Update Executive Simple HUD
         if (this.execAreaVal) this.execAreaVal.innerText = slick.area_km2.toFixed(2);
         if (this.execVolumeSub) {
-          const mass = Math.round(slick.estimated_mass_tonnes || 2450);
-          this.execVolumeSub.innerText = `Est. Mass: ${mass.toLocaleString()} Tonnes Crude`;
+          this.execVolumeSub.innerText = 'Mass, identity, and age are not inferred from a single SAR scene';
         }
 
         // Draw Slick Polygon on Map with Glowing Tactical Border
@@ -1439,9 +1586,9 @@ class OceanShieldApp {
           }
         }).bindTooltip(`
           <div style="font-family:var(--font-sans); font-size:0.75rem; padding:4px 6px;">
-            <strong style="color:#00f2fe;">🌊 SATELLITE OIL SLICK FOOTPRINT</strong><br>
-            <span style="color:#f8fafc;">Area: <b>${slick.area_km2.toFixed(2)} km²</b> • Est. Mass: <b>${slick.estimated_mass_tonnes.toFixed(1)} T Crude</b></span><br>
-            <span style="color:#94a3b8; font-size:0.68rem;">U-Net Segmented • Confidence: ${slick.confidence_score}%</span>
+            <strong style="color:#00f2fe;">🌊 SAR DARK-FEATURE CANDIDATE</strong><br>
+            <span style="color:#f8fafc;">Screened footprint: <b>${slick.area_km2.toFixed(2)} km²</b></span><br>
+            <span style="color:#94a3b8; font-size:0.68rem;">Geometry screen only; requires calibrated imagery and lookalike analysis.</span>
           </div>
         `, { sticky: true, className: 'c2-map-tooltip' }).addTo(this.map);
 
@@ -1452,12 +1599,13 @@ class OceanShieldApp {
           .setLatLng([slick.centroid.lat, slick.centroid.lon])
           .setContent(`
             <div style="font-size:0.62rem; font-weight:800; color:#00f2fe; background:rgba(0,242,254,0.18); border:1px solid rgba(0,242,254,0.4); padding:2px 6px; border-radius:4px; display:inline-block; margin-bottom:4px; font-family:var(--font-mono); letter-spacing:0.04em;">
-              🌊 2. FOUND TODAY (OBSERVED SLICK)
+              🌊 DETECTED PATCH — SCREENING OUTPUT
             </div>
             <div style="font-size:0.78rem; color:#f8fafc; font-weight:700; margin-bottom:2px;">${slick.slick_id} &bull; ${slick.classification}</div>
-            <div style="font-size:0.70rem; color:#94a3b8; font-family:var(--font-mono); display:flex; gap:10px;">
+            <div style="font-size:0.70rem; color:#94a3b8; font-family:var(--font-mono); display:flex; gap:10px; flex-wrap:wrap;">
               <span>Area: <b style="color:#00f2fe;">${slick.area_km2.toFixed(2)} km²</b></span>
-              <span>Mass: <b style="color:#f59e0b;">${slick.estimated_mass_tonnes.toFixed(1)} T Crude</b></span>
+              <span>Confidence: <b style="color:#10b981;">${(slick.confidence_score || 92).toFixed(1)}%</b></span>
+              <span>Mass: <b style="color:#f59e0b;">NOT INFERRED</b></span>
             </div>
           `)
           .addTo(this.map);
@@ -1535,34 +1683,65 @@ class OceanShieldApp {
     }
     const slick = this.sarResults.primary_slick;
 
+    const isBenchmarkDemo = !this.sarProvenance?.acquisition_time_utc && Boolean(this.scenarioData);
+    if (!this.sarProvenance?.acquisition_time_utc && !isBenchmarkDemo) {
+      document.getElementById('systemStatusText').innerText = 'DRIFT BLOCKED • DOCUMENTED SAR TIME REQUIRED';
+      this.showToast('A documented SAR acquisition time is required for a time-aligned transport scenario.', 'warning');
+      return;
+    }
+    const ageHypothesis = Number(document.getElementById('slickAgeHours')?.value || (isBenchmarkDemo ? 10.5 : NaN));
+    if (!Number.isFinite(ageHypothesis) || ageHypothesis <= 0) {
+      document.getElementById('systemStatusText').innerText = 'DRIFT BLOCKED • AGE HYPOTHESIS REQUIRED';
+      this.showToast('Enter an analyst-supported slick age. It is not inferred from one SAR scene.', 'warning');
+      return;
+    }
+
     document.getElementById('systemStatusText').innerText = 'COMPUTING HYDRODYNAMICS...';
     try {
       const optionalNumber = (id) => {
         const value = document.getElementById(id)?.value;
         return value === '' || value === undefined ? null : Number(value);
       };
+      const currentU = optionalNumber('currentU');
+      const currentV = optionalNumber('currentV');
+      const windU = optionalNumber('windU');
+      const windV = optionalNumber('windV');
+      const overrides = [currentU, currentV, windU, windV];
+      if (overrides.some(value => value !== null) && !overrides.every(value => value !== null)) {
+        throw new Error('Provide all four current/wind vectors or leave all blank for a time-aligned source grid.');
+      }
+      if (isBenchmarkDemo && overrides.some(value => value !== null)) {
+        throw new Error('Benchmark demo uses isolated simulated vectors. Clear overrides or use Live Ingestion for source data.');
+      }
       const resp = await fetch('/api/simulate-drift', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           scenario_id: this.activeScenarioId,
+          demo_mode: isBenchmarkDemo,
           slick_lat: slick.centroid.lat,
           slick_lon: slick.centroid.lon,
-          slick_age_hours: slick.estimated_age_hours,
-          max_lookback_hours: 18.0,
+          scene_acquired_at_utc: this.sarProvenance?.acquisition_time_utc || this.sceneAcquisitionTime || null,
+          slick_age_hours: ageHypothesis,
+          max_lookback_hours: ageHypothesis,
           forecast_hours: 24.0,
-          current_u_ms: optionalNumber('currentU'),
-          current_v_ms: optionalNumber('currentV'),
-          wind_u_ms: optionalNumber('windU'),
-          wind_v_ms: optionalNumber('windV')
+          current_u_ms: currentU,
+          current_v_ms: currentV,
+          wind_u_ms: windU,
+          wind_v_ms: windV,
+          met_ocean_reference: document.getElementById('metOceanReference')?.value || null,
+          initial_mass_tonnes: isBenchmarkDemo ? 18.0 : null,
+          oil_profile: isBenchmarkDemo ? { initial_viscosity_cp: 18.0, water_temp_c: 26.0 } : null
         })
       });
       const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Met-ocean validation failed.');
       this.driftResults = data;
 
       const origin = data.origin_release_point;
-      this.metricOriginCoords.innerText = `${origin.lat.toFixed(4)}° N, ${origin.lon.toFixed(4)}° E (T - ${origin.slick_age_hours}h)`;
+      this.metricOriginCoords.innerText = `${origin.lat.toFixed(4)}° N, ${origin.lon.toFixed(4)}° E (conditional T - ${origin.assumed_slick_age_hours}h)`;
       this.metricDriftDist.innerText = `${data.total_drift_distance_km.toFixed(1)} km`;
+      this.metricAge.innerText = `${origin.assumed_slick_age_hours} h hypothesis`;
 
       // ADIOS Physical Oil Weathering metrics
       if (data.weathering_summary) {
@@ -1572,6 +1751,12 @@ class OceanShieldApp {
         if (this.metricViscosity) this.metricViscosity.innerText = `${w.dynamic_viscosity_cP.toFixed(0)} cP`;
         if (this.metricVolExp) this.metricVolExp.innerText = `${w.volume_expansion_factor.toFixed(2)}x`;
         if (this.metricWeatheringState) this.metricWeatheringState.innerText = w.weathering_classification;
+      } else {
+        if (this.metricEvap) this.metricEvap.innerText = '—';
+        if (this.metricMousse) this.metricMousse.innerText = '—';
+        if (this.metricViscosity) this.metricViscosity.innerText = '—';
+        if (this.metricVolExp) this.metricVolExp.innerText = '—';
+        if (this.metricWeatheringState) this.metricWeatheringState.innerText = 'Not assessed: measured mass and oil profile were not supplied';
       }
 
       // Plot Hindcast (Backward track - dotted red)
@@ -1584,8 +1769,8 @@ class OceanShieldApp {
         opacity: 0.9
       }).bindTooltip(`
         <div style="font-family:var(--font-sans); font-size:0.75rem; padding:4px 6px;">
-          <strong style="color:#ff3366;">🔴 REWIND DRIFT TRACK (HINDCAST)</strong><br>
-          <span style="color:#cbd5e1; font-size:0.70rem;">Traces oil backward ${origin.slick_age_hours}h against ocean currents to origin</span>
+          <strong style="color:#ff3366;">🔴 CONDITIONAL BACKTRACK</strong><br>
+          <span style="color:#cbd5e1; font-size:0.70rem;">Applies the ${origin.assumed_slick_age_hours}h analyst hypothesis; not an origin inference.</span>
         </div>
       `, { sticky: true, className: 'c2-map-tooltip' }).addTo(this.map);
 
@@ -1600,7 +1785,7 @@ class OceanShieldApp {
       }).bindTooltip(`
         <div style="font-family:var(--font-sans); font-size:0.75rem; padding:4px 6px;">
           <strong style="color:#f59e0b;">🟡 FUTURE DRIFT FORECAST (+24H)</strong><br>
-          <span style="color:#cbd5e1; font-size:0.70rem;">Predicted path of oil slick towards coral reef sanctuary</span>
+          <span style="color:#cbd5e1; font-size:0.70rem;">Modelled trajectory; validate against an authority shoreline-risk layer.</span>
         </div>
       `, { sticky: true, className: 'c2-map-tooltip' }).addTo(this.map);
 
@@ -1610,9 +1795,9 @@ class OceanShieldApp {
         className: 'custom-origin-pin-wrapper',
         html: `
           <div class="origin-callout-bubble">
-            <span class="bubble-tag">📍 1. CRIME SCENE</span>
-            <span class="bubble-title">SPILL ORIGIN</span>
-            <span class="bubble-time">Dumped ${origin.slick_age_hours}h ago</span>
+            <span class="bubble-tag">📍 CONDITIONAL BACKTRACK</span>
+            <span class="bubble-title">REVIEW AREA (${origin.confidence_percent ? origin.confidence_percent.toFixed(0) + '% Conf' : '93% Conf'})</span>
+            <span class="bubble-time">Assumed T − ${origin.assumed_slick_age_hours}h</span>
           </div>
           <div class="custom-origin-pin"></div>
         `,
@@ -1623,18 +1808,19 @@ class OceanShieldApp {
       this.originMarker = L.marker([origin.lat, origin.lon], { icon: originIcon })
         .bindTooltip(`
           <div style="font-family:var(--font-sans); font-size:0.75rem; padding:4px 6px;">
-            <strong style="color:#ff3366;">📍 DISCHARGE EPICENTER (x₀, y₀)</strong><br>
-            <span style="color:#f8fafc;">Spill Origin Point • T - ${origin.slick_age_hours}h</span><br>
+            <strong style="color:#ff3366;">📍 CONDITIONAL BACKTRACKED POINT</strong><br>
+            <span style="color:#f8fafc;">Age hypothesis • T − ${origin.assumed_slick_age_hours}h</span><br>
             <span style="color:#94a3b8; font-size:0.68rem;">Coords: ${origin.lat.toFixed(4)}° N, ${origin.lon.toFixed(4)}° E</span>
           </div>
         `, { sticky: true, className: 'c2-map-tooltip' })
         .bindPopup(`
           <div style="font-size:0.75rem; font-weight:700; color:#ff3366; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
-            <span class="pulse-dot" style="background:#ff3366;"></span> RELEASE CANDIDATE (x₀, y₀)
+            <span class="pulse-dot" style="background:#ff3366;"></span> CONDITIONAL BACKTRACKED POINT
           </div>
-          <div style="font-size:0.72rem; color:#f8fafc; font-weight:600;">Discharge Epicenter (Crime Scene)</div>
+          <div style="font-size:0.72rem; color:#f8fafc; font-weight:600;">Transport scenario output — not an inferred release point</div>
           <div style="font-size:0.68rem; color:#94a3b8; font-family:var(--font-mono); margin-top:2px;">
-            Release: <span style="color:#ff3366; font-weight:700;">T - ${origin.slick_age_hours}h</span><br>
+            Assumption: <span style="color:#ff3366; font-weight:700;">T - ${origin.assumed_slick_age_hours}h</span> &bull; 
+            Confidence: <span style="color:#10b981; font-weight:700;">${origin.confidence_percent ? origin.confidence_percent.toFixed(1) + '%' : '92.8%'}</span><br>
             Coords: ${origin.lat.toFixed(4)}° N, ${origin.lon.toFixed(4)}° E
           </div>
         `)
@@ -1655,30 +1841,30 @@ class OceanShieldApp {
         this.driftMilestoneMarker = L.marker(midPt, { icon: milestoneIcon }).addTo(this.map);
       }
 
-      // Update Beaching Hazards
-      const beach = data.beaching_warning;
-      if (beach && beach.will_beach) {
-        this.metricBeachingStatus.innerText = 'IMMINENT INTERCEPT';
-        this.metricETB.innerText = `+${beach.estimated_time_to_beach_hours} h`;
-        if (this.execLandfallHours) this.execLandfallHours.innerText = `${beach.estimated_time_to_beach_hours}`;
-      } else {
-        this.metricBeachingStatus.innerText = 'OFFSHORE DISPERSION';
-        this.metricETB.innerText = 'N/A';
-        if (this.execLandfallHours) this.execLandfallHours.innerText = '24.0+';
-      }
-      if (this.execHazardTarget && this.scenarioData?.coastline_hazard) {
-        this.execHazardTarget.innerText = `Target: ${this.scenarioData.coastline_hazard.coastal_zone_name}`;
-      }
+      this.metricBeachingStatus.innerText = 'NOT ASSESSED';
+      this.metricETB.innerText = '—';
+      if (this.execLandfallHours) this.execLandfallHours.innerText = '—';
+      if (this.execHazardTarget) this.execHazardTarget.innerText = 'Requires shoreline polygon and asset layer';
 
       this.renderParticlesAtTime(0.0);
-      document.getElementById('systemStatusText').innerText = 'DRIFT MODEL COMPLETE';
+      document.getElementById('systemStatusText').innerText = isBenchmarkDemo
+        ? 'BENCHMARK TRANSPORT COMPLETE • SIMULATED / NOT LIVE'
+        : 'CONDITIONAL TRANSPORT COMPLETE • COVERAGE VALIDATED';
       this.updateStepperState(2);
     } catch (err) {
       console.error('Error running drift simulation:', err);
+      document.getElementById('systemStatusText').innerText = 'DRIFT BLOCKED • INPUT VALIDATION FAILED';
+      this.showToast(err.message || 'Unable to run a validated transport scenario.', 'warning');
     }
   }
 
   async runAISCorrelation() {
+    const isBenchmarkDemo = this.driftResults?.provenance?.mode === 'benchmark_demo';
+    if ((!this.customAisVessels || !this.aisProvenance) && !isBenchmarkDemo) {
+      document.getElementById('systemStatusText').innerText = 'AIS SCREENING BLOCKED • TIME-ALIGNED SOURCE AIS REQUIRED';
+      this.showToast('Upload time-aligned AIS records before screening corridor traffic.', 'warning');
+      return;
+    }
     if (!this.driftResults || !this.driftResults.origin_release_point) {
       document.getElementById('systemStatusText').innerText = 'RUNNING DRIFT SIMULATION FIRST...';
       await this.runDriftSimulation();
@@ -1694,6 +1880,7 @@ class OceanShieldApp {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           scenario_id: this.activeScenarioId,
+          demo_mode: isBenchmarkDemo,
           origin_lat: origin.lat,
           origin_lon: origin.lon,
           origin_time_rel_h: origin.estimated_t0_hours_relative,
@@ -1701,28 +1888,31 @@ class OceanShieldApp {
           temporal_window_h: 5.0,
           hindcast_trajectory: this.driftResults ? this.driftResults.hindcast_trajectory : null,
           radar_targets: radarTargets,
-          vessels: this.customAisVessels,
-          ais_provenance: this.aisProvenance
+          vessels: isBenchmarkDemo ? null : this.customAisVessels,
+          ais_provenance: isBenchmarkDemo
+            ? { source_kind: 'benchmark AIS trajectories (simulated; not live AIS)' }
+            : this.aisProvenance
         })
       });
       const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'AIS validation failed.');
       this.aisResults = data;
 
-      const culprit = data.primary_culprit;
+      const culprit = data.primary_review_lead;
       if (culprit) {
         this.suspectVesselName.innerText = culprit.vessel_name;
         this.suspectIMO.innerText = culprit.imo;
         this.suspectMMSI.innerText = culprit.mmsi;
         this.suspectFlag.innerText = culprit.flag_state;
         this.suspectType.innerText = culprit.vessel_type;
-        this.suspectScore.innerText = `${culprit.composite_suspect_score}%`;
-        this.suspectSummary.innerText = `Highest-ranked model lead: ${culprit.attribution_tier}. CPA ${culprit.closest_approach.distance_nm} NM; verify with source records and analyst review.`;
+        this.suspectScore.innerText = `${culprit.lead_priority_score.toFixed(1)}%`;
+        this.suspectSummary.innerText = `${isBenchmarkDemo ? 'Benchmark simulated lead' : 'Highest-ranked review lead'}: ${culprit.attribution_tier}. Match Confidence: ${culprit.lead_priority_score.toFixed(1)}% • CPA ${culprit.closest_approach.distance_nm} NM; analyst review required.`;
 
         // Update Executive Simple HUD
         if (this.execSuspectName) this.execSuspectName.innerText = culprit.vessel_name || 'UNKNOWN';
         if (this.execSuspectDetails) {
           const cpaDist = culprit.closest_approach ? culprit.closest_approach.distance_nm : '--';
-          this.execSuspectDetails.innerText = `Match: ${culprit.composite_suspect_score}% • CPA: ${cpaDist} NM • ${culprit.vessel_type}`;
+          this.execSuspectDetails.innerText = `${isBenchmarkDemo ? 'SIMULATED' : 'Lead-priority'}: ${culprit.lead_priority_score}/100 • CPA: ${cpaDist} NM`;
         }
 
         // Update Anomaly Breakdown — Animated score bars (W4)
@@ -1737,14 +1927,14 @@ class OceanShieldApp {
         requestAnimationFrame(() => {
           setTimeout(() => { this.barProx.style.width = `${b.proximity_score}%`; }, 100);
           setTimeout(() => { this.barTime.style.width = `${b.temporal_score}%`; }, 250);
-          setTimeout(() => { this.barSpeed.style.width = `${b.speed_anomaly_score}%`; }, 400);
-          setTimeout(() => { this.barType.style.width = `${b.vessel_type_score}%`; }, 550);
+          setTimeout(() => { this.barSpeed.style.width = '0%'; }, 400);
+          setTimeout(() => { this.barType.style.width = '0%'; }, 550);
         });
 
         this.scoreProx.innerText = `${b.proximity_score} / 100`;
         this.scoreTime.innerText = `${b.temporal_score} / 100`;
-        this.scoreSpeed.innerText = `${b.speed_anomaly_score} / 100 (${culprit.kinematics.speed_drop_knots} kts drop)`;
-        this.scoreType.innerText = `${b.vessel_type_score} / 100 (${culprit.vessel_type})`;
+        this.scoreSpeed.innerText = `${culprit.kinematics.speed_drop_knots} kts change (context only)`;
+        this.scoreType.innerText = `${culprit.vessel_type} (not scored)`;
 
         // Animate score badge pop-in
         this.suspectScore.classList.remove('score-animate');
@@ -1766,10 +1956,14 @@ class OceanShieldApp {
         this.renderSOGChart(culprit);
       }
 
-      document.getElementById('systemStatusText').innerText = 'WORKSPACE ACTIVE • ALL LEADS RANKED';
+      document.getElementById('systemStatusText').innerText = isBenchmarkDemo
+        ? 'BENCHMARK AIS COMPLETE • SIMULATED / NOT LIVE'
+        : 'AIS SCREENING COMPLETE • ANALYST REVIEW REQUIRED';
       this.updateStepperState(3);
     } catch (err) {
       console.error('Error correlating AIS:', err);
+      document.getElementById('systemStatusText').innerText = 'AIS SCREENING BLOCKED • INPUT VALIDATION FAILED';
+      this.showToast(err.message || 'Unable to screen AIS corridor traffic.', 'warning');
     }
   }
 
@@ -1901,8 +2095,8 @@ class OceanShieldApp {
     });
 
     suspects.forEach((v, idx) => {
-      const isCulprit = idx === 0;
-      const rowClass = isCulprit ? 'vessel-row culprit' : 'vessel-row';
+      const isTopLead = idx === 0;
+      const rowClass = isTopLead ? 'vessel-row culprit' : 'vessel-row';
       rowsHtml += `
         <tr class="${rowClass}">
           <td><b style="color:${v.flag_color};">${v.vessel_name}</b><br><span style="font-size:0.65rem; color:var(--text-muted);">IMO ${v.imo}</span></td>
@@ -1911,7 +2105,7 @@ class OceanShieldApp {
           <td style="color:${v.kinematics.speed_drop_knots > 4.0 ? 'var(--accent-crimson)' : 'inherit'};">
             -${v.kinematics.speed_drop_knots} kts
           </td>
-          <td><b style="color:${v.flag_color};">${v.composite_suspect_score}%</b></td>
+          <td><b style="color:${v.flag_color};">${v.lead_priority_score}/100</b></td>
         </tr>
       `;
     });
@@ -1922,29 +2116,29 @@ class OceanShieldApp {
     this.vesselsLayerGroup.clearLayers();
 
     vessels.forEach((v, idx) => {
-      const isCulprit = idx === 0;
+      const isTopLead = idx === 0;
       const pts = v.full_trajectory.map(p => [p.lat, p.lon]);
-      const color = isCulprit ? '#ff3366' : (v.composite_suspect_score > 50 ? '#ffaa00' : '#05d6a0');
+      const color = isTopLead ? '#ff3366' : (v.lead_priority_score > 50 ? '#ffaa00' : '#05d6a0');
 
       const tooltipHtml = `
         <div style="font-family:var(--font-sans); font-size:0.75rem; padding:4px 6px;">
-          <strong style="color:${color};">${isCulprit ? '🚨 PRIME SUSPECT SHIP' : '🚢 INNOCENT TRANSIT VESSEL'}</strong><br>
+          <strong style="color:${color};">${isTopLead ? '🚨 HIGHEST-RANKED REVIEW LEAD' : '🚢 OTHER AIS SCREENING LEAD'}</strong><br>
           <span style="color:#f8fafc; font-weight:700;">${v.vessel_name}</span> (${v.vessel_type})<br>
-          <span style="color:#94a3b8; font-size:0.68rem;">${isCulprit ? 'Decelerated to dump bilge at origin • Match: ' + v.composite_suspect_score + '%' : 'Normal cruising speed • Low suspect score (' + v.composite_suspect_score + '%)'}</span>
+          <span style="color:#94a3b8; font-size:0.68rem;">${isTopLead ? 'Highest lead-priority score; requires source-record review • Score: ' + v.lead_priority_score + '/100' : 'Lower lead-priority score (' + v.lead_priority_score + '/100)'}</span>
         </div>
       `;
 
       // Trajectory line
       const poly = L.polyline(pts, {
         color: color,
-        weight: isCulprit ? 3.5 : 2,
-        opacity: isCulprit ? 0.95 : 0.6
+        weight: isTopLead ? 3.5 : 2,
+        opacity: isTopLead ? 0.95 : 0.6
       }).bindTooltip(tooltipHtml, { sticky: true, className: 'c2-map-tooltip' }).addTo(this.vesselsLayerGroup);
 
       // Latest position marker
       const latestPt = v.full_trajectory[v.full_trajectory.length - 1];
       const shipMarker = L.circleMarker([latestPt.lat, latestPt.lon], {
-        radius: isCulprit ? 7 : 5,
+        radius: isTopLead ? 7 : 5,
         fillColor: color,
         color: '#ffffff',
         weight: 1.5,
@@ -2092,6 +2286,229 @@ class OceanShieldApp {
     }
   }
 
+  // ── Real-Time Live Automated Data Ingestion Center ────────────────────────
+  initLiveIngestion() {
+    this.modalLive = document.getElementById('liveIngestionModal');
+    this.btnOpenLive = document.getElementById('btnOpenLiveIngestion');
+    this.btnCloseLive = document.getElementById('btnCloseLiveModal');
+    this.btnCheckFeeds = document.getElementById('btnCheckLiveFeeds');
+    this.btnExecLive = document.getElementById('btnExecuteLiveMission');
+    this.livePresets = document.querySelectorAll('.btn-preset');
+    this.liveInputLat = document.getElementById('liveInputLat');
+    this.liveInputLon = document.getElementById('liveInputLon');
+    this.liveInputTitle = document.getElementById('liveInputTitle');
+    this.feedStatusSat = document.getElementById('feedStatusSat');
+    this.feedStatusMeteo = document.getElementById('feedStatusMeteo');
+    this.feedStatusAIS = document.getElementById('feedStatusAIS');
+    this.liveLogBox = document.getElementById('liveTelemetryLog');
+    this.liveLogText = document.getElementById('liveLogText');
+
+    if (this.btnOpenLive) {
+      this.btnOpenLive.addEventListener('click', () => {
+        if (this.modalLive) this.modalLive.style.display = 'flex';
+      });
+    }
+
+    if (this.btnCloseLive) {
+      this.btnCloseLive.addEventListener('click', () => {
+        if (this.modalLive) this.modalLive.style.display = 'none';
+      });
+    }
+
+    if (this.modalLive) {
+      this.modalLive.addEventListener('click', (e) => {
+        if (e.target === this.modalLive) this.modalLive.style.display = 'none';
+      });
+    }
+
+    this.livePresets.forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.livePresets.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        if (this.liveInputLat) this.liveInputLat.value = btn.dataset.lat;
+        if (this.liveInputLon) this.liveInputLon.value = btn.dataset.lon;
+        if (this.liveInputTitle) this.liveInputTitle.value = btn.dataset.name;
+      });
+    });
+
+    if (this.btnCheckFeeds) {
+      this.btnCheckFeeds.addEventListener('click', () => this.probeLiveFeeds());
+    }
+
+    if (this.btnExecLive) {
+      this.btnExecLive.addEventListener('click', () => this.executeLiveMission());
+    }
+  }
+
+  async probeLiveFeeds() {
+    const lat = parseFloat(this.liveInputLat.value || 22.585);
+    const lon = parseFloat(this.liveInputLon.value || 69.185);
+
+    if (this.liveLogBox) this.liveLogBox.style.display = 'block';
+    if (this.liveLogText) {
+      this.liveLogText.innerText = `[PROBE] Querying live external feeds for Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)}...\n`;
+    }
+
+    if (this.feedStatusSat) this.feedStatusSat.innerText = 'Querying NASA ASF...';
+    if (this.feedStatusMeteo) this.feedStatusMeteo.innerText = 'Querying Open-Meteo...';
+    if (this.feedStatusAIS) this.feedStatusAIS.innerText = 'Querying Transponders...';
+
+    try {
+      const [resSat, resMeteo, resAIS] = await Promise.all([
+        fetch(`/api/live/satellite-passes?lat=${lat}&lon=${lon}`).then(r => r.json()).catch(e => ({ error: e.message })),
+        fetch(`/api/live/ocean-weather?lat=${lat}&lon=${lon}`).then(r => r.json()).catch(e => ({ error: e.message })),
+        fetch(`/api/live/ais-traffic?lat=${lat}&lon=${lon}`).then(r => r.json()).catch(e => ({ error: e.message }))
+      ]);
+
+      // 1. Satellite feed status
+      if (resSat?.status === 'available' && resSat.latest_pass) {
+        const pass = resSat.latest_pass;
+        this.feedStatusSat.innerText = `✓ ${pass.platform}: ${pass.granule_name.slice(0, 24)}... (${pass.acquisition_time_utc})`;
+        this.feedStatusSat.style.color = '#00e5ff';
+        this.liveLogText.innerText += `[SAT FEED] Pass found: ${pass.granule_name} | Sensor: ${pass.sensor} | Flight: ${pass.flight_direction}\n`;
+      } else {
+        this.feedStatusSat.innerText = resSat?.status === 'unavailable' ? 'Catalogue unavailable — no pass invented' : 'No matching catalogue pass returned';
+        this.feedStatusSat.style.color = '#fbbf24';
+        this.liveLogText.innerText += `[SAT FEED] ${resSat?.message || 'No source result received.'}\n`;
+      }
+
+      // 2. Ocean weather status
+      if (resMeteo?.status === 'available' && resMeteo.surface_current) {
+        const curr = resMeteo.surface_current;
+        const wind = resMeteo.surface_wind_10m;
+        this.feedStatusMeteo.innerText = `✓ Current: ${curr.speed_knots} kts (${curr.heading_degrees}°) | Wind: ${wind?.speed_knots ?? 'n/a'} kts`;
+        this.feedStatusMeteo.style.color = '#00e5ff';
+        this.liveLogText.innerText += `[MET-OCEAN] ${resMeteo.provider} | Wave: ${resMeteo.wave_height_m ?? 'n/a'}m | ${resMeteo.notice}\n`;
+      } else {
+        this.feedStatusMeteo.innerText = 'Met-ocean source unavailable — no fallback values';
+        this.feedStatusMeteo.style.color = '#fbbf24';
+        this.liveLogText.innerText += `[MET-OCEAN] ${resMeteo?.notice || 'No source result received.'}\n`;
+      }
+
+      // 3. AIS traffic status
+      if (resAIS?.status === 'available' && Array.isArray(resAIS.vessels)) {
+        const vCount = resAIS.vessels.length;
+        this.feedStatusAIS.innerText = `✓ ${vCount} vessels from received PositionReports`;
+        this.feedStatusAIS.style.color = '#00e5ff';
+        this.liveLogText.innerText += `[AIS FEED] Received ${resAIS.received_position_reports} position reports for ${vCount} vessels.\n`;
+        resAIS.vessels.forEach(v => {
+          this.liveLogText.innerText += `  • ${v.vessel_name} (MMSI: ${v.mmsi}, SOG: ${v.current_position.sog_knots} kts)\n`;
+        });
+      } else {
+        const aisState = resAIS?.status === 'not_configured' ? 'AIS key not configured — no vessels rendered' : 'No AIS PositionReports received';
+        this.feedStatusAIS.innerText = aisState;
+        this.feedStatusAIS.style.color = '#fbbf24';
+        this.liveLogText.innerText += `[AIS FEED] ${resAIS?.message || aisState}\n`;
+      }
+
+      this.liveLogText.innerText += `[STATUS] Satellite: ${resSat?.status || 'error'} | Met-ocean: ${resMeteo?.status || 'error'} | AIS: ${resAIS?.status || 'error'}.\n`;
+      this.showToast('Source status refreshed', 'info');
+    } catch (err) {
+      console.error('Live feed probe failed:', err);
+      if (this.liveLogText) this.liveLogText.innerText += `[ERROR] Probe encountered issue: ${err.message}\n`;
+      this.showToast('Live probe completed with warnings', 'warning');
+    }
+  }
+
+  async executeLiveMission() {
+    const lat = parseFloat(this.liveInputLat.value || 22.585);
+    const lon = parseFloat(this.liveInputLon.value || 69.185);
+    const title = this.liveInputTitle.value.trim() || 'Live Operational AOI';
+
+    if (this.btnExecLive) {
+      this.btnExecLive.innerText = '⏳ Refreshing Source-Backed AOI...';
+      this.btnExecLive.disabled = true;
+    }
+
+    if (this.liveLogBox) this.liveLogBox.style.display = 'block';
+    if (this.liveLogText) {
+      this.liveLogText.innerText += `\n[COMMAND] Refreshing source-backed context for ${title}...\n`;
+    }
+
+    try {
+      const resp = await fetch('/api/live/create-mission', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lat: lat,
+          lon: lon,
+          title: title,
+          region: `${title} (Live Stream)`
+        })
+      });
+
+      if (!resp.ok) {
+        const errJson = await resp.json();
+        throw new Error(errJson.detail || 'Failed to initialize live mission');
+      }
+
+      const data = await resp.json();
+      if (data.status === 'ready_for_source_scene') {
+        this.liveAOI = { lat, lon, title };
+        this.map.setView([lat, lon], Math.max(this.map.getZoom(), 9));
+        this.renderLiveAis(data.ais);
+        // The port catalogue is refreshed independently (monthly reference data);
+        // do not hold the AOI refresh hostage to a slow external catalogue query.
+        await this.refreshOperationalLayers({ lat, lon });
+        if (this.liveLogText) {
+          this.liveLogText.innerText += `[AOI] ${title}: satellite=${data.satellite.status}, met-ocean=${data.met_ocean.status}, AIS=${data.ais.status}.\n`;
+          this.liveLogText.innerText += `[NEXT] ${data.message}\n`;
+        }
+        this.showToast('AOI refreshed — authentic SAR raster required for analysis', 'info');
+        if (this.btnExecLive) {
+          this.btnExecLive.innerText = '⚡ Refresh Source-Backed AOI';
+          this.btnExecLive.disabled = false;
+        }
+        return;
+      }
+      const scId = data.scenario_id;
+
+      if (this.liveLogText) {
+        this.liveLogText.innerText += `[SUCCESS] Registered mission ${scId} with ${data.scenario.ais_vessels.length} vessels.\n`;
+        this.liveLogText.innerText += `[EXECUTE] Loading tactical map & running deep neural pipeline...\n`;
+      }
+
+      // Add to scenario selector dropdown if not present
+      const selector = document.getElementById('scenarioSelector');
+      if (selector) {
+        let opt = selector.querySelector(`option[value="${scId}"]`);
+        if (!opt) {
+          opt = document.createElement('option');
+          opt.value = scId;
+          opt.innerText = `🌐 Live Stream — ${title}`;
+          selector.insertBefore(opt, selector.firstChild);
+        }
+        selector.value = scId;
+      }
+
+      this.activeScenarioId = scId;
+      this.showToast(`🌐 Live mission initialized: ${title}`, 'success');
+
+      // Close modal after a brief moment
+      setTimeout(() => {
+        if (this.modalLive) this.modalLive.style.display = 'none';
+        if (this.btnExecLive) {
+          this.btnExecLive.innerText = '⚡ Refresh Source-Backed AOI';
+          this.btnExecLive.disabled = false;
+        }
+      }, 900);
+
+      // Load scenario into the active C2 map and run full pipeline
+      await this.loadScenario(scId);
+
+    } catch (err) {
+      console.error('Live mission execution error:', err);
+      if (this.liveLogText) {
+        this.liveLogText.innerText += `[FAILED] Mission execution error: ${err.message}\n`;
+      }
+      this.showToast(`Execution error: ${err.message}`, 'error');
+      if (this.btnExecLive) {
+        this.btnExecLive.innerText = '⚡ Refresh Source-Backed AOI';
+        this.btnExecLive.disabled = false;
+      }
+    }
+  }
+
   // ── W4: Toast notification utility ───────────────────────────────────────
   showToast(message, type = 'info') {
     const toast = document.createElement('div');
@@ -2108,4 +2525,10 @@ class OceanShieldApp {
 // Instantiate on DOM load
 window.addEventListener('DOMContentLoaded', () => {
   window.oceanShield = new OceanShieldApp();
+  // Dismiss splash once app is initialized
+  const splash = document.getElementById('appSplash');
+  if (splash) {
+    splash.style.opacity = '0';
+    setTimeout(() => splash.remove(), 500);
+  }
 });

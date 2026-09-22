@@ -141,9 +141,17 @@ class DossierReportGenerator:
         story.append(HRFlowable(width="100%", thickness=1.5, color=color_navy, spaceAfter=8))
 
         # 2. Case Metadata Table
-        culprit = ais_results.get("primary_culprit") or {}
+        culprit = ais_results.get("primary_review_lead") or {}
         slick = sar_results.get("primary_slick") or {}
         origin = drift_results.get("origin_release_point") or {}
+        mass = slick.get("estimated_mass_tonnes")
+        mass_text = f"{mass:.1f} Metric Tonnes" if isinstance(mass, (int, float)) else "Not estimated from this SAR scene"
+        screening_score = slick.get("screening_score")
+        screening_text = f"{screening_score:.1f}/100 uncalibrated geometry screen" if isinstance(screening_score, (int, float)) else "Not available"
+        assumed_age = origin.get("assumed_slick_age_hours")
+        assumed_age_text = f"{assumed_age:.1f} hours (analyst hypothesis)" if isinstance(assumed_age, (int, float)) else "Not supplied"
+        lead_score = culprit.get("lead_priority_score")
+        lead_score_text = f"{lead_score:.1f}/100 lead-priority score" if isinstance(lead_score, (int, float)) else "No eligible AIS lead"
 
         meta_data = [
             [
@@ -168,7 +176,7 @@ class DossierReportGenerator:
                 Paragraph("<b>Flag State:</b>", body_style),
                 Paragraph(f"{culprit.get('flag_state', 'Unknown')}", body_style),
                 Paragraph("<b>Attribution rank:</b>", body_style),
-                Paragraph(f"<font color='#b45309'><b>{culprit.get('composite_suspect_score', 0)}% (MODEL SCORE)</b></font>", body_bold)
+                Paragraph(f"<font color='#b45309'><b>{lead_score_text}</b></font>", body_bold)
             ]
         ]
 
@@ -209,16 +217,16 @@ class DossierReportGenerator:
                 Paragraph(f"<b>{slick.get('area_km2', 0):.2f} km&sup2;</b>", body_bold)
             ],
             [
-                Paragraph("<b>Estimated Discharge Mass:</b>", body_style),
-                Paragraph(f"<b>{slick.get('estimated_mass_tonnes', 0):.1f} Metric Tonnes</b>", body_bold),
-                Paragraph("<b>Lookalike Rejection Score:</b>", body_style),
-                Paragraph(f"<b>{slick.get('confidence_score', 0)}% Mineral Crude Confidence</b>", body_style)
+                Paragraph("<b>Mass / thickness:</b>", body_style),
+                Paragraph(f"<b>{mass_text}</b>", body_bold),
+                Paragraph("<b>Geometry screen:</b>", body_style),
+                Paragraph(f"<b>{screening_text}</b>", body_style)
             ],
             [
                 Paragraph("<b>ADIOS Weathering State:</b>", body_style),
-                Paragraph(f"<b>{drift_results.get('weathering_summary', {}).get('physical_state', 'Emulsified Petroleum Hydrocarbon')}</b>", body_style),
+                Paragraph(f"<b>{(drift_results.get('weathering_summary') or {}).get('physical_state', 'Not assessed: oil profile and mass are required')}</b>", body_style),
                 Paragraph("<b>Evaporative Loss / Mousse:</b>", body_style),
-                Paragraph(f"{drift_results.get('weathering_summary', {}).get('evaporated_fraction_pct', 28.4)}% Evaporated / {drift_results.get('weathering_summary', {}).get('water_content_mousse_pct', 62.1)}% Water Uptake", body_style)
+                Paragraph(f"{(drift_results.get('weathering_summary') or {}).get('evaporated_fraction_pct', 'N/A')}% Evaporated / {(drift_results.get('weathering_summary') or {}).get('water_content_mousse_pct', 'N/A')}% Water Uptake", body_style)
             ]
         ]
 
@@ -234,8 +242,8 @@ class DossierReportGenerator:
         story.append(sar_table)
         story.append(Spacer(1, 8))
 
-        # 4. Reverse Lagrangian Hydrodynamic Hindcast (candidate t0 and x0)
-        story.append(Paragraph("2. REVERSE LAGRANGIAN HYDRODYNAMIC DRIFT ANALYSIS", h1_style))
+        # 4. Conditional reverse transport scenario
+        story.append(Paragraph("2. CONDITIONAL HYDRODYNAMIC TRANSPORT SCENARIO", h1_style))
 
         drift_provenance = drift_results.get("provenance", {})
         hindcast_text = f"""
@@ -243,22 +251,21 @@ class DossierReportGenerator:
         (&Delta;u={drift_provenance.get('current_u_ms', scenario_data.get('ocean_conditions', {}).get('base_current_u', 0)):.2f} m/s,
         &Delta;v={drift_provenance.get('current_v_ms', scenario_data.get('ocean_conditions', {}).get('base_current_v', 0)):.2f} m/s) and Ekman surface windage
         (3.2% Stokes drift factor with 15&deg; Coriolis deflection), the slick plume trajectory was hindcasted backwards in time.
-        The model estimates the following <b>candidate release origin</b>; positional and temporal uncertainty
-        must be quantified against authoritative current, wind, and imagery inputs before operational use:
+        The model propagates the supplied <b>age hypothesis</b> backward through the validated input field. It does not infer a release time or establish a source location; uncertainty must be quantified against authoritative current, wind, and imagery inputs before operational use:
         """
         story.append(Paragraph(hindcast_text, body_style))
         story.append(Spacer(1, 4))
 
         origin_data = [
             [
-                Paragraph("<b>Spill Origin Point (x<sub>0</sub>, y<sub>0</sub>):</b>", body_style),
+                Paragraph("<b>Conditional backtracked point:</b>", body_style),
                 Paragraph(f"<b>{origin.get('lat', 0):.5f}&deg; N, {origin.get('lon', 0):.5f}&deg; E</b>", body_bold),
-                Paragraph("<b>Calculated Slick Age:</b>", body_style),
-                Paragraph(f"<b>{origin.get('slick_age_hours', 0):.1f} Hours prior to SAR pass</b>", body_bold)
+                Paragraph("<b>Assumed slick age:</b>", body_style),
+                Paragraph(f"<b>{assumed_age_text}</b>", body_bold)
             ],
             [
-                Paragraph("<b>Estimated Discharge Time:</b>", body_style),
-                Paragraph(f"T &minus; {abs(origin.get('estimated_t0_hours_relative', 0)):.1f}h ({now.strftime('%d %b %Y')} approx 02:40 IST)", body_style),
+                Paragraph("<b>Conditional time offset:</b>", body_style),
+                Paragraph(f"T &minus; {abs(origin.get('estimated_t0_hours_relative', 0)):.1f}h (not an inferred discharge time)", body_style),
                 Paragraph("<b>Total Hydrodynamic Drift:</b>", body_style),
                 Paragraph(f"{drift_results.get('total_drift_distance_km', 0):.2f} km displacement", body_style)
             ]
@@ -277,15 +284,15 @@ class DossierReportGenerator:
         story.append(Spacer(1, 8))
 
         # 5. AIS Maritime Traffic Re-construction & Kinematic Anomaly
-        story.append(Paragraph("3. AIS CORRELATION & KINEMATIC BEHAVIORAL ANOMALIES", h1_style))
+        story.append(Paragraph("3. AIS CORRIDOR SCREENING & NAVIGATION CONTEXT", h1_style))
 
         kinematics = culprit.get("kinematics", {})
         cpa = culprit.get("closest_approach", {})
 
         ais_evidence_text = f"""
         Analysis of <b>{ais_results.get('total_vessels_in_region', 0)} vessels</b> operating in the sector filtered down to
-        <b>{ais_results.get('vessels_evaluated_in_corridor', 0)} corridor candidates</b>. Vessel <b>{culprit.get('vessel_name')}</b>
-        was ranked as the highest model-scored lead based on spatio-temporal proximity and kinematic features:
+        <b>{ais_results.get('vessels_evaluated_in_corridor', 0)} corridor candidates</b>. Vessel <b>{culprit.get('vessel_name', 'N/A')}</b>
+        is the highest-priority review lead based solely on spatio-temporal proximity. This is not an allegation or responsibility finding:
         """
         story.append(Paragraph(ais_evidence_text, body_style))
         story.append(Spacer(1, 4))
@@ -295,8 +302,8 @@ class DossierReportGenerator:
             [
                 Paragraph("<b>Evaluation Metric</b>", body_bold),
                 Paragraph("<b>Observed Telemetry Value</b>", body_bold),
-                Paragraph("<b>Anomaly Assessment</b>", body_bold),
-                Paragraph("<b>Score Weight</b>", body_bold)
+                Paragraph("<b>Review Context</b>", body_bold),
+                Paragraph("<b>Screen Value</b>", body_bold)
             ],
             [
                 Paragraph("Closest Point of Approach (CPA)", body_style),
@@ -317,10 +324,10 @@ class DossierReportGenerator:
                 Paragraph(f"<b>{breakdown.get('speed_anomaly_score', 0)}/100</b>", body_bold)
             ],
             [
-                Paragraph("Vessel Risk Category", body_style),
-                Paragraph(f"{culprit.get('vessel_type')} (DWT: {(culprit.get('dwt_tonnes') or 45000):,} T)", body_style),
-                Paragraph("High capacity oily water / slop separator", body_style),
-                Paragraph(f"<b>{breakdown.get('vessel_type_score', 0)}/100</b>", body_bold)
+                Paragraph("Vessel class", body_style),
+                Paragraph(f"{culprit.get('vessel_type', 'Unknown')} (DWT: {culprit.get('dwt_tonnes') or 'not supplied'})", body_style),
+                Paragraph("Descriptive metadata only; excluded from lead score", body_style),
+                Paragraph("<b>Not scored</b>", body_bold)
             ]
         ]
 
@@ -420,13 +427,13 @@ class DossierReportGenerator:
             "slick_properties": {
                 "area_km2": slick.get("area_km2"),
                 "perimeter_km": slick.get("perimeter_km"),
-                "fay_physical_age_hours": slick.get("estimated_age_hours"),
+                "age_assessment": slick.get("age_assessment"),
             },
             "hydrodynamic_hindcast": {
                 "origin_lat": origin.get("lat"),
                 "origin_lon": origin.get("lon"),
                 "release_time_rel_h": origin.get("estimated_t0_hours_relative"),
-                "confidence_percent": origin.get("confidence_percent"),
+                "inference_status": origin.get("inference_status"),
                 "data_source": origin.get("hydrodynamic_data_source", "HYCOM NetCDF")
             },
             "attributed_vessel": {

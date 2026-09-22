@@ -11,8 +11,27 @@ build/
 *.log
 datasets/zenodo_sentinel1_sar/
 data/zenodo/
+datasets/cached_apis/
+datasets/real_sar/*.tif
 .claude/
 *claude*
 
+# Archives and large backups
+*.zip
+*.rar
+repo/
+exports/
 
+# Scratch & temporary tile assets
+scratch_tile.png
+scratch_z8.jpg
+tile_z12.jpg
+tile_z8.jpg
+tile_z9.jpg
+eox_z12.jpg
+google_sat_mumbai.jpg
 
+# Dynamic test report artifacts
+reports/Ocean_Shield_Case_Summary_*.pdf
+reports/Analyst_Case_Summary_*.pdf
+reports/benchmark_dossier.pdf

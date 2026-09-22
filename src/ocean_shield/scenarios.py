@@ -621,6 +621,720 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     ]
                 }
             ]
+        },
+        # ====================================================================
+        # NEW SCENARIOS: All Major Indian EEZ High-Risk Maritime Zones
+        # ====================================================================
+        "lakshadweep_sea": {
+            "id": "lakshadweep_sea",
+            "title": "Lakshadweep Sea — Minicoy Passage International Shipping Lane",
+            "region": "Lakshadweep Islands / Central Arabian Sea",
+            "center": {"lat": 10.085, "lon": 73.005},
+            "satellite_metadata": {
+                "mission": "Sentinel-1A C-Band SAR",
+                "acquisition_time_utc": "2026-09-05 00:42:00 UTC",
+                "acquisition_time_ist": "2026-09-05 06:12:00 IST",
+                "sensor_mode": "Interferometric Wide (IW) Swath",
+                "polarization": "VV (Co-polarization optimal for sea surface roughness)",
+                "pixel_spacing_m": 10.0,
+                "incident_angle_deg": 34.5
+            },
+            "ocean_conditions": {
+                "base_current_u": -0.18,
+                "base_current_v": 0.25,
+                "base_wind_u": -5.5,
+                "base_wind_v": 3.8,
+                "tidal_amplitude": 0.15,
+                "tidal_period_h": 12.42,
+                "sea_surface_temp_c": 29.4,
+                "sea_state": "Beaufort 3 (Gentle Breeze)"
+            },
+            "coastline_hazard": {
+                "coastline_lat_threshold": 10.25,
+                "coastal_zone_name": "Lakshadweep Coral Reef Marine Protected Area & Lagoon Ecosystem",
+                "distance_to_shore_km": 18.5
+            },
+            "ais_vessels": [
+                {
+                    "mmsi": 538006400, "imo": 9476234,
+                    "vessel_name": "MT ARABIAN FALCON",
+                    "flag_state": "Marshall Islands",
+                    "vessel_type": "Crude / Product Tanker",
+                    "call_sign": "V7AQ9", "length_m": 333, "width_m": 60, "dwt_tonnes": 320000,
+                    "trajectory": [
+                        {"relative_time_hours": -16.0, "lat": 9.850, "lon": 72.600, "sog_knots": 14.8, "cog_degrees": 42.0},
+                        {"relative_time_hours": -13.0, "lat": 9.920, "lon": 72.720, "sog_knots": 14.5, "cog_degrees": 44.0},
+                        {"relative_time_hours": -11.0, "lat": 9.980, "lon": 72.830, "sog_knots": 6.8, "cog_degrees": 40.0},
+                        {"relative_time_hours": -10.0, "lat": 10.010, "lon": 72.880, "sog_knots": 4.2, "cog_degrees": 38.0},
+                        {"relative_time_hours": -8.0, "lat": 10.060, "lon": 72.960, "sog_knots": 13.5, "cog_degrees": 42.0},
+                        {"relative_time_hours": -4.0, "lat": 10.150, "lon": 73.120, "sog_knots": 14.2, "cog_degrees": 45.0},
+                        {"relative_time_hours": 0.0, "lat": 10.250, "lon": 73.300, "sog_knots": 14.6, "cog_degrees": 44.0}
+                    ]
+                },
+                {
+                    "mmsi": 477234567, "imo": 9612345,
+                    "vessel_name": "COSCO MALABAR",
+                    "flag_state": "Hong Kong",
+                    "vessel_type": "Container Ship",
+                    "call_sign": "VRBC4", "length_m": 366, "width_m": 51, "dwt_tonnes": 152000,
+                    "trajectory": [
+                        {"relative_time_hours": -14.0, "lat": 9.900, "lon": 72.700, "sog_knots": 21.5, "cog_degrees": 55.0},
+                        {"relative_time_hours": -7.0, "lat": 10.050, "lon": 73.150, "sog_knots": 21.2, "cog_degrees": 56.0},
+                        {"relative_time_hours": 0.0, "lat": 10.200, "lon": 73.600, "sog_knots": 21.0, "cog_degrees": 55.0}
+                    ]
+                },
+                {
+                    "mmsi": 419055123, "imo": 9345678,
+                    "vessel_name": "INS VIKRAMADITYA",
+                    "flag_state": "India",
+                    "vessel_type": "Military Vessel / Indian Navy Patrol",
+                    "call_sign": "ATVC", "length_m": 284, "width_m": 60, "dwt_tonnes": 45000,
+                    "trajectory": [
+                        {"relative_time_hours": -8.0, "lat": 10.120, "lon": 73.050, "sog_knots": 18.0, "cog_degrees": 270.0},
+                        {"relative_time_hours": -4.0, "lat": 10.100, "lon": 72.900, "sog_knots": 12.0, "cog_degrees": 265.0},
+                        {"relative_time_hours": 0.0, "lat": 10.090, "lon": 72.800, "sog_knots": 8.5, "cog_degrees": 260.0}
+                    ]
+                }
+            ]
+        },
+        "palk_strait": {
+            "id": "palk_strait",
+            "title": "Palk Strait — India–Sri Lanka Narrow Channel Transit",
+            "region": "Tamil Nadu / Northern Sri Lanka / Palk Bay",
+            "center": {"lat": 9.85, "lon": 79.85},
+            "satellite_metadata": {
+                "mission": "Sentinel-1A C-Band SAR",
+                "acquisition_time_utc": "2026-09-06 00:18:00 UTC",
+                "acquisition_time_ist": "2026-09-06 05:48:00 IST",
+                "sensor_mode": "Interferometric Wide (IW) Swath",
+                "polarization": "VV",
+                "pixel_spacing_m": 10.0,
+                "incident_angle_deg": 33.8
+            },
+            "ocean_conditions": {
+                "base_current_u": 0.35,
+                "base_current_v": -0.10,
+                "base_wind_u": 3.8,
+                "base_wind_v": -2.5,
+                "tidal_amplitude": 0.45,
+                "tidal_period_h": 12.42,
+                "sea_surface_temp_c": 29.8,
+                "sea_state": "Beaufort 2 (Light Breeze)"
+            },
+            "coastline_hazard": {
+                "coastline_lat_threshold": 9.95,
+                "coastal_zone_name": "Gulf of Mannar Marine National Park & Biosphere Reserve (UNESCO)",
+                "distance_to_shore_km": 8.5
+            },
+            "ais_vessels": [
+                {
+                    "mmsi": 419076543, "imo": 9198765,
+                    "vessel_name": "MT SETHU SAMUDRAM",
+                    "flag_state": "India",
+                    "vessel_type": "Chemical / Oil Products Tanker",
+                    "call_sign": "AVSS", "length_m": 145, "width_m": 24, "dwt_tonnes": 18000,
+                    "trajectory": [
+                        {"relative_time_hours": -12.0, "lat": 9.720, "lon": 79.550, "sog_knots": 11.2, "cog_degrees": 72.0},
+                        {"relative_time_hours": -9.0, "lat": 9.760, "lon": 79.680, "sog_knots": 10.8, "cog_degrees": 70.0},
+                        {"relative_time_hours": -7.0, "lat": 9.790, "lon": 79.770, "sog_knots": 4.5, "cog_degrees": 68.0},
+                        {"relative_time_hours": -6.0, "lat": 9.810, "lon": 79.810, "sog_knots": 3.8, "cog_degrees": 65.0},
+                        {"relative_time_hours": -4.0, "lat": 9.840, "lon": 79.880, "sog_knots": 10.5, "cog_degrees": 72.0},
+                        {"relative_time_hours": 0.0, "lat": 9.920, "lon": 80.080, "sog_knots": 11.0, "cog_degrees": 74.0}
+                    ]
+                },
+                {
+                    "mmsi": 525012345, "imo": 9456789,
+                    "vessel_name": "MV COLOMBO EXPRESS",
+                    "flag_state": "Sri Lanka",
+                    "vessel_type": "Container / Bulk Cargo Carrier",
+                    "call_sign": "4SIR", "length_m": 195, "width_m": 32, "dwt_tonnes": 42000,
+                    "trajectory": [
+                        {"relative_time_hours": -14.0, "lat": 10.050, "lon": 80.200, "sog_knots": 16.2, "cog_degrees": 245.0},
+                        {"relative_time_hours": -7.0, "lat": 9.920, "lon": 79.820, "sog_knots": 16.0, "cog_degrees": 248.0},
+                        {"relative_time_hours": 0.0, "lat": 9.790, "lon": 79.440, "sog_knots": 15.8, "cog_degrees": 246.0}
+                    ]
+                },
+                {
+                    "mmsi": 419012987, "imo": 9567890,
+                    "vessel_name": "FV RAMESWARAM QUEEN",
+                    "flag_state": "India",
+                    "vessel_type": "Commercial Fishing Vessel",
+                    "call_sign": "IND-F3", "length_m": 18, "width_m": 5, "dwt_tonnes": 85,
+                    "trajectory": [
+                        {"relative_time_hours": -10.0, "lat": 9.880, "lon": 79.900, "sog_knots": 3.5, "cog_degrees": 180.0},
+                        {"relative_time_hours": -5.0, "lat": 9.860, "lon": 79.890, "sog_knots": 2.8, "cog_degrees": 195.0},
+                        {"relative_time_hours": 0.0, "lat": 9.840, "lon": 79.880, "sog_knots": 3.2, "cog_degrees": 170.0}
+                    ]
+                }
+            ]
+        },
+        "paradip_odisha": {
+            "id": "paradip_odisha",
+            "title": "Paradip Port — Odisha Coast Bay of Bengal Oil Terminal",
+            "region": "Bay of Bengal / Odisha Coast",
+            "center": {"lat": 20.316, "lon": 86.691},
+            "satellite_metadata": {
+                "mission": "Sentinel-1B C-Band SAR",
+                "acquisition_time_utc": "2026-09-07 12:30:00 UTC",
+                "acquisition_time_ist": "2026-09-07 18:00:00 IST",
+                "sensor_mode": "Interferometric Wide (IW) Swath",
+                "polarization": "VV+VH",
+                "pixel_spacing_m": 10.0,
+                "incident_angle_deg": 37.2
+            },
+            "ocean_conditions": {
+                "base_current_u": 0.15,
+                "base_current_v": 0.30,
+                "base_wind_u": 4.2,
+                "base_wind_v": 3.5,
+                "tidal_amplitude": 0.35,
+                "tidal_period_h": 12.42,
+                "sea_surface_temp_c": 28.8,
+                "sea_state": "Beaufort 3 (Gentle Breeze)"
+            },
+            "coastline_hazard": {
+                "coastline_lat_threshold": 20.45,
+                "coastal_zone_name": "Bhitarkanika Mangrove National Park & Gahirmatha Olive Ridley Rookery",
+                "distance_to_shore_km": 12.0
+            },
+            "ais_vessels": [
+                {
+                    "mmsi": 538008900, "imo": 9534567,
+                    "vessel_name": "MT BLACK MARLIN",
+                    "flag_state": "Marshall Islands",
+                    "vessel_type": "Crude / Product Tanker",
+                    "call_sign": "V7BM2", "length_m": 274, "width_m": 48, "dwt_tonnes": 165000,
+                    "trajectory": [
+                        {"relative_time_hours": -14.0, "lat": 20.100, "lon": 86.350, "sog_knots": 13.8, "cog_degrees": 45.0},
+                        {"relative_time_hours": -11.0, "lat": 20.180, "lon": 86.480, "sog_knots": 13.5, "cog_degrees": 48.0},
+                        {"relative_time_hours": -9.0, "lat": 20.240, "lon": 86.580, "sog_knots": 5.2, "cog_degrees": 42.0},
+                        {"relative_time_hours": -8.0, "lat": 20.270, "lon": 86.620, "sog_knots": 4.0, "cog_degrees": 40.0},
+                        {"relative_time_hours": -6.0, "lat": 20.310, "lon": 86.690, "sog_knots": 13.2, "cog_degrees": 46.0},
+                        {"relative_time_hours": 0.0, "lat": 20.450, "lon": 86.920, "sog_knots": 13.6, "cog_degrees": 48.0}
+                    ]
+                },
+                {
+                    "mmsi": 419034567, "imo": 9234568,
+                    "vessel_name": "MV KALINGA ENTERPRISE",
+                    "flag_state": "India",
+                    "vessel_type": "Bulk Cargo Carrier",
+                    "call_sign": "AVKE", "length_m": 225, "width_m": 32, "dwt_tonnes": 75000,
+                    "trajectory": [
+                        {"relative_time_hours": -12.0, "lat": 20.400, "lon": 86.500, "sog_knots": 14.5, "cog_degrees": 88.0},
+                        {"relative_time_hours": -6.0, "lat": 20.410, "lon": 86.800, "sog_knots": 14.2, "cog_degrees": 90.0},
+                        {"relative_time_hours": 0.0, "lat": 20.420, "lon": 87.100, "sog_knots": 14.0, "cog_degrees": 89.0}
+                    ]
+                },
+                {
+                    "mmsi": 419045678, "imo": 9345679,
+                    "vessel_name": "ICG SAMRAT",
+                    "flag_state": "India",
+                    "vessel_type": "Indian Coast Guard OPV",
+                    "call_sign": "ATCG", "length_m": 105, "width_m": 14, "dwt_tonnes": 2200,
+                    "trajectory": [
+                        {"relative_time_hours": -6.0, "lat": 20.350, "lon": 86.750, "sog_knots": 22.0, "cog_degrees": 180.0},
+                        {"relative_time_hours": -3.0, "lat": 20.280, "lon": 86.720, "sog_knots": 18.0, "cog_degrees": 200.0},
+                        {"relative_time_hours": 0.0, "lat": 20.250, "lon": 86.680, "sog_knots": 12.0, "cog_degrees": 210.0}
+                    ]
+                }
+            ]
+        },
+        "visakhapatnam_offshore": {
+            "id": "visakhapatnam_offshore",
+            "title": "Visakhapatnam Offshore — Krishna-Godavari Basin Petroleum Sector",
+            "region": "Andhra Pradesh Coast / Bay of Bengal KG Basin",
+            "center": {"lat": 16.95, "lon": 82.45},
+            "satellite_metadata": {
+                "mission": "Sentinel-1A C-Band SAR",
+                "acquisition_time_utc": "2026-09-08 00:55:00 UTC",
+                "acquisition_time_ist": "2026-09-08 06:25:00 IST",
+                "sensor_mode": "Interferometric Wide (IW) Swath",
+                "polarization": "VV",
+                "pixel_spacing_m": 10.0,
+                "incident_angle_deg": 36.8
+            },
+            "ocean_conditions": {
+                "base_current_u": 0.20,
+                "base_current_v": -0.15,
+                "base_wind_u": 3.5,
+                "base_wind_v": -4.2,
+                "tidal_amplitude": 0.28,
+                "tidal_period_h": 12.42,
+                "sea_surface_temp_c": 29.2,
+                "sea_state": "Beaufort 3 (Gentle Breeze)"
+            },
+            "coastline_hazard": {
+                "coastline_lat_threshold": None,
+                "coastal_zone_name": "KG Basin Petroleum Rig Cluster (ONGC & Reliance D6 Block)",
+                "distance_to_shore_km": 120.0
+            },
+            "ais_vessels": [
+                {
+                    "mmsi": 636022345, "imo": 9412345,
+                    "vessel_name": "MT KRISHNA PROSPERITY",
+                    "flag_state": "Liberia",
+                    "vessel_type": "Crude / Product Tanker",
+                    "call_sign": "D5KP7", "length_m": 245, "width_m": 42, "dwt_tonnes": 140000,
+                    "trajectory": [
+                        {"relative_time_hours": -15.0, "lat": 16.700, "lon": 82.100, "sog_knots": 14.2, "cog_degrees": 38.0},
+                        {"relative_time_hours": -12.0, "lat": 16.780, "lon": 82.200, "sog_knots": 14.0, "cog_degrees": 40.0},
+                        {"relative_time_hours": -10.0, "lat": 16.850, "lon": 82.300, "sog_knots": 5.5, "cog_degrees": 35.0},
+                        {"relative_time_hours": -9.0, "lat": 16.880, "lon": 82.340, "sog_knots": 3.8, "cog_degrees": 32.0},
+                        {"relative_time_hours": -7.0, "lat": 16.920, "lon": 82.400, "sog_knots": 13.8, "cog_degrees": 42.0},
+                        {"relative_time_hours": 0.0, "lat": 17.100, "lon": 82.650, "sog_knots": 14.5, "cog_degrees": 40.0}
+                    ]
+                },
+                {
+                    "mmsi": 419056789, "imo": 9567891,
+                    "vessel_name": "ONGC SAGAR SAMRAT",
+                    "flag_state": "India",
+                    "vessel_type": "Offshore Drilling Platform Support",
+                    "call_sign": "AVOG", "length_m": 95, "width_m": 22, "dwt_tonnes": 5200,
+                    "trajectory": [
+                        {"relative_time_hours": -8.0, "lat": 16.980, "lon": 82.480, "sog_knots": 6.5, "cog_degrees": 120.0},
+                        {"relative_time_hours": -4.0, "lat": 16.950, "lon": 82.520, "sog_knots": 6.2, "cog_degrees": 125.0},
+                        {"relative_time_hours": 0.0, "lat": 16.930, "lon": 82.560, "sog_knots": 6.0, "cog_degrees": 118.0}
+                    ]
+                },
+                {
+                    "mmsi": 352007890, "imo": 9678901,
+                    "vessel_name": "MV GODAVARI STAR",
+                    "flag_state": "Panama",
+                    "vessel_type": "Bulk Cargo Carrier",
+                    "call_sign": "3EGS4", "length_m": 199, "width_m": 32, "dwt_tonnes": 58000,
+                    "trajectory": [
+                        {"relative_time_hours": -12.0, "lat": 17.100, "lon": 82.250, "sog_knots": 15.8, "cog_degrees": 110.0},
+                        {"relative_time_hours": -6.0, "lat": 17.020, "lon": 82.550, "sog_knots": 15.5, "cog_degrees": 112.0},
+                        {"relative_time_hours": 0.0, "lat": 16.940, "lon": 82.850, "sog_knots": 15.2, "cog_degrees": 110.0}
+                    ]
+                }
+            ]
+        },
+        "kochi_channel": {
+            "id": "kochi_channel",
+            "title": "Kochi Channel — Cochin Refinery & LNG Terminal Approach",
+            "region": "Kerala Coast / Southern Arabian Sea",
+            "center": {"lat": 9.97, "lon": 76.20},
+            "satellite_metadata": {
+                "mission": "Sentinel-1A C-Band SAR",
+                "acquisition_time_utc": "2026-09-09 01:05:00 UTC",
+                "acquisition_time_ist": "2026-09-09 06:35:00 IST",
+                "sensor_mode": "Interferometric Wide (IW) Swath",
+                "polarization": "VV",
+                "pixel_spacing_m": 10.0,
+                "incident_angle_deg": 35.2
+            },
+            "ocean_conditions": {
+                "base_current_u": -0.22,
+                "base_current_v": 0.12,
+                "base_wind_u": -4.8,
+                "base_wind_v": 2.8,
+                "tidal_amplitude": 0.30,
+                "tidal_period_h": 12.42,
+                "sea_surface_temp_c": 29.0,
+                "sea_state": "Beaufort 3 (Gentle Breeze)"
+            },
+            "coastline_hazard": {
+                "coastline_lat_threshold": 10.05,
+                "coastal_zone_name": "Cochin Backwaters & Vembanad Ramsar Wetland",
+                "distance_to_shore_km": 6.5
+            },
+            "ais_vessels": [
+                {
+                    "mmsi": 636025678, "imo": 9512346,
+                    "vessel_name": "MT SPICE TRADER",
+                    "flag_state": "Liberia",
+                    "vessel_type": "Chemical / Oil Products Tanker",
+                    "call_sign": "D5ST3", "length_m": 183, "width_m": 27, "dwt_tonnes": 48000,
+                    "trajectory": [
+                        {"relative_time_hours": -12.0, "lat": 9.800, "lon": 75.900, "sog_knots": 12.5, "cog_degrees": 55.0},
+                        {"relative_time_hours": -9.0, "lat": 9.850, "lon": 75.990, "sog_knots": 12.2, "cog_degrees": 52.0},
+                        {"relative_time_hours": -7.0, "lat": 9.900, "lon": 76.070, "sog_knots": 4.8, "cog_degrees": 48.0},
+                        {"relative_time_hours": -6.0, "lat": 9.920, "lon": 76.100, "sog_knots": 3.5, "cog_degrees": 45.0},
+                        {"relative_time_hours": -4.0, "lat": 9.950, "lon": 76.150, "sog_knots": 12.0, "cog_degrees": 50.0},
+                        {"relative_time_hours": 0.0, "lat": 10.020, "lon": 76.300, "sog_knots": 12.4, "cog_degrees": 54.0}
+                    ]
+                },
+                {
+                    "mmsi": 419067890, "imo": 9678902,
+                    "vessel_name": "MV KERALA PRIDE",
+                    "flag_state": "India",
+                    "vessel_type": "Container / Bulk Cargo Carrier",
+                    "call_sign": "AVKP", "length_m": 168, "width_m": 28, "dwt_tonnes": 32000,
+                    "trajectory": [
+                        {"relative_time_hours": -10.0, "lat": 10.050, "lon": 76.350, "sog_knots": 14.5, "cog_degrees": 225.0},
+                        {"relative_time_hours": -5.0, "lat": 9.980, "lon": 76.200, "sog_knots": 14.2, "cog_degrees": 228.0},
+                        {"relative_time_hours": 0.0, "lat": 9.910, "lon": 76.050, "sog_knots": 14.0, "cog_degrees": 226.0}
+                    ]
+                },
+                {
+                    "mmsi": 419078901, "imo": 9789012,
+                    "vessel_name": "FV MATTANCHERRY",
+                    "flag_state": "India",
+                    "vessel_type": "Commercial Fishing Vessel",
+                    "call_sign": "IND-F5", "length_m": 24, "width_m": 7, "dwt_tonnes": 140,
+                    "trajectory": [
+                        {"relative_time_hours": -8.0, "lat": 9.950, "lon": 76.180, "sog_knots": 4.0, "cog_degrees": 160.0},
+                        {"relative_time_hours": -4.0, "lat": 9.930, "lon": 76.190, "sog_knots": 3.5, "cog_degrees": 175.0},
+                        {"relative_time_hours": 0.0, "lat": 9.910, "lon": 76.200, "sog_knots": 3.8, "cog_degrees": 150.0}
+                    ]
+                }
+            ]
+        },
+        "sundarbans_delta": {
+            "id": "sundarbans_delta",
+            "title": "Sundarbans Delta — Hooghly River Estuary & Mangrove Reserve",
+            "region": "West Bengal / Bangladesh Border / Bay of Bengal",
+            "center": {"lat": 21.60, "lon": 88.35},
+            "satellite_metadata": {
+                "mission": "Sentinel-1B C-Band SAR",
+                "acquisition_time_utc": "2026-09-10 12:15:00 UTC",
+                "acquisition_time_ist": "2026-09-10 17:45:00 IST",
+                "sensor_mode": "Interferometric Wide (IW) Swath",
+                "polarization": "VV+VH",
+                "pixel_spacing_m": 10.0,
+                "incident_angle_deg": 34.0
+            },
+            "ocean_conditions": {
+                "base_current_u": 0.12,
+                "base_current_v": 0.38,
+                "base_wind_u": 3.2,
+                "base_wind_v": 4.5,
+                "tidal_amplitude": 0.55,
+                "tidal_period_h": 12.42,
+                "sea_surface_temp_c": 28.2,
+                "sea_state": "Beaufort 3 (Gentle Breeze)"
+            },
+            "coastline_hazard": {
+                "coastline_lat_threshold": 21.75,
+                "coastal_zone_name": "Sundarbans UNESCO World Heritage Mangrove Forest & Tiger Reserve",
+                "distance_to_shore_km": 5.0
+            },
+            "ais_vessels": [
+                {
+                    "mmsi": 405012345, "imo": 9423456,
+                    "vessel_name": "MT BANGLAR JYOTI",
+                    "flag_state": "Bangladesh",
+                    "vessel_type": "Crude / Product Tanker",
+                    "call_sign": "S2BJ", "length_m": 168, "width_m": 26, "dwt_tonnes": 35000,
+                    "trajectory": [
+                        {"relative_time_hours": -14.0, "lat": 21.350, "lon": 88.100, "sog_knots": 10.5, "cog_degrees": 22.0},
+                        {"relative_time_hours": -11.0, "lat": 21.420, "lon": 88.180, "sog_knots": 10.2, "cog_degrees": 25.0},
+                        {"relative_time_hours": -9.0, "lat": 21.480, "lon": 88.240, "sog_knots": 4.0, "cog_degrees": 20.0},
+                        {"relative_time_hours": -8.0, "lat": 21.510, "lon": 88.270, "sog_knots": 3.2, "cog_degrees": 18.0},
+                        {"relative_time_hours": -6.0, "lat": 21.560, "lon": 88.320, "sog_knots": 10.0, "cog_degrees": 24.0},
+                        {"relative_time_hours": 0.0, "lat": 21.700, "lon": 88.500, "sog_knots": 10.4, "cog_degrees": 22.0}
+                    ]
+                },
+                {
+                    "mmsi": 419089012, "imo": 9890123,
+                    "vessel_name": "MV HALDIA NAVIGATOR",
+                    "flag_state": "India",
+                    "vessel_type": "Bulk Cargo Carrier",
+                    "call_sign": "AVHN", "length_m": 190, "width_m": 30, "dwt_tonnes": 55000,
+                    "trajectory": [
+                        {"relative_time_hours": -12.0, "lat": 21.700, "lon": 88.150, "sog_knots": 12.5, "cog_degrees": 95.0},
+                        {"relative_time_hours": -6.0, "lat": 21.690, "lon": 88.420, "sog_knots": 12.2, "cog_degrees": 92.0},
+                        {"relative_time_hours": 0.0, "lat": 21.680, "lon": 88.690, "sog_knots": 12.0, "cog_degrees": 94.0}
+                    ]
+                },
+                {
+                    "mmsi": 419090123, "imo": 9901234,
+                    "vessel_name": "ICG SUJIT",
+                    "flag_state": "India",
+                    "vessel_type": "Indian Coast Guard FPV",
+                    "call_sign": "ATCS", "length_m": 50, "width_m": 8, "dwt_tonnes": 350,
+                    "trajectory": [
+                        {"relative_time_hours": -4.0, "lat": 21.620, "lon": 88.380, "sog_knots": 24.0, "cog_degrees": 160.0},
+                        {"relative_time_hours": -2.0, "lat": 21.560, "lon": 88.400, "sog_knots": 20.0, "cog_degrees": 170.0},
+                        {"relative_time_hours": 0.0, "lat": 21.520, "lon": 88.420, "sog_knots": 8.0, "cog_degrees": 180.0}
+                    ]
+                },
+                {
+                    "mmsi": 419091234, "imo": 9012345,
+                    "vessel_name": "FV GANGA SAGAR",
+                    "flag_state": "India",
+                    "vessel_type": "Commercial Fishing Vessel",
+                    "call_sign": "IND-F7", "length_m": 16, "width_m": 4, "dwt_tonnes": 60,
+                    "trajectory": [
+                        {"relative_time_hours": -10.0, "lat": 21.580, "lon": 88.300, "sog_knots": 3.0, "cog_degrees": 90.0},
+                        {"relative_time_hours": -5.0, "lat": 21.575, "lon": 88.320, "sog_knots": 2.5, "cog_degrees": 100.0},
+                        {"relative_time_hours": 0.0, "lat": 21.570, "lon": 88.340, "sog_knots": 2.8, "cog_degrees": 85.0}
+                    ]
+                }
+            ]
+        },
+        "mangalore_port": {
+            "id": "mangalore_port",
+            "title": "New Mangalore Port — MRPL Refinery & LPG Terminal Approach",
+            "region": "Karnataka Coast / Southern Arabian Sea",
+            "center": {"lat": 12.92, "lon": 74.78},
+            "satellite_metadata": {
+                "mission": "Sentinel-1A C-Band SAR",
+                "acquisition_time_utc": "2026-09-11 01:20:00 UTC",
+                "acquisition_time_ist": "2026-09-11 06:50:00 IST",
+                "sensor_mode": "Interferometric Wide (IW) Swath",
+                "polarization": "VV",
+                "pixel_spacing_m": 10.0,
+                "incident_angle_deg": 36.5
+            },
+            "ocean_conditions": {
+                "base_current_u": -0.15,
+                "base_current_v": 0.20,
+                "base_wind_u": -5.0,
+                "base_wind_v": 3.0,
+                "tidal_amplitude": 0.32,
+                "tidal_period_h": 12.42,
+                "sea_surface_temp_c": 28.6,
+                "sea_state": "Beaufort 3 (Gentle Breeze)"
+            },
+            "coastline_hazard": {
+                "coastline_lat_threshold": 13.00,
+                "coastal_zone_name": "Netravati-Gurpur Estuary & Pilikula Biological Park",
+                "distance_to_shore_km": 9.0
+            },
+            "ais_vessels": [
+                {
+                    "mmsi": 538011234, "imo": 9523456,
+                    "vessel_name": "MT ARABIAN PIONEER",
+                    "flag_state": "Marshall Islands",
+                    "vessel_type": "Crude / Product Tanker",
+                    "call_sign": "V7AP5", "length_m": 228, "width_m": 38, "dwt_tonnes": 105000,
+                    "trajectory": [
+                        {"relative_time_hours": -14.0, "lat": 12.700, "lon": 74.450, "sog_knots": 13.5, "cog_degrees": 35.0},
+                        {"relative_time_hours": -11.0, "lat": 12.770, "lon": 74.540, "sog_knots": 13.2, "cog_degrees": 38.0},
+                        {"relative_time_hours": -9.0, "lat": 12.830, "lon": 74.620, "sog_knots": 5.0, "cog_degrees": 32.0},
+                        {"relative_time_hours": -8.0, "lat": 12.860, "lon": 74.660, "sog_knots": 3.5, "cog_degrees": 30.0},
+                        {"relative_time_hours": -6.0, "lat": 12.900, "lon": 74.720, "sog_knots": 13.0, "cog_degrees": 36.0},
+                        {"relative_time_hours": 0.0, "lat": 13.020, "lon": 74.920, "sog_knots": 13.4, "cog_degrees": 38.0}
+                    ]
+                },
+                {
+                    "mmsi": 419095678, "imo": 9634568,
+                    "vessel_name": "MV MALABAR COAST",
+                    "flag_state": "India",
+                    "vessel_type": "Container / Bulk Cargo Carrier",
+                    "call_sign": "AVMC", "length_m": 185, "width_m": 28, "dwt_tonnes": 38000,
+                    "trajectory": [
+                        {"relative_time_hours": -10.0, "lat": 12.980, "lon": 74.850, "sog_knots": 15.0, "cog_degrees": 205.0},
+                        {"relative_time_hours": -5.0, "lat": 12.920, "lon": 74.750, "sog_knots": 14.8, "cog_degrees": 208.0},
+                        {"relative_time_hours": 0.0, "lat": 12.860, "lon": 74.650, "sog_knots": 14.5, "cog_degrees": 206.0}
+                    ]
+                },
+                {
+                    "mmsi": 419096789, "imo": 9745679,
+                    "vessel_name": "FV UDUPI PRAWN",
+                    "flag_state": "India",
+                    "vessel_type": "Commercial Fishing Vessel",
+                    "call_sign": "IND-F8", "length_m": 20, "width_m": 6, "dwt_tonnes": 100,
+                    "trajectory": [
+                        {"relative_time_hours": -8.0, "lat": 12.940, "lon": 74.760, "sog_knots": 3.8, "cog_degrees": 145.0},
+                        {"relative_time_hours": -4.0, "lat": 12.920, "lon": 74.780, "sog_knots": 3.2, "cog_degrees": 155.0},
+                        {"relative_time_hours": 0.0, "lat": 12.900, "lon": 74.800, "sog_knots": 3.5, "cog_degrees": 140.0}
+                    ]
+                }
+            ]
+        },
+        "chennai_ennore": {
+            "id": "chennai_ennore",
+            "title": "Chennai–Ennore Port — Kamarajar Oil Terminal & CPCL Refinery",
+            "region": "Tamil Nadu / Coromandel Coast / Bay of Bengal",
+            "center": {"lat": 13.26, "lon": 80.40},
+            "satellite_metadata": {
+                "mission": "Sentinel-1B C-Band SAR",
+                "acquisition_time_utc": "2026-09-12 00:40:00 UTC",
+                "acquisition_time_ist": "2026-09-12 06:10:00 IST",
+                "sensor_mode": "Interferometric Wide (IW) Swath",
+                "polarization": "VV",
+                "pixel_spacing_m": 10.0,
+                "incident_angle_deg": 37.0
+            },
+            "ocean_conditions": {
+                "base_current_u": -0.10,
+                "base_current_v": -0.18,
+                "base_wind_u": -2.5,
+                "base_wind_v": -3.2,
+                "tidal_amplitude": 0.20,
+                "tidal_period_h": 12.42,
+                "sea_surface_temp_c": 29.5,
+                "sea_state": "Beaufort 2 (Light Breeze)"
+            },
+            "coastline_hazard": {
+                "coastline_lat_threshold": 13.35,
+                "coastal_zone_name": "Pulicat Lagoon Bird Sanctuary & Ennore Creek Wetland",
+                "distance_to_shore_km": 7.6
+            },
+            "ais_vessels": [
+                {
+                    "mmsi": 636028901, "imo": 9634569,
+                    "vessel_name": "MT COROMANDEL SPIRIT",
+                    "flag_state": "Liberia",
+                    "vessel_type": "Crude / Product Tanker",
+                    "call_sign": "D5CS8", "length_m": 228, "width_m": 42, "dwt_tonnes": 115000,
+                    "trajectory": [
+                        {"relative_time_hours": -14.0, "lat": 13.120, "lon": 80.380, "sog_knots": 13.8, "cog_degrees": 28.0},
+                        {"relative_time_hours": -12.0, "lat": 13.220, "lon": 80.420, "sog_knots": 13.2, "cog_degrees": 26.0},
+                        {"relative_time_hours": -10.5, "lat": 13.361, "lon": 80.453, "sog_knots": 3.6, "cog_degrees": 25.0},
+                        {"relative_time_hours": -9.0, "lat": 13.410, "lon": 80.490, "sog_knots": 4.2, "cog_degrees": 24.0},
+                        {"relative_time_hours": -6.0, "lat": 13.530, "lon": 80.560, "sog_knots": 13.0, "cog_degrees": 26.0},
+                        {"relative_time_hours": 0.0, "lat": 13.780, "lon": 80.680, "sog_knots": 13.5, "cog_degrees": 25.0}
+                    ]
+                },
+                {
+                    "mmsi": 419098901, "imo": 9856790,
+                    "vessel_name": "MV CHENNAI GATEWAY",
+                    "flag_state": "India",
+                    "vessel_type": "Container Ship",
+                    "call_sign": "AVCG", "length_m": 260, "width_m": 40, "dwt_tonnes": 85000,
+                    "trajectory": [
+                        {"relative_time_hours": -12.0, "lat": 13.550, "lon": 80.650, "sog_knots": 16.5, "cog_degrees": 195.0},
+                        {"relative_time_hours": -6.0, "lat": 13.350, "lon": 80.550, "sog_knots": 16.2, "cog_degrees": 198.0},
+                        {"relative_time_hours": 0.0, "lat": 13.150, "lon": 80.450, "sog_knots": 16.0, "cog_degrees": 196.0}
+                    ]
+                },
+                {
+                    "mmsi": 419099012, "imo": 9967901,
+                    "vessel_name": "FV MARINA BEACH",
+                    "flag_state": "India",
+                    "vessel_type": "Commercial Fishing Vessel",
+                    "call_sign": "IND-F9", "length_m": 15, "width_m": 4, "dwt_tonnes": 50,
+                    "trajectory": [
+                        {"relative_time_hours": -6.0, "lat": 13.270, "lon": 80.380, "sog_knots": 3.5, "cog_degrees": 120.0},
+                        {"relative_time_hours": -3.0, "lat": 13.260, "lon": 80.400, "sog_knots": 2.8, "cog_degrees": 130.0},
+                        {"relative_time_hours": 0.0, "lat": 13.250, "lon": 80.420, "sog_knots": 3.0, "cog_degrees": 115.0}
+                    ]
+                }
+            ]
+        },
+        "goa_mormugao": {
+            "id": "goa_mormugao",
+            "title": "Goa — Mormugao Port & Zuari Estuary Shipping Channel",
+            "region": "Goa Coast / Central Arabian Sea",
+            "center": {"lat": 15.40, "lon": 73.78},
+            "satellite_metadata": {
+                "mission": "Sentinel-1A C-Band SAR",
+                "acquisition_time_utc": "2026-09-13 01:10:00 UTC",
+                "acquisition_time_ist": "2026-09-13 06:40:00 IST",
+                "sensor_mode": "Interferometric Wide (IW) Swath",
+                "polarization": "VV",
+                "pixel_spacing_m": 10.0,
+                "incident_angle_deg": 35.8
+            },
+            "ocean_conditions": {
+                "base_current_u": -0.12,
+                "base_current_v": 0.18,
+                "base_wind_u": -4.5,
+                "base_wind_v": 2.5,
+                "tidal_amplitude": 0.28,
+                "tidal_period_h": 12.42,
+                "sea_surface_temp_c": 28.8,
+                "sea_state": "Beaufort 2 (Light Breeze)"
+            },
+            "coastline_hazard": {
+                "coastline_lat_threshold": 15.48,
+                "coastal_zone_name": "Zuari-Mandovi Estuary & Chorao Island Mangrove Reserve",
+                "distance_to_shore_km": 7.5
+            },
+            "ais_vessels": [
+                {
+                    "mmsi": 477345678, "imo": 9745680,
+                    "vessel_name": "MT KONKAN JEWEL",
+                    "flag_state": "Hong Kong",
+                    "vessel_type": "Chemical / Oil Products Tanker",
+                    "call_sign": "VRKJ6", "length_m": 175, "width_m": 28, "dwt_tonnes": 42000,
+                    "trajectory": [
+                        {"relative_time_hours": -13.0, "lat": 15.200, "lon": 73.500, "sog_knots": 12.0, "cog_degrees": 38.0},
+                        {"relative_time_hours": -10.0, "lat": 15.270, "lon": 73.580, "sog_knots": 11.8, "cog_degrees": 40.0},
+                        {"relative_time_hours": -8.0, "lat": 15.320, "lon": 73.650, "sog_knots": 4.5, "cog_degrees": 35.0},
+                        {"relative_time_hours": -7.0, "lat": 15.345, "lon": 73.685, "sog_knots": 3.2, "cog_degrees": 32.0},
+                        {"relative_time_hours": -5.0, "lat": 15.380, "lon": 73.740, "sog_knots": 11.5, "cog_degrees": 38.0},
+                        {"relative_time_hours": 0.0, "lat": 15.480, "lon": 73.900, "sog_knots": 11.8, "cog_degrees": 40.0}
+                    ]
+                },
+                {
+                    "mmsi": 419097890, "imo": 9856791,
+                    "vessel_name": "MV GOA PRIDE",
+                    "flag_state": "India",
+                    "vessel_type": "Bulk Cargo Carrier (Iron Ore)",
+                    "call_sign": "AVGP", "length_m": 215, "width_m": 32, "dwt_tonnes": 72000,
+                    "trajectory": [
+                        {"relative_time_hours": -10.0, "lat": 15.450, "lon": 73.850, "sog_knots": 14.0, "cog_degrees": 225.0},
+                        {"relative_time_hours": -5.0, "lat": 15.380, "lon": 73.720, "sog_knots": 13.8, "cog_degrees": 228.0},
+                        {"relative_time_hours": 0.0, "lat": 15.310, "lon": 73.590, "sog_knots": 13.5, "cog_degrees": 226.0}
+                    ]
+                },
+                {
+                    "mmsi": 419098012, "imo": 9967902,
+                    "vessel_name": "MV MANDOVI CRUISE",
+                    "flag_state": "India",
+                    "vessel_type": "Passenger Vessel",
+                    "call_sign": "AVMC2", "length_m": 45, "width_m": 12, "dwt_tonnes": 800,
+                    "trajectory": [
+                        {"relative_time_hours": -4.0, "lat": 15.420, "lon": 73.800, "sog_knots": 8.0, "cog_degrees": 90.0},
+                        {"relative_time_hours": -2.0, "lat": 15.415, "lon": 73.830, "sog_knots": 7.5, "cog_degrees": 95.0},
+                        {"relative_time_hours": 0.0, "lat": 15.410, "lon": 73.860, "sog_knots": 7.0, "cog_degrees": 88.0}
+                    ]
+                }
+            ]
+        },
+        "tuticorin_gulf_mannar": {
+            "id": "tuticorin_gulf_mannar",
+            "title": "Tuticorin Port — Gulf of Mannar Biosphere & Coral Reef Zone",
+            "region": "Southern Tamil Nadu / Gulf of Mannar",
+            "center": {"lat": 8.80, "lon": 78.18},
+            "satellite_metadata": {
+                "mission": "Sentinel-1A C-Band SAR",
+                "acquisition_time_utc": "2026-09-14 00:50:00 UTC",
+                "acquisition_time_ist": "2026-09-14 06:20:00 IST",
+                "sensor_mode": "Interferometric Wide (IW) Swath",
+                "polarization": "VV",
+                "pixel_spacing_m": 10.0,
+                "incident_angle_deg": 34.2
+            },
+            "ocean_conditions": {
+                "base_current_u": 0.25,
+                "base_current_v": -0.08,
+                "base_wind_u": 3.5,
+                "base_wind_v": -2.8,
+                "tidal_amplitude": 0.18,
+                "tidal_period_h": 12.42,
+                "sea_surface_temp_c": 29.6,
+                "sea_state": "Beaufort 2 (Light Breeze)"
+            },
+            "coastline_hazard": {
+                "coastline_lat_threshold": 8.90,
+                "coastal_zone_name": "Gulf of Mannar Marine National Park — 21 Islands & Coral Reef Ecosystem",
+                "distance_to_shore_km": 6.0
+            },
+            "ais_vessels": [
+                {
+                    "mmsi": 636030123, "imo": 9856792,
+                    "vessel_name": "MT PEARL ISLAND",
+                    "flag_state": "Liberia",
+                    "vessel_type": "Chemical / Oil Products Tanker",
+                    "call_sign": "D5PI2", "length_m": 155, "width_m": 24, "dwt_tonnes": 28000,
+                    "trajectory": [
+                        {"relative_time_hours": -12.0, "lat": 8.620, "lon": 77.900, "sog_knots": 11.5, "cog_degrees": 48.0},
+                        {"relative_time_hours": -9.0, "lat": 8.680, "lon": 77.980, "sog_knots": 11.2, "cog_degrees": 50.0},
+                        {"relative_time_hours": -7.0, "lat": 8.730, "lon": 78.050, "sog_knots": 4.2, "cog_degrees": 45.0},
+                        {"relative_time_hours": -6.0, "lat": 8.755, "lon": 78.080, "sog_knots": 3.0, "cog_degrees": 42.0},
+                        {"relative_time_hours": -4.0, "lat": 8.790, "lon": 78.130, "sog_knots": 11.0, "cog_degrees": 48.0},
+                        {"relative_time_hours": 0.0, "lat": 8.880, "lon": 78.280, "sog_knots": 11.4, "cog_degrees": 50.0}
+                    ]
+                },
+                {
+                    "mmsi": 419099123, "imo": 9967903,
+                    "vessel_name": "MV THOOTHUKUDI STAR",
+                    "flag_state": "India",
+                    "vessel_type": "Bulk Cargo Carrier",
+                    "call_sign": "AVTS", "length_m": 175, "width_m": 28, "dwt_tonnes": 35000,
+                    "trajectory": [
+                        {"relative_time_hours": -10.0, "lat": 8.850, "lon": 78.250, "sog_knots": 13.5, "cog_degrees": 210.0},
+                        {"relative_time_hours": -5.0, "lat": 8.780, "lon": 78.150, "sog_knots": 13.2, "cog_degrees": 212.0},
+                        {"relative_time_hours": 0.0, "lat": 8.710, "lon": 78.050, "sog_knots": 13.0, "cog_degrees": 210.0}
+                    ]
+                }
+            ]
         }
     }
     return scenarios
@@ -647,20 +1361,20 @@ def get_scenario_sar_and_currents(scenario_id: str) -> Tuple[np.ndarray, OceanCu
     default_nc = os.path.join(nc_dir, "hycom_currents_sample.nc")
 
     data_provider = None
-    ocean_data_source = "Analytical M2 Tidal Model (Fallback)"
+    ocean_data_source = "No source-bound hydrodynamic grid available"
     try:
         if scenario_id == "gulf_of_kachchh" and os.path.exists(real_nc):
             data_provider = OceanDataProvider(real_nc, center_lat=center["lat"], center_lon=center["lon"])
-            ocean_data_source = f"HYCOM GOFS 3.1 NetCDF (Real) — {os.path.basename(real_nc)}"
+            ocean_data_source = f"HYCOM GOFS 3.1 archived model grid — {os.path.basename(real_nc)} (requires source-time binding)"
         elif os.path.exists(nc_path):
             data_provider = OceanDataProvider(nc_path, center_lat=center["lat"], center_lon=center["lon"])
-            ocean_data_source = f"HYCOM GOFS 3.1 NetCDF — {os.path.basename(nc_path)}"
+            ocean_data_source = f"HYCOM archived model grid — {os.path.basename(nc_path)} (requires source-time binding)"
         elif os.path.exists(default_nc):
             data_provider = OceanDataProvider(default_nc, center_lat=center["lat"], center_lon=center["lon"])
-            ocean_data_source = f"HYCOM GOFS 3.1 NetCDF (Sample) — {os.path.basename(default_nc)}"
+            ocean_data_source = f"HYCOM sample grid — {os.path.basename(default_nc)} (demonstration only)"
     except Exception as e:
         print(f"[HYCOM] ⚠ Failed to initialize OceanDataProvider: {e}")
-        ocean_data_source = "Analytical M2 Tidal Model (NetCDF load failed)"
+        ocean_data_source = "No source-bound hydrodynamic grid (load failed)"
 
     print(f"[HYCOM] Ocean data source for '{scenario_id}': {ocean_data_source}")
     data["ocean_data_source"] = ocean_data_source
@@ -729,6 +1443,86 @@ def get_scenario_sar_and_currents(scenario_id: str) -> Tuple[np.ndarray, OceanCu
             angle_deg=56.0, seed=84
         )
         data["satellite_metadata"]["data_origin"] = "Procedurally Generated Synthetic SAR Scene (Indian EEZ Geolocated)"
+    elif scenario_id == "lakshadweep_sea":
+        sar_img = generate_synthetic_sar_image(
+            width=512, height=512,
+            slick_center_px=(270, 240),
+            slick_length=170, slick_width=50,
+            angle_deg=38.0, seed=201
+        )
+        data["satellite_metadata"]["data_origin"] = "Procedurally Generated Synthetic SAR Scene (Lakshadweep Sea Geolocated)"
+    elif scenario_id == "palk_strait":
+        sar_img = generate_synthetic_sar_image(
+            width=512, height=512,
+            slick_center_px=(245, 270),
+            slick_length=120, slick_width=35,
+            angle_deg=68.0, seed=202
+        )
+        data["satellite_metadata"]["data_origin"] = "Procedurally Generated Synthetic SAR Scene (Palk Strait Geolocated)"
+    elif scenario_id == "paradip_odisha":
+        sar_img = generate_synthetic_sar_image(
+            width=512, height=512,
+            slick_center_px=(260, 255),
+            slick_length=160, slick_width=45,
+            angle_deg=48.0, seed=203
+        )
+        data["satellite_metadata"]["data_origin"] = "Procedurally Generated Synthetic SAR Scene (Paradip Coast Geolocated)"
+    elif scenario_id == "visakhapatnam_offshore":
+        sar_img = generate_synthetic_sar_image(
+            width=512, height=512,
+            slick_center_px=(250, 260),
+            slick_length=145, slick_width=40,
+            angle_deg=35.0, seed=204
+        )
+        data["satellite_metadata"]["data_origin"] = "Procedurally Generated Synthetic SAR Scene (KG Basin Geolocated)"
+    elif scenario_id == "kochi_channel":
+        sar_img = generate_synthetic_sar_image(
+            width=512, height=512,
+            slick_center_px=(255, 248),
+            slick_length=130, slick_width=38,
+            angle_deg=50.0, seed=205
+        )
+        data["satellite_metadata"]["data_origin"] = "Procedurally Generated Synthetic SAR Scene (Kochi Channel Geolocated)"
+    elif scenario_id == "sundarbans_delta":
+        sar_img = generate_synthetic_sar_image(
+            width=512, height=512,
+            slick_center_px=(240, 275),
+            slick_length=115, slick_width=55,
+            angle_deg=22.0, seed=206
+        )
+        data["satellite_metadata"]["data_origin"] = "Procedurally Generated Synthetic SAR Scene (Sundarbans Delta Geolocated)"
+    elif scenario_id == "mangalore_port":
+        sar_img = generate_synthetic_sar_image(
+            width=512, height=512,
+            slick_center_px=(265, 245),
+            slick_length=140, slick_width=36,
+            angle_deg=32.0, seed=207
+        )
+        data["satellite_metadata"]["data_origin"] = "Procedurally Generated Synthetic SAR Scene (Mangalore Port Geolocated)"
+    elif scenario_id == "chennai_ennore":
+        sar_img = generate_synthetic_sar_image(
+            width=512, height=512,
+            slick_center_px=(248, 258),
+            slick_length=125, slick_width=42,
+            angle_deg=28.0, seed=208
+        )
+        data["satellite_metadata"]["data_origin"] = "Procedurally Generated Synthetic SAR Scene (Chennai-Ennore Geolocated)"
+    elif scenario_id == "goa_mormugao":
+        sar_img = generate_synthetic_sar_image(
+            width=512, height=512,
+            slick_center_px=(258, 252),
+            slick_length=135, slick_width=40,
+            angle_deg=38.0, seed=209
+        )
+        data["satellite_metadata"]["data_origin"] = "Procedurally Generated Synthetic SAR Scene (Goa Mormugao Geolocated)"
+    elif scenario_id == "tuticorin_gulf_mannar":
+        sar_img = generate_synthetic_sar_image(
+            width=512, height=512,
+            slick_center_px=(252, 262),
+            slick_length=110, slick_width=34,
+            angle_deg=45.0, seed=210
+        )
+        data["satellite_metadata"]["data_origin"] = "Procedurally Generated Synthetic SAR Scene (Gulf of Mannar Geolocated)"
     else:
         sar_img = generate_synthetic_sar_image(
             width=512, height=512,
@@ -738,27 +1532,16 @@ def get_scenario_sar_and_currents(scenario_id: str) -> Tuple[np.ndarray, OceanCu
         )
         data["satellite_metadata"]["data_origin"] = "Procedurally Generated Synthetic SAR Scene (Indian EEZ Geolocated)"
 
-    # ── W2: Merge real MarineCadastre AIS into scenario ─────────────────────
-    # Tag simulated scenario vessels with explicit provenance metadata
+    # Benchmark trajectories remain isolated from real AIS.  Mixing unrelated
+    # records produces an apparently authoritative, but physically incoherent,
+    # ranking. Real AIS must arrive through the dated upload/live ingestion path.
     existing = data.get("ais_vessels", [])
     for v in existing:
         v.setdefault("data_origin", "Scenario Physics Simulation (Synthetic Trajectory)")
         v.setdefault("is_real_ais", False)
-
-    # Load and merge real MarineCadastre AIS vessel tracks
-    real_ais_vessels = load_real_marinecadastre_ais(max_vessels=8)
-    if real_ais_vessels:
-        existing.extend(real_ais_vessels)
-        data["ais_vessels"] = existing
-        real_count = len(real_ais_vessels)
-        synth_count = len(existing) - real_count
-        data["ais_data_origin"] = (
-            f"Mixed: {synth_count} scenario vessels + {real_count} real MarineCadastre.gov (NOAA) vessels"
-        )
-        print(f"[AIS] ✓ Merged {real_count} real MarineCadastre vessels + {synth_count} scenario vessels")
-    else:
-        data["ais_data_origin"] = f"Scenario fictional vessels ({len(existing)})"
-        print(f"[AIS] Using {len(existing)} scenario vessels (no real AIS CSV found)")
+    data["ais_vessels"] = existing
+    data["ais_data_origin"] = f"Scenario trajectories only ({len(existing)}); no live or historical AIS is merged"
+    print(f"[AIS] Benchmark uses {len(existing)} isolated scenario vessels; no real AIS merged")
 
     # Load real Open-Meteo wind data into the data provider if available
     if data_provider is not None:

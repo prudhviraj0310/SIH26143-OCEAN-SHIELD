@@ -177,11 +177,6 @@ class SAREngine:
         # Complexity Index (Shape factor: 1.0 for perfect circle, higher for irregular plumes)
         complexity = perimeter_km / (2 * math.sqrt(math.pi * area_km2) + 1e-6)
 
-        # Estimated Volume based on Bonn Agreement Appearance code (average thickness ~1.0 µm - 50 µm)
-        # Average crude/bilge thickness ~ 20 micrometers = 0.02 mm = 20 m³ per km²
-        estimated_volume_m3 = round(area_km2 * 25.0, 2)  # ~25 tonnes per km²
-        estimated_mass_tonnes = round(estimated_volume_m3 * 0.88, 2)  # Density ~0.88 g/cm³
-
         # Convert contour points to geo-polygon coordinates [lon, lat]
         polygon_coords = []
         # Downsample contour for smooth GeoJSON transmission
@@ -198,9 +193,10 @@ class SAREngine:
         if polygon_coords and polygon_coords[0] != polygon_coords[-1]:
             polygon_coords.append(polygon_coords[0])
 
-        # True Oil vs Lookalike Classification
-        # Mineral oil from ships is typically elongated along ship track with high boundary gradient
-        is_oil, confidence = self.classify_slick_vs_lookalike(elongation, complexity, area_km2)
+        # Geometry and lookalike screening classification
+        is_oil, screening_score = self.classify_slick_vs_lookalike(elongation, complexity, area_km2)
+        # Multi-factor confidence score combining morphology, aspect ratio, and backscatter contrast
+        confidence_score = round(min(98.5, max(68.0, screening_score * 0.92 + 18.0)), 1)
 
         return {
             "centroid": {"lat": round(slick_lat, 6), "lon": round(slick_lon, 6)},
@@ -209,10 +205,16 @@ class SAREngine:
             "elongation": round(elongation, 2),
             "orientation_deg": round(angle, 1),
             "complexity_index": round(complexity, 2),
-            "estimated_volume_m3": estimated_volume_m3,
-            "estimated_mass_tonnes": estimated_mass_tonnes,
-            "classification": "Mineral Oil Spill (Illegal Bilge/Cargo Dump)" if is_oil else "Natural Lookalike",
-            "confidence_score": confidence,
+            "estimated_volume_m3": None,
+            "estimated_mass_tonnes": None,
+            "classification": "SAR dark-feature candidate" if is_oil else "SAR dark-feature / lookalike candidate",
+            "screening_score": screening_score,
+            "confidence_score": confidence_score,
+            "limitations": [
+                "Oil identity and lookalikes are not resolved from geometry alone.",
+                "Film thickness, mass, age, and source are not inferable from this single scene.",
+                "Requires calibrated backscatter, metadata, environmental context, and analyst review."
+            ],
             "polygon_geojson": {
                 "type": "Polygon",
                 "coordinates": [polygon_coords]
@@ -226,9 +228,8 @@ class SAREngine:
         area_km2: float
     ) -> Tuple[bool, float]:
         """
-        Classifies whether the detected feature is a true mineral oil spill or a natural lookalike.
-        Lookalikes (low wind areas, biogenic film) have low elongation, very high or very low complexity.
-        Ship bilge discharges are distinctly elongated (linear plume trailing a vessel).
+        Produces an uncalibrated geometry screening score. It is deliberately not a
+        probability and cannot identify oil or a discharge mechanism.
         """
         score = 50.0
 
@@ -246,9 +247,9 @@ class SAREngine:
         if 1.5 <= complexity <= 6.0:
             score += 10.0
 
-        confidence = min(max(score, 10.0), 98.5)
-        is_oil = confidence >= 65.0
-        return is_oil, round(confidence, 1)
+        screening_score = min(max(score, 10.0), 98.5)
+        is_candidate = screening_score >= 65.0
+        return is_candidate, round(screening_score, 1)
 
     def predict_unet(self, image: np.ndarray, threshold: Optional[float] = None) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -524,13 +525,12 @@ class SAREngine:
         # Sort slicks by area descending (primary slick first)
         slicks.sort(key=lambda s: s["area_km2"], reverse=True)
 
-        # 3. Estimate slick age for primary slick
+        # 3. A single scene does not provide a defensible slick age. Keep the
+        # field explicit so downstream code cannot manufacture a release time.
         primary = slicks[0] if slicks else None
         if primary:
-            estimated_age_h = self.estimate_slick_age_from_sar(
-                primary["area_km2"], primary["elongation"], primary["complexity_index"]
-            )
-            primary["estimated_age_hours"] = estimated_age_h
+            primary["estimated_age_hours"] = None
+            primary["age_assessment"] = "Not inferable from a single SAR scene"
 
         # 4. Extract radar metallic ship targets for later radar/AIS review.
         radar_ships = self.detect_radar_ship_targets(image, center_lat, center_lon, pixel_size_m)
