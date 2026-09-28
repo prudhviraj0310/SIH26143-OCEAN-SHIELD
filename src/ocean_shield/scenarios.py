@@ -772,7 +772,7 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
             "id": "paradip_odisha",
             "title": "Paradip Port — Odisha Coast Bay of Bengal Oil Terminal",
             "region": "Bay of Bengal / Odisha Coast",
-            "center": {"lat": 20.316, "lon": 86.691},
+            "center": {"lat": 20.20, "lon": 87.05},
             "satellite_metadata": {
                 "mission": "Sentinel-1B C-Band SAR",
                 "acquisition_time_utc": "2026-09-07 12:30:00 UTC",
@@ -795,7 +795,7 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
             "coastline_hazard": {
                 "coastline_lat_threshold": 20.45,
                 "coastal_zone_name": "Bhitarkanika Mangrove National Park & Gahirmatha Olive Ridley Rookery",
-                "distance_to_shore_km": 12.0
+                "distance_to_shore_km": 35.0
             },
             "ais_vessels": [
                 {
@@ -805,12 +805,12 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Crude / Product Tanker",
                     "call_sign": "V7BM2", "length_m": 274, "width_m": 48, "dwt_tonnes": 165000,
                     "trajectory": [
-                        {"relative_time_hours": -14.0, "lat": 20.100, "lon": 86.350, "sog_knots": 13.8, "cog_degrees": 45.0},
-                        {"relative_time_hours": -11.0, "lat": 20.180, "lon": 86.480, "sog_knots": 13.5, "cog_degrees": 48.0},
-                        {"relative_time_hours": -9.0, "lat": 20.240, "lon": 86.580, "sog_knots": 5.2, "cog_degrees": 42.0},
-                        {"relative_time_hours": -8.0, "lat": 20.270, "lon": 86.620, "sog_knots": 4.0, "cog_degrees": 40.0},
-                        {"relative_time_hours": -6.0, "lat": 20.310, "lon": 86.690, "sog_knots": 13.2, "cog_degrees": 46.0},
-                        {"relative_time_hours": 0.0, "lat": 20.450, "lon": 86.920, "sog_knots": 13.6, "cog_degrees": 48.0}
+                        {"relative_time_hours": -14.0, "lat": 19.95, "lon": 86.75, "sog_knots": 13.8, "cog_degrees": 45.0},
+                        {"relative_time_hours": -11.0, "lat": 20.02, "lon": 86.85, "sog_knots": 13.5, "cog_degrees": 48.0},
+                        {"relative_time_hours": -9.0, "lat": 20.08, "lon": 86.92, "sog_knots": 5.2, "cog_degrees": 42.0},
+                        {"relative_time_hours": -8.0, "lat": 20.12, "lon": 86.96, "sog_knots": 4.0, "cog_degrees": 40.0},
+                        {"relative_time_hours": -6.0, "lat": 20.18, "lon": 87.03, "sog_knots": 13.2, "cog_degrees": 46.0},
+                        {"relative_time_hours": 0.0, "lat": 20.35, "lon": 87.25, "sog_knots": 13.6, "cog_degrees": 48.0}
                     ]
                 },
                 {
@@ -820,9 +820,9 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Bulk Cargo Carrier",
                     "call_sign": "AVKE", "length_m": 225, "width_m": 32, "dwt_tonnes": 75000,
                     "trajectory": [
-                        {"relative_time_hours": -12.0, "lat": 20.400, "lon": 86.500, "sog_knots": 14.5, "cog_degrees": 88.0},
-                        {"relative_time_hours": -6.0, "lat": 20.410, "lon": 86.800, "sog_knots": 14.2, "cog_degrees": 90.0},
-                        {"relative_time_hours": 0.0, "lat": 20.420, "lon": 87.100, "sog_knots": 14.0, "cog_degrees": 89.0}
+                        {"relative_time_hours": -12.0, "lat": 20.25, "lon": 86.85, "sog_knots": 14.5, "cog_degrees": 88.0},
+                        {"relative_time_hours": -6.0, "lat": 20.26, "lon": 87.10, "sog_knots": 14.2, "cog_degrees": 90.0},
+                        {"relative_time_hours": 0.0, "lat": 20.27, "lon": 87.35, "sog_knots": 14.0, "cog_degrees": 89.0}
                     ]
                 },
                 {
@@ -832,9 +832,9 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Indian Coast Guard OPV",
                     "call_sign": "ATCG", "length_m": 105, "width_m": 14, "dwt_tonnes": 2200,
                     "trajectory": [
-                        {"relative_time_hours": -6.0, "lat": 20.350, "lon": 86.750, "sog_knots": 22.0, "cog_degrees": 180.0},
-                        {"relative_time_hours": -3.0, "lat": 20.280, "lon": 86.720, "sog_knots": 18.0, "cog_degrees": 200.0},
-                        {"relative_time_hours": 0.0, "lat": 20.250, "lon": 86.680, "sog_knots": 12.0, "cog_degrees": 210.0}
+                        {"relative_time_hours": -6.0, "lat": 20.25, "lon": 87.10, "sog_knots": 22.0, "cog_degrees": 180.0},
+                        {"relative_time_hours": -3.0, "lat": 20.18, "lon": 87.08, "sog_knots": 18.0, "cog_degrees": 200.0},
+                        {"relative_time_hours": 0.0, "lat": 20.12, "lon": 87.04, "sog_knots": 12.0, "cog_degrees": 210.0}
                     ]
                 }
             ]
@@ -843,7 +843,7 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
             "id": "visakhapatnam_offshore",
             "title": "Visakhapatnam Offshore — Krishna-Godavari Basin Petroleum Sector",
             "region": "Andhra Pradesh Coast / Bay of Bengal KG Basin",
-            "center": {"lat": 16.95, "lon": 82.45},
+            "center": {"lat": 16.50, "lon": 82.20},
             "satellite_metadata": {
                 "mission": "Sentinel-1A C-Band SAR",
                 "acquisition_time_utc": "2026-09-08 00:55:00 UTC",
@@ -866,7 +866,7 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
             "coastline_hazard": {
                 "coastline_lat_threshold": None,
                 "coastal_zone_name": "KG Basin Petroleum Rig Cluster (ONGC & Reliance D6 Block)",
-                "distance_to_shore_km": 120.0
+                "distance_to_shore_km": 140.0
             },
             "ais_vessels": [
                 {
@@ -876,12 +876,12 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Crude / Product Tanker",
                     "call_sign": "D5KP7", "length_m": 245, "width_m": 42, "dwt_tonnes": 140000,
                     "trajectory": [
-                        {"relative_time_hours": -15.0, "lat": 16.700, "lon": 82.100, "sog_knots": 14.2, "cog_degrees": 38.0},
-                        {"relative_time_hours": -12.0, "lat": 16.780, "lon": 82.200, "sog_knots": 14.0, "cog_degrees": 40.0},
-                        {"relative_time_hours": -10.0, "lat": 16.850, "lon": 82.300, "sog_knots": 5.5, "cog_degrees": 35.0},
-                        {"relative_time_hours": -9.0, "lat": 16.880, "lon": 82.340, "sog_knots": 3.8, "cog_degrees": 32.0},
-                        {"relative_time_hours": -7.0, "lat": 16.920, "lon": 82.400, "sog_knots": 13.8, "cog_degrees": 42.0},
-                        {"relative_time_hours": 0.0, "lat": 17.100, "lon": 82.650, "sog_knots": 14.5, "cog_degrees": 40.0}
+                        {"relative_time_hours": -15.0, "lat": 16.25, "lon": 81.90, "sog_knots": 14.2, "cog_degrees": 38.0},
+                        {"relative_time_hours": -12.0, "lat": 16.32, "lon": 82.00, "sog_knots": 14.0, "cog_degrees": 40.0},
+                        {"relative_time_hours": -10.0, "lat": 16.38, "lon": 82.08, "sog_knots": 5.5, "cog_degrees": 35.0},
+                        {"relative_time_hours": -9.0, "lat": 16.41, "lon": 82.12, "sog_knots": 3.8, "cog_degrees": 32.0},
+                        {"relative_time_hours": -7.0, "lat": 16.46, "lon": 82.18, "sog_knots": 13.8, "cog_degrees": 42.0},
+                        {"relative_time_hours": 0.0, "lat": 16.62, "lon": 82.40, "sog_knots": 14.5, "cog_degrees": 40.0}
                     ]
                 },
                 {
@@ -891,9 +891,9 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Offshore Drilling Platform Support",
                     "call_sign": "AVOG", "length_m": 95, "width_m": 22, "dwt_tonnes": 5200,
                     "trajectory": [
-                        {"relative_time_hours": -8.0, "lat": 16.980, "lon": 82.480, "sog_knots": 6.5, "cog_degrees": 120.0},
-                        {"relative_time_hours": -4.0, "lat": 16.950, "lon": 82.520, "sog_knots": 6.2, "cog_degrees": 125.0},
-                        {"relative_time_hours": 0.0, "lat": 16.930, "lon": 82.560, "sog_knots": 6.0, "cog_degrees": 118.0}
+                        {"relative_time_hours": -8.0, "lat": 16.52, "lon": 82.22, "sog_knots": 6.5, "cog_degrees": 120.0},
+                        {"relative_time_hours": -4.0, "lat": 16.49, "lon": 82.26, "sog_knots": 6.2, "cog_degrees": 125.0},
+                        {"relative_time_hours": 0.0, "lat": 16.47, "lon": 82.30, "sog_knots": 6.0, "cog_degrees": 118.0}
                     ]
                 },
                 {
@@ -903,9 +903,9 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Bulk Cargo Carrier",
                     "call_sign": "3EGS4", "length_m": 199, "width_m": 32, "dwt_tonnes": 58000,
                     "trajectory": [
-                        {"relative_time_hours": -12.0, "lat": 17.100, "lon": 82.250, "sog_knots": 15.8, "cog_degrees": 110.0},
-                        {"relative_time_hours": -6.0, "lat": 17.020, "lon": 82.550, "sog_knots": 15.5, "cog_degrees": 112.0},
-                        {"relative_time_hours": 0.0, "lat": 16.940, "lon": 82.850, "sog_knots": 15.2, "cog_degrees": 110.0}
+                        {"relative_time_hours": -12.0, "lat": 16.65, "lon": 82.30, "sog_knots": 15.8, "cog_degrees": 110.0},
+                        {"relative_time_hours": -6.0, "lat": 16.58, "lon": 82.60, "sog_knots": 15.5, "cog_degrees": 112.0},
+                        {"relative_time_hours": 0.0, "lat": 16.50, "lon": 82.90, "sog_knots": 15.2, "cog_degrees": 110.0}
                     ]
                 }
             ]
@@ -985,7 +985,7 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
             "id": "sundarbans_delta",
             "title": "Sundarbans Delta — Hooghly River Estuary & Mangrove Reserve",
             "region": "West Bengal / Bangladesh Border / Bay of Bengal",
-            "center": {"lat": 21.60, "lon": 88.35},
+            "center": {"lat": 21.30, "lon": 88.60},
             "satellite_metadata": {
                 "mission": "Sentinel-1B C-Band SAR",
                 "acquisition_time_utc": "2026-09-10 12:15:00 UTC",
@@ -1008,7 +1008,7 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
             "coastline_hazard": {
                 "coastline_lat_threshold": 21.75,
                 "coastal_zone_name": "Sundarbans UNESCO World Heritage Mangrove Forest & Tiger Reserve",
-                "distance_to_shore_km": 5.0
+                "distance_to_shore_km": 25.0
             },
             "ais_vessels": [
                 {
@@ -1018,12 +1018,12 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Crude / Product Tanker",
                     "call_sign": "S2BJ", "length_m": 168, "width_m": 26, "dwt_tonnes": 35000,
                     "trajectory": [
-                        {"relative_time_hours": -14.0, "lat": 21.350, "lon": 88.100, "sog_knots": 10.5, "cog_degrees": 22.0},
-                        {"relative_time_hours": -11.0, "lat": 21.420, "lon": 88.180, "sog_knots": 10.2, "cog_degrees": 25.0},
-                        {"relative_time_hours": -9.0, "lat": 21.480, "lon": 88.240, "sog_knots": 4.0, "cog_degrees": 20.0},
-                        {"relative_time_hours": -8.0, "lat": 21.510, "lon": 88.270, "sog_knots": 3.2, "cog_degrees": 18.0},
-                        {"relative_time_hours": -6.0, "lat": 21.560, "lon": 88.320, "sog_knots": 10.0, "cog_degrees": 24.0},
-                        {"relative_time_hours": 0.0, "lat": 21.700, "lon": 88.500, "sog_knots": 10.4, "cog_degrees": 22.0}
+                        {"relative_time_hours": -14.0, "lat": 21.05, "lon": 88.35, "sog_knots": 10.5, "cog_degrees": 22.0},
+                        {"relative_time_hours": -11.0, "lat": 21.12, "lon": 88.42, "sog_knots": 10.2, "cog_degrees": 25.0},
+                        {"relative_time_hours": -9.0, "lat": 21.18, "lon": 88.48, "sog_knots": 4.0, "cog_degrees": 20.0},
+                        {"relative_time_hours": -8.0, "lat": 21.21, "lon": 88.52, "sog_knots": 3.2, "cog_degrees": 18.0},
+                        {"relative_time_hours": -6.0, "lat": 21.26, "lon": 88.57, "sog_knots": 10.0, "cog_degrees": 24.0},
+                        {"relative_time_hours": 0.0, "lat": 21.40, "lon": 88.72, "sog_knots": 10.4, "cog_degrees": 22.0}
                     ]
                 },
                 {
@@ -1033,9 +1033,9 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Bulk Cargo Carrier",
                     "call_sign": "AVHN", "length_m": 190, "width_m": 30, "dwt_tonnes": 55000,
                     "trajectory": [
-                        {"relative_time_hours": -12.0, "lat": 21.700, "lon": 88.150, "sog_knots": 12.5, "cog_degrees": 95.0},
-                        {"relative_time_hours": -6.0, "lat": 21.690, "lon": 88.420, "sog_knots": 12.2, "cog_degrees": 92.0},
-                        {"relative_time_hours": 0.0, "lat": 21.680, "lon": 88.690, "sog_knots": 12.0, "cog_degrees": 94.0}
+                        {"relative_time_hours": -12.0, "lat": 21.35, "lon": 88.40, "sog_knots": 12.5, "cog_degrees": 95.0},
+                        {"relative_time_hours": -6.0, "lat": 21.34, "lon": 88.65, "sog_knots": 12.2, "cog_degrees": 92.0},
+                        {"relative_time_hours": 0.0, "lat": 21.33, "lon": 88.90, "sog_knots": 12.0, "cog_degrees": 94.0}
                     ]
                 },
                 {
@@ -1045,9 +1045,9 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Indian Coast Guard FPV",
                     "call_sign": "ATCS", "length_m": 50, "width_m": 8, "dwt_tonnes": 350,
                     "trajectory": [
-                        {"relative_time_hours": -4.0, "lat": 21.620, "lon": 88.380, "sog_knots": 24.0, "cog_degrees": 160.0},
-                        {"relative_time_hours": -2.0, "lat": 21.560, "lon": 88.400, "sog_knots": 20.0, "cog_degrees": 170.0},
-                        {"relative_time_hours": 0.0, "lat": 21.520, "lon": 88.420, "sog_knots": 8.0, "cog_degrees": 180.0}
+                        {"relative_time_hours": -4.0, "lat": 21.32, "lon": 88.62, "sog_knots": 24.0, "cog_degrees": 160.0},
+                        {"relative_time_hours": -2.0, "lat": 21.26, "lon": 88.64, "sog_knots": 20.0, "cog_degrees": 170.0},
+                        {"relative_time_hours": 0.0, "lat": 21.22, "lon": 88.66, "sog_knots": 8.0, "cog_degrees": 180.0}
                     ]
                 },
                 {
@@ -1057,9 +1057,9 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Commercial Fishing Vessel",
                     "call_sign": "IND-F7", "length_m": 16, "width_m": 4, "dwt_tonnes": 60,
                     "trajectory": [
-                        {"relative_time_hours": -10.0, "lat": 21.580, "lon": 88.300, "sog_knots": 3.0, "cog_degrees": 90.0},
-                        {"relative_time_hours": -5.0, "lat": 21.575, "lon": 88.320, "sog_knots": 2.5, "cog_degrees": 100.0},
-                        {"relative_time_hours": 0.0, "lat": 21.570, "lon": 88.340, "sog_knots": 2.8, "cog_degrees": 85.0}
+                        {"relative_time_hours": -10.0, "lat": 21.28, "lon": 88.55, "sog_knots": 3.0, "cog_degrees": 90.0},
+                        {"relative_time_hours": -5.0, "lat": 21.28, "lon": 88.57, "sog_knots": 2.5, "cog_degrees": 100.0},
+                        {"relative_time_hours": 0.0, "lat": 21.27, "lon": 88.59, "sog_knots": 2.8, "cog_degrees": 85.0}
                     ]
                 }
             ]
@@ -1139,7 +1139,7 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
             "id": "chennai_ennore",
             "title": "Chennai–Ennore Port — Kamarajar Oil Terminal & CPCL Refinery",
             "region": "Tamil Nadu / Coromandel Coast / Bay of Bengal",
-            "center": {"lat": 13.26, "lon": 80.40},
+            "center": {"lat": 13.15, "lon": 80.50},
             "satellite_metadata": {
                 "mission": "Sentinel-1B C-Band SAR",
                 "acquisition_time_utc": "2026-09-12 00:40:00 UTC",
@@ -1172,12 +1172,12 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Crude / Product Tanker",
                     "call_sign": "D5CS8", "length_m": 228, "width_m": 42, "dwt_tonnes": 115000,
                     "trajectory": [
-                        {"relative_time_hours": -14.0, "lat": 13.120, "lon": 80.380, "sog_knots": 13.8, "cog_degrees": 28.0},
-                        {"relative_time_hours": -12.0, "lat": 13.220, "lon": 80.420, "sog_knots": 13.2, "cog_degrees": 26.0},
-                        {"relative_time_hours": -10.5, "lat": 13.361, "lon": 80.453, "sog_knots": 3.6, "cog_degrees": 25.0},
-                        {"relative_time_hours": -9.0, "lat": 13.410, "lon": 80.490, "sog_knots": 4.2, "cog_degrees": 24.0},
-                        {"relative_time_hours": -6.0, "lat": 13.530, "lon": 80.560, "sog_knots": 13.0, "cog_degrees": 26.0},
-                        {"relative_time_hours": 0.0, "lat": 13.780, "lon": 80.680, "sog_knots": 13.5, "cog_degrees": 25.0}
+                        {"relative_time_hours": -14.0, "lat": 12.90, "lon": 80.45, "sog_knots": 13.8, "cog_degrees": 28.0},
+                        {"relative_time_hours": -12.0, "lat": 13.00, "lon": 80.50, "sog_knots": 13.2, "cog_degrees": 26.0},
+                        {"relative_time_hours": -10.5, "lat": 13.10, "lon": 80.52, "sog_knots": 3.6, "cog_degrees": 25.0},
+                        {"relative_time_hours": -9.0, "lat": 13.15, "lon": 80.55, "sog_knots": 4.2, "cog_degrees": 24.0},
+                        {"relative_time_hours": -6.0, "lat": 13.30, "lon": 80.62, "sog_knots": 13.0, "cog_degrees": 26.0},
+                        {"relative_time_hours": 0.0, "lat": 13.55, "lon": 80.75, "sog_knots": 13.5, "cog_degrees": 25.0}
                     ]
                 },
                 {
@@ -1187,9 +1187,9 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Container Ship",
                     "call_sign": "AVCG", "length_m": 260, "width_m": 40, "dwt_tonnes": 85000,
                     "trajectory": [
-                        {"relative_time_hours": -12.0, "lat": 13.550, "lon": 80.650, "sog_knots": 16.5, "cog_degrees": 195.0},
-                        {"relative_time_hours": -6.0, "lat": 13.350, "lon": 80.550, "sog_knots": 16.2, "cog_degrees": 198.0},
-                        {"relative_time_hours": 0.0, "lat": 13.150, "lon": 80.450, "sog_knots": 16.0, "cog_degrees": 196.0}
+                        {"relative_time_hours": -12.0, "lat": 13.40, "lon": 80.72, "sog_knots": 16.5, "cog_degrees": 195.0},
+                        {"relative_time_hours": -6.0, "lat": 13.20, "lon": 80.62, "sog_knots": 16.2, "cog_degrees": 198.0},
+                        {"relative_time_hours": 0.0, "lat": 13.00, "lon": 80.52, "sog_knots": 16.0, "cog_degrees": 196.0}
                     ]
                 },
                 {
@@ -1199,9 +1199,9 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Commercial Fishing Vessel",
                     "call_sign": "IND-F9", "length_m": 15, "width_m": 4, "dwt_tonnes": 50,
                     "trajectory": [
-                        {"relative_time_hours": -6.0, "lat": 13.270, "lon": 80.380, "sog_knots": 3.5, "cog_degrees": 120.0},
-                        {"relative_time_hours": -3.0, "lat": 13.260, "lon": 80.400, "sog_knots": 2.8, "cog_degrees": 130.0},
-                        {"relative_time_hours": 0.0, "lat": 13.250, "lon": 80.420, "sog_knots": 3.0, "cog_degrees": 115.0}
+                        {"relative_time_hours": -6.0, "lat": 13.17, "lon": 80.48, "sog_knots": 3.5, "cog_degrees": 120.0},
+                        {"relative_time_hours": -3.0, "lat": 13.16, "lon": 80.50, "sog_knots": 2.8, "cog_degrees": 130.0},
+                        {"relative_time_hours": 0.0, "lat": 13.15, "lon": 80.52, "sog_knots": 3.0, "cog_degrees": 115.0}
                     ]
                 }
             ]
@@ -1281,7 +1281,7 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
             "id": "tuticorin_gulf_mannar",
             "title": "Tuticorin Port — Gulf of Mannar Biosphere & Coral Reef Zone",
             "region": "Southern Tamil Nadu / Gulf of Mannar",
-            "center": {"lat": 8.80, "lon": 78.18},
+            "center": {"lat": 8.65, "lon": 78.40},
             "satellite_metadata": {
                 "mission": "Sentinel-1A C-Band SAR",
                 "acquisition_time_utc": "2026-09-14 00:50:00 UTC",
@@ -1314,12 +1314,12 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Chemical / Oil Products Tanker",
                     "call_sign": "D5PI2", "length_m": 155, "width_m": 24, "dwt_tonnes": 28000,
                     "trajectory": [
-                        {"relative_time_hours": -12.0, "lat": 8.620, "lon": 77.900, "sog_knots": 11.5, "cog_degrees": 48.0},
-                        {"relative_time_hours": -9.0, "lat": 8.680, "lon": 77.980, "sog_knots": 11.2, "cog_degrees": 50.0},
-                        {"relative_time_hours": -7.0, "lat": 8.730, "lon": 78.050, "sog_knots": 4.2, "cog_degrees": 45.0},
-                        {"relative_time_hours": -6.0, "lat": 8.755, "lon": 78.080, "sog_knots": 3.0, "cog_degrees": 42.0},
-                        {"relative_time_hours": -4.0, "lat": 8.790, "lon": 78.130, "sog_knots": 11.0, "cog_degrees": 48.0},
-                        {"relative_time_hours": 0.0, "lat": 8.880, "lon": 78.280, "sog_knots": 11.4, "cog_degrees": 50.0}
+                        {"relative_time_hours": -12.0, "lat": 8.42, "lon": 78.15, "sog_knots": 11.5, "cog_degrees": 48.0},
+                        {"relative_time_hours": -9.0, "lat": 8.48, "lon": 78.22, "sog_knots": 11.2, "cog_degrees": 50.0},
+                        {"relative_time_hours": -7.0, "lat": 8.53, "lon": 78.28, "sog_knots": 4.2, "cog_degrees": 45.0},
+                        {"relative_time_hours": -6.0, "lat": 8.56, "lon": 78.32, "sog_knots": 3.0, "cog_degrees": 42.0},
+                        {"relative_time_hours": -4.0, "lat": 8.60, "lon": 78.38, "sog_knots": 11.0, "cog_degrees": 48.0},
+                        {"relative_time_hours": 0.0, "lat": 8.70, "lon": 78.52, "sog_knots": 11.4, "cog_degrees": 50.0}
                     ]
                 },
                 {
@@ -1329,9 +1329,9 @@ def get_all_scenarios() -> Dict[str, Dict[str, Any]]:
                     "vessel_type": "Bulk Cargo Carrier",
                     "call_sign": "AVTS", "length_m": 175, "width_m": 28, "dwt_tonnes": 35000,
                     "trajectory": [
-                        {"relative_time_hours": -10.0, "lat": 8.850, "lon": 78.250, "sog_knots": 13.5, "cog_degrees": 210.0},
-                        {"relative_time_hours": -5.0, "lat": 8.780, "lon": 78.150, "sog_knots": 13.2, "cog_degrees": 212.0},
-                        {"relative_time_hours": 0.0, "lat": 8.710, "lon": 78.050, "sog_knots": 13.0, "cog_degrees": 210.0}
+                        {"relative_time_hours": -10.0, "lat": 8.70, "lon": 78.50, "sog_knots": 13.5, "cog_degrees": 210.0},
+                        {"relative_time_hours": -5.0, "lat": 8.63, "lon": 78.40, "sog_knots": 13.2, "cog_degrees": 212.0},
+                        {"relative_time_hours": 0.0, "lat": 8.56, "lon": 78.30, "sog_knots": 13.0, "cog_degrees": 210.0}
                     ]
                 }
             ]

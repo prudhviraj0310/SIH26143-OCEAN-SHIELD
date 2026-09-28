@@ -35,3 +35,7 @@ google_sat_mumbai.jpg
 reports/Ocean_Shield_Case_Summary_*.pdf
 reports/Analyst_Case_Summary_*.pdf
 reports/benchmark_dossier.pdf
+
+# SSH Keys and secrets
+*.pem
+*.key

@@ -28,26 +28,55 @@ class SAREngine:
     def __init__(self, model_path: Optional[str] = None):
         self.default_resolution_m = 10.0
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.sr_model = load_sar_super_resolution_model(device=str(self.device))
 
-        # Resolve model path
+        # --- LAZY LOADING for Render free-tier (512 MB RAM) ---
+        # Models are NOT loaded here. They are loaded on first use.
+        self._sr_model: Optional[Any] = None
+        self._sr_loaded = False
+
+        # Resolve model path (but don't load yet)
         if model_path is None:
             default_pt = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "models", "sar_unet_best.pt"))
             if os.path.exists(default_pt):
                 model_path = default_pt
+        self._unet_model_path = model_path
 
         self.unet_model: Optional[SAR_UNet] = None
         self.model_loaded = False
+
+    def _ensure_unet_loaded(self):
+        """Lazy-load U-Net weights on first inference call (saves ~150 MB at startup)."""
+        if self.model_loaded or self.unet_model is not None:
+            return
+        model_path = self._unet_model_path
         if model_path and os.path.exists(model_path):
             try:
                 self.unet_model = SAR_UNet(n_channels=1, n_classes=1, bilinear=True).to(self.device)
-                checkpoint = torch.load(model_path, map_location=self.device)
-                state_dict = checkpoint.get("model_state_dict", checkpoint)
+                checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
+                state_dict = checkpoint.get("model_state_dict", checkpoint) if isinstance(checkpoint, dict) else checkpoint
                 self.unet_model.load_state_dict(state_dict)
                 self.unet_model.eval()
                 self.model_loaded = True
             except Exception as e:
                 print(f"⚠️ SAREngine: Could not load U-Net weights ({e}), falling back to CFAR edge mode")
+
+    def _ensure_sr_loaded(self):
+        """Lazy-load Super-Resolution ESPCN model on first call (saves ~50 MB at startup)."""
+        if self._sr_loaded:
+            return
+        self._sr_model = load_sar_super_resolution_model(device=str(self.device))
+        self._sr_loaded = True
+
+    @property
+    def sr_model(self):
+        """Transparently lazy-load SR model on access."""
+        self._ensure_sr_loaded()
+        return self._sr_model
+
+    @sr_model.setter
+    def sr_model(self, value):
+        self._sr_model = value
+        self._sr_loaded = value is not None
 
     def enhanced_lee_filter(self, img: np.ndarray, window_size: int = 5, k: float = 1.0) -> np.ndarray:
         """
@@ -258,6 +287,9 @@ class SAREngine:
             clean_mask: uint8 binary mask (255=oil, 0=clean water)
             prob_map: float32 confidence probability heatmap [0.0, 1.0]
         """
+        # Lazy-load model on first call (Render free-tier optimization)
+        self._ensure_unet_loaded()
+
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
@@ -479,6 +511,8 @@ class SAREngine:
         h, w = image.shape[:2]
 
         # 1. Segmentation via selected pipeline
+        if model_type == "unet":
+            self._ensure_unet_loaded()  # Lazy-load on first use (Render optimization)
         if model_type == "unet" and self.model_loaded:
             if h > 384 or w > 384:
                 clean_mask, prob_map = self.predict_unet_tiled(image)

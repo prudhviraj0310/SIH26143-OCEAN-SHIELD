@@ -8,6 +8,7 @@ import os
 import io
 import csv
 import json
+import gc
 import hashlib
 import math
 import asyncio
@@ -107,15 +108,26 @@ report_gen = DossierReportGenerator(output_dir=REPORTS_DIR)
 
 MAX_SAR_UPLOAD_BYTES = 25 * 1024 * 1024
 
+# --- Render Free-Tier Memory Optimization ---
+# Bounded LRU cache: keeps at most 2 scenarios in memory (~2 MB each)
+# to avoid unbounded growth on the 512 MB Render free tier.
+_SCENARIO_CACHE_MAX = 2
 _scenario_cache: Dict[str, Tuple[np.ndarray, Any, Dict[str, Any]]] = {}
+_scenario_cache_order: List[str] = []  # insertion order for LRU eviction
 
 def resolve_scenario_sar_and_currents(scenario_id: str) -> Tuple[np.ndarray, OceanCurrentField, Dict[str, Any]]:
     """Resolve a benchmark scenario or a user-uploaded source scene.
-    Results are cached in-memory to avoid repeated NetCDF/AIS parsing on every API call."""
+    Results are cached in-memory with LRU eviction (max 2 entries)
+    to avoid repeated NetCDF/AIS parsing while staying within Render memory limits."""
     if scenario_id in _scenario_cache:
         return _scenario_cache[scenario_id]
     result = get_scenario_sar_and_currents(scenario_id)
+    # LRU eviction: drop oldest entry when cache exceeds max size
+    if len(_scenario_cache) >= _SCENARIO_CACHE_MAX:
+        evict_id = _scenario_cache_order.pop(0)
+        _scenario_cache.pop(evict_id, None)
     _scenario_cache[scenario_id] = result
+    _scenario_cache_order.append(scenario_id)
     return result
 
 
@@ -224,13 +236,26 @@ async def serve_techstack():
 
 @app.get("/api/health")
 async def health_check():
+    # Report memory usage for Render free-tier monitoring
+    import resource
+    rss_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1024 * 1024)  # macOS: bytes, Linux: KB
+    # On Linux (Render), ru_maxrss is in KB, so adjust:
+    import platform
+    if platform.system() == "Linux":
+        rss_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
     return {
         "status": "operational",
         "system": "OCEAN-SHIELD NTRO / Indian Coast Guard Pipeline",
         "version": "1.0.0",
         "sar_engine": "online",
         "drift_engine": "online",
-        "ais_engine": "online"
+        "ais_engine": "online",
+        "memory_mb": round(rss_mb, 1),
+        "models_loaded": {
+            "unet": sar_engine.model_loaded,
+            "super_resolution": sar_engine._sr_loaded,
+        },
+        "scenario_cache_entries": len(_scenario_cache),
     }
 
 
@@ -465,6 +490,9 @@ async def analyze_sar(req: AnalyzeSARRequest):
     )
     overlay_b64 = image_to_base64_png(overlay)
 
+    # --- Render Free-Tier: reclaim inference memory immediately ---
+    gc.collect()
+
     return {
         "sar_results": results,
         "segmentation_overlay_base64": overlay_b64,
@@ -520,7 +548,7 @@ async def analyze_sar_upload(request: Request):
     colored_mask = cv2.applyColorMap(mask, cv2.COLORMAP_JET)
     overlay = cv2.addWeighted(cv2.cvtColor(sar_image, cv2.COLOR_GRAY2BGR), 0.65, colored_mask, 0.35, 0)
 
-    return {
+    response = {
         "sar_results": results,
         "segmentation_overlay_base64": image_to_base64_png(overlay),
         "super_resolution_base64": image_to_base64_png(sar_engine.enhance_sar_super_resolution(sar_image, scale_factor=2)),
@@ -539,6 +567,11 @@ async def analyze_sar_upload(request: Request):
         },
         "screening_notice": "Automated screening result. Analyst review and validated sensor calibration are required before operational or legal use.",
     }
+
+    # --- Render Free-Tier: reclaim upload inference memory ---
+    gc.collect()
+
+    return response
 
 
 @app.post("/api/analyze-eo")
