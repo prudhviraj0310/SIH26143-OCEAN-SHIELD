@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   
   <!-- Custom Modern C2 Dashboard CSS -->
-  <link rel="stylesheet" href="/static/css/dashboard.css?v=4.6">
+  <link rel="stylesheet" href="/static/css/dashboard.css?v=5.0">
 </head>
 <body class="theme-c2 mode-simple">
 
@@ -57,17 +57,17 @@
     <nav class="pipeline-stepper" aria-label="Investigation Pipeline Stepper">
       <button id="btnDetectSAR" class="step-btn active" title="Step 1: Run Sentinel-1 SAR Segmentation">
         <span class="step-num">1</span>
-        <span class="step-label">Detect SAR Slick</span>
+        <span class="step-label">SAR Slick</span>
       </button>
       <div class="step-connector"></div>
       <button id="btnRunDrift" class="step-btn" title="Step 2: Compute Reverse Lagrangian Hydrodynamic Drift">
         <span class="step-num">2</span>
-        <span class="step-label">Hindcast Origin (t₀)</span>
+        <span class="step-label">Hindcast</span>
       </button>
       <div class="step-connector"></div>
       <button id="btnCorrelateAIS" class="step-btn btn-step-correlate" title="Step 3: Correlate Historic AIS Vessel Kinematics">
         <span class="step-num">3</span>
-        <span class="step-label">Rank Vessel Leads</span>
+        <span class="step-label">Rank AIS</span>
       </button>
     </nav>
 
@@ -77,57 +77,56 @@
       <div class="sector-dropdown-wrap">
         <label for="scenarioSelector" class="sector-label">SECTOR</label>
         <select id="scenarioSelector" class="styled-select">
-          <option value="gulf_of_kachchh" selected>Gulf of Kachchh (Vadinar SPM Corridor)</option>
-          <option value="mumbai_high">Mumbai High Offshore (Arabian Sea)</option>
-          <option value="great_nicobar">Great Nicobar Channel (Malacca Chokepoint)</option>
-          <option value="zenodo_sentinel1_real">Sentinel-1 Benchmark (ESA/Zenodo Real)</option>
-          <option value="lakshadweep_sea">Lakshadweep Sea (Minicoy Passage)</option>
-          <option value="palk_strait">Palk Strait (India–Sri Lanka Channel)</option>
-          <option value="paradip_odisha">Paradip Port (Odisha / Bay of Bengal)</option>
-          <option value="visakhapatnam_offshore">Visakhapatnam (KG Basin Petroleum)</option>
-          <option value="kochi_channel">Kochi Channel (Cochin Refinery & LNG)</option>
-          <option value="sundarbans_delta">Sundarbans Delta (Hooghly Estuary)</option>
-          <option value="mangalore_port">New Mangalore Port (MRPL Refinery)</option>
-          <option value="chennai_ennore">Chennai–Ennore (Kamarajar Oil Terminal)</option>
-          <option value="goa_mormugao">Goa (Mormugao Port & Zuari Estuary)</option>
-          <option value="tuticorin_gulf_mannar">Tuticorin (Gulf of Mannar Coral Zone)</option>
+          <option value="gulf_of_kachchh" selected>Gulf of Kachchh (Vadinar)</option>
+          <option value="mumbai_high">Mumbai High Offshore</option>
+          <option value="great_nicobar">Great Nicobar Channel</option>
+          <option value="zenodo_sentinel1_real">Sentinel-1 Benchmark</option>
+          <option value="lakshadweep_sea">Lakshadweep Sea</option>
+          <option value="palk_strait">Palk Strait</option>
+          <option value="paradip_odisha">Paradip Port</option>
+          <option value="visakhapatnam_offshore">Visakhapatnam</option>
+          <option value="kochi_channel">Kochi Channel</option>
+          <option value="sundarbans_delta">Sundarbans Delta</option>
+          <option value="mangalore_port">New Mangalore Port</option>
+          <option value="chennai_ennore">Chennai–Ennore</option>
+          <option value="goa_mormugao">Goa (Mormugao)</option>
+          <option value="tuticorin_gulf_mannar">Tuticorin (Mannar)</option>
         </select>
       </div>
 
       <!-- UI Mode Switcher (Simple Executive vs Forensic Expert) -->
       <div class="view-mode-toggle-wrap">
-        <button id="btnSimpleView" class="btn-mode-toggle active" title="Switch to Simple Executive View">⚡ Simple View</button>
-        <button id="btnExpertView" class="btn-mode-toggle" title="Switch to Full Forensic View">🔬 Expert View</button>
+        <button id="btnSimpleView" class="btn-mode-toggle active" title="Switch to Simple Executive View">⚡ Simple</button>
+        <button id="btnExpertView" class="btn-mode-toggle" title="Switch to Full Forensic View">🔬 Expert</button>
       </div>
 
-      <!-- Export Case Summary PDF -->
-      <button id="btnDownloadDossier" class="btn-tactical btn-hazard" title="Generate Forensic Verification Dossier PDF">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-        <span>Export PDF</span>
-      </button>
+      <!-- Tactical Action Tools Capsule -->
+      <div class="nav-action-capsule">
+        <button id="btnDownloadDossier" class="btn-tactical btn-hazard" title="Generate Forensic Verification Dossier PDF">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          <span class="nav-btn-text">PDF</span>
+        </button>
 
-      <!-- Tech Stack & Architecture Deep Dive Page -->
-      <a href="/techstack" target="_blank" class="btn-tactical btn-techstack" title="View Full System Architecture & Tech Stack">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-        <span>Tech Stack</span>
-      </a>
+        <button id="btnOpenLiveIngestion" class="btn-tactical btn-live-pulse" title="Trigger Automated Real-Time Data Ingestion">
+          <span class="pulse-dot-cyan"></span>
+          <span class="nav-btn-text">Live Ingestion</span>
+        </button>
 
-      <!-- Real-Time Automated Live Ingestion Center Trigger -->
-      <button id="btnOpenLiveIngestion" class="btn-tactical btn-live-pulse" title="Trigger Automated Real-Time Data Ingestion (NASA ASF / Open-Meteo / Live AIS)">
-        <span class="pulse-dot-cyan"></span>
-        <span>🌐 Live Ingestion</span>
-      </button>
+        <button id="btnOpenDatasetVault" class="btn-tactical btn-vault" title="Inspect Authoritative Datasets & Forensic Chamber">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          <span class="nav-btn-text">Datasets</span>
+        </button>
 
-      <!-- macOS QuickLook Dataset & Timeline Chamber Modal Trigger -->
-      <button id="btnOpenDatasetVault" class="btn-tactical btn-vault" title="Inspect Authoritative Datasets & Forensic Chamber (macOS QuickLook)">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-        <span>📦 Datasets & Chamber</span>
-      </button>
+        <a href="/techstack" target="_blank" class="btn-tactical btn-techstack" title="View Full System Architecture & Tech Stack">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          <span class="nav-btn-text">Tech</span>
+        </a>
+      </div>
 
       <!-- Status Indicator -->
       <div class="badge-status" id="systemStatusBadge">
         <span class="pulse-dot"></span>
-        <span id="systemStatusText">WORKSPACE READY</span>
+        <span id="systemStatusText">READY</span>
       </div>
     </div>
   </header>
@@ -1324,6 +1323,6 @@ variables:
 
   <!-- Leaflet & App Scripts -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="/static/js/app.js?v=4.6"></script>
+  <script src="/static/js/app.js?v=5.0"></script>
 </body>
 </html>

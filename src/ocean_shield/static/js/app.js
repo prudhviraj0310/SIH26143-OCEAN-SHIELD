@@ -1592,7 +1592,7 @@ class OceanShieldApp {
           </div>
         `, { sticky: true, className: 'c2-map-tooltip' }).addTo(this.map);
 
-        this.map.fitBounds(this.slickLayer.getBounds(), { padding: [50, 50] });
+        this.map.fitBounds(this.slickLayer.getBounds(), { padding: [80, 80], maxZoom: 11 });
 
         // Add slick label with clear Step 2 milestone tag
         L.popup({ autoClose: false, closeOnClick: false, className: 'slick-tactical-popup' })

@@ -60,8 +60,10 @@
 
 html, body {
   width: 100%;
+  max-width: 100vw;
   height: 100%;
-  overflow: hidden;
+  overflow: hidden !important;
+  overflow-x: hidden !important;
   background-color: var(--c2-bg-base);
   color: var(--text-primary);
   font-family: var(--font-ui);
@@ -81,28 +83,31 @@ html, body {
 .top-nav {
   height: var(--nav-height);
   width: 100%;
+  max-width: 100vw;
+  box-sizing: border-box;
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 1200;
-  background: rgba(7, 11, 22, 0.88);
+  background: rgba(7, 11, 22, 0.92);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border-bottom: 1px solid var(--c2-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 18px;
+  padding: 0 14px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  overflow-x: hidden;
 }
 
 /* Brand & Insignia */
 .brand-section {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-width: 260px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .icg-insignia {
@@ -147,11 +152,11 @@ html, body {
 .brand-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .brand-name {
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   font-weight: 800;
   letter-spacing: 0.04em;
   background: linear-gradient(135deg, #ffffff 30%, var(--accent-cyan) 100%);
@@ -160,49 +165,52 @@ html, body {
 }
 
 .badge-sih {
-  font-size: 0.62rem;
+  font-size: 0.60rem;
   font-weight: 700;
   font-family: var(--font-mono);
-  padding: 1px 6px;
+  padding: 1px 5px;
   border-radius: 4px;
   background: rgba(0, 242, 254, 0.12);
   border: 1px solid var(--accent-cyan);
   color: var(--accent-cyan);
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
 }
 
 .brand-sub {
-  font-size: 0.65rem;
+  font-size: 0.60rem;
   color: var(--text-muted);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 /* Central Pipeline Stepper */
 .pipeline-stepper {
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(14, 22, 42, 0.6);
-  padding: 4px 6px;
+  gap: 4px;
+  background: rgba(14, 22, 42, 0.65);
+  padding: 3px 5px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--c2-border);
+  flex-shrink: 1;
 }
 
 .step-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  border-radius: 18px;
-  font-size: 0.78rem;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 14px;
+  font-size: 0.74rem;
   font-weight: 600;
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.22s ease;
+  transition: all 0.2s ease;
   font-family: var(--font-ui);
+  white-space: nowrap;
 }
 
 .step-btn .step-num {
@@ -250,23 +258,23 @@ html, body {
 .nav-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
 .sector-dropdown-wrap {
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(14, 22, 42, 0.8);
+  gap: 5px;
+  background: rgba(14, 22, 42, 0.85);
   border: 1px solid var(--c2-border);
   border-radius: 8px;
-  padding: 3px 8px;
-  max-width: 250px;
+  padding: 3px 7px;
+  max-width: 195px;
 }
 
 .sector-label {
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   font-weight: 700;
   color: var(--text-muted);
   font-family: var(--font-mono);
@@ -278,13 +286,13 @@ html, body {
   background: transparent;
   border: none;
   color: var(--accent-blue);
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 600;
   font-family: var(--font-ui);
   cursor: pointer;
   outline: none;
-  padding-right: 4px;
-  max-width: 180px;
+  padding-right: 2px;
+  max-width: 140px;
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
@@ -295,13 +303,24 @@ html, body {
   color: #f8fafc;
 }
 
+/* Tactical Action Tools Capsule */
+.nav-action-capsule {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(14, 22, 42, 0.65);
+  padding: 2px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--c2-border);
+}
+
 .btn-tactical {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 11px;
-  border-radius: 8px;
-  font-size: 0.76rem;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
@@ -314,7 +333,7 @@ html, body {
 .btn-hazard {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: #ffffff;
-  box-shadow: 0 0 14px var(--accent-crimson-glow);
+  box-shadow: 0 0 10px var(--accent-crimson-glow);
 }
 
 .btn-hazard:hover {
@@ -323,36 +342,43 @@ html, body {
 }
 
 .btn-techstack {
-  background: rgba(0, 242, 254, 0.12);
-  border: 1px solid rgba(0, 242, 254, 0.4);
+  background: rgba(0, 242, 254, 0.10);
+  border: 1px solid rgba(0, 242, 254, 0.35);
   color: var(--accent-cyan);
   text-decoration: none;
-  box-shadow: 0 0 10px rgba(0, 242, 254, 0.15);
 }
 
 .btn-techstack:hover {
-  background: linear-gradient(135deg, rgba(0, 242, 254, 0.3) 0%, rgba(59, 130, 246, 0.3) 100%);
-  border-color: var(--accent-cyan);
+  background: rgba(0, 242, 254, 0.22);
   color: #ffffff;
-  transform: translateY(-1px);
-  box-shadow: 0 0 16px rgba(0, 242, 254, 0.35);
+}
+
+.btn-vault {
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  color: #c084fc;
+}
+
+.btn-vault:hover {
+  background: rgba(168, 85, 247, 0.24);
+  color: #ffffff;
 }
 
 .badge-status {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.70rem;
+  gap: 5px;
+  font-size: 0.68rem;
   font-family: var(--font-mono);
   font-weight: 600;
-  padding: 5px 12px;
+  padding: 4px 9px;
   border-radius: var(--radius-pill);
   background: rgba(16, 185, 129, 0.12);
   border: 1px solid var(--accent-emerald);
   color: var(--accent-emerald);
   white-space: nowrap;
   flex-shrink: 0;
-  height: 28px;
+  height: 26px;
   letter-spacing: 0.3px;
 }
 
@@ -366,6 +392,27 @@ html, body {
   border-radius: 50%;
   background: var(--accent-emerald);
   animation: live-blink 1.8s infinite;
+}
+
+/* Responsive Navbar Scaling Rules */
+@media (max-width: 1536px) {
+  .brand-sub { display: none; }
+  .sector-dropdown-wrap { max-width: 170px; }
+  .styled-select { max-width: 120px; }
+}
+
+@media (max-width: 1366px) {
+  .pipeline-stepper .step-btn { padding: 4px 7px; }
+  .pipeline-stepper .step-label { display: none; }
+  .nav-action-capsule .btn-tactical { padding: 4px 7px; font-size: 0.70rem; }
+  .brand-name { font-size: 0.98rem; }
+  .brand-section { gap: 8px; }
+}
+
+@media (max-width: 1180px) {
+  .nav-action-capsule .nav-btn-text { display: none; }
+  .sector-dropdown-wrap { max-width: 140px; }
+  .styled-select { max-width: 95px; }
 }
 
 @keyframes live-blink {
@@ -1598,57 +1645,57 @@ body.mode-expert .executive-mission-dock {
    ══════════════════════════════════════════════════════════════════ */
 .executive-mission-dock {
   position: absolute;
-  bottom: 20px;
+  bottom: 14px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 950;
-  width: min(92vw, 860px);
-  background: rgba(8, 14, 28, 0.88);
+  width: min(90vw, 760px);
+  background: rgba(8, 14, 28, 0.90);
   backdrop-filter: blur(28px) saturate(200%);
   -webkit-backdrop-filter: blur(28px) saturate(200%);
   border: 1px solid rgba(56, 189, 248, 0.35);
-  border-radius: 18px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 25px rgba(6, 182, 212, 0.15);
-  padding: 16px 20px;
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8), 0 0 20px rgba(6, 182, 212, 0.12);
+  padding: 10px 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  animation: exec-fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  gap: 8px;
+  animation: exec-fade-up 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
 }
 
 @keyframes exec-fade-up {
-  from { opacity: 0; transform: translate(-50%, 20px); }
+  from { opacity: 0; transform: translate(-50%, 15px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
 .exec-hud-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 8px;
 }
 
 .exec-card {
   background: rgba(14, 22, 42, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 10px;
+  padding: 8px 12px;
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
   transition: all 0.2s ease;
 }
 
 .exec-card:hover {
   background: rgba(18, 28, 54, 0.9);
   border-color: rgba(56, 189, 248, 0.4);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .exec-card-icon {
-  font-size: 1.6rem;
+  font-size: 1.25rem;
   line-height: 1;
   flex-shrink: 0;
-  margin-top: 2px;
 }
 
 .exec-card-content {
@@ -1658,16 +1705,16 @@ body.mode-expert .executive-mission-dock {
 }
 
 .exec-card-label {
-  font-size: 0.65rem;
+  font-size: 0.60rem;
   font-weight: 700;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.6px;
   color: var(--text-muted);
   text-transform: uppercase;
-  margin-bottom: 3px;
+  margin-bottom: 2px;
 }
 
 .exec-card-val {
-  font-size: 1.15rem;
+  font-size: 1.02rem;
   font-weight: 800;
   color: #ffffff;
   font-family: var(--font-mono);
@@ -1680,19 +1727,19 @@ body.mode-expert .executive-mission-dock {
 }
 
 .exec-card-val small {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   color: var(--accent-cyan);
   font-weight: 600;
 }
 
 .exec-card-sub {
-  font-size: 0.70rem;
+  font-size: 0.64rem;
   color: var(--text-secondary);
   font-family: var(--font-mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 .exec-card-hazard .exec-card-val {
@@ -1708,8 +1755,8 @@ body.mode-expert .executive-mission-dock {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding-top: 8px;
+  gap: 8px;
+  padding-top: 6px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -1718,9 +1765,9 @@ body.mode-expert .executive-mission-dock {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 16px;
-  border-radius: 10px;
-  font-size: 0.78rem;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 0.74rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
