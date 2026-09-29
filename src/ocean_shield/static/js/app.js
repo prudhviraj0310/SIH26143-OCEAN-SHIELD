@@ -995,7 +995,7 @@ class OceanShieldApp {
     const vectors = ['currentU', 'currentV', 'windU', 'windV'].map(id => document.getElementById(id)?.value);
     const completeVectors = vectors.every(value => value !== '');
     if (!this.sarProvenance?.acquisition_time_utc || !this.aisProvenance || !Number.isFinite(ageHypothesis) || ageHypothesis <= 0 || !completeVectors || !document.getElementById('metOceanReference')?.value) {
-      document.getElementById('systemStatusText').innerText = 'SOURCE INPUTS REQUIRED • SAR, AIS, AGE HYPOTHESIS, MET-OCEAN';
+      document.getElementById('systemStatusText').innerText = 'INPUTS REQUIRED';
       this.showToast('Supply documented SAR time, time-aligned AIS, an age hypothesis, and referenced complete met-ocean vectors.', 'warning');
       return;
     }
@@ -1014,7 +1014,7 @@ class OceanShieldApp {
       mapContainer?.appendChild(scanBeam);
 
       await sleep(700);
-      document.getElementById('systemStatusText').innerText = 'RUNNING U-NET NEURAL SEGMENTATION...';
+      document.getElementById('systemStatusText').innerText = 'RUNNING U-NET SEGMENTATION...';
       await sleep(600);
       await this.runSARAnalysis();
 
@@ -1044,7 +1044,7 @@ class OceanShieldApp {
 
       // 🚢 STAGE 3: MarineCadastre AIS Correlation & Kinematic Forensics
       this.showToast('🚢 [STAGE 3/3] Correlating 14 MarineCadastre AIS Transponder Tracks...', 'info');
-      document.getElementById('systemStatusText').innerText = 'SCREENING AIS TRAFFIC TRACKS...';
+      document.getElementById('systemStatusText').innerText = 'SCREENING AIS TRACKS...';
       await sleep(700);
       await this.runAISCorrelation();
       if (!this.aisResults) return;
@@ -1064,7 +1064,7 @@ class OceanShieldApp {
         }
       }, 35);
 
-      document.getElementById('systemStatusText').innerText = 'SOURCE-BACKED SCREENING COMPLETE • ANALYST REVIEW REQUIRED';
+      document.getElementById('systemStatusText').innerText = 'SCREENING COMPLETE';
       this.showToast('No responsibility finding is produced by this system.', 'info');
     } catch (err) {
       if (scanBeam) scanBeam.remove();
@@ -1078,7 +1078,7 @@ class OceanShieldApp {
     this.demoMode = true;
     const ageInput = document.getElementById('slickAgeHours');
     if (ageInput && !ageInput.value) ageInput.value = '10.5';
-    document.getElementById('systemStatusText').innerText = 'RUNNING BENCHMARK DEMO • SIMULATED INPUTS';
+    document.getElementById('systemStatusText').innerText = 'RUNNING BENCHMARK DEMO';
     this.showToast('Benchmark demo: all scenario outputs are simulated and clearly separated from Live Ingestion.', 'info');
     try {
       await this.runSARAnalysis();
@@ -1087,7 +1087,7 @@ class OceanShieldApp {
       await this.runAISCorrelation();
       if (!this.aisResults) return;
       this.setSimpleMode(false);
-      document.getElementById('systemStatusText').innerText = 'BENCHMARK DEMO COMPLETE • SIMULATED / NOT LIVE';
+      document.getElementById('systemStatusText').innerText = 'BENCHMARK COMPLETE';
       this.showToast('Demo ready. Use Live Ingestion only for actual provider data.', 'success');
     } catch (err) {
       console.error('Benchmark demo error:', err);
@@ -1150,7 +1150,7 @@ class OceanShieldApp {
       if (this.execSuspectName) this.execSuspectName.innerText = '—';
       if (this.execSuspectDetails) this.execSuspectDetails.innerText = 'AIS ranking requires time-aligned source records';
       if (this.btnExecAutoRun) this.btnExecAutoRun.innerText = 'RUN BENCHMARK DEMO';
-      document.getElementById('systemStatusText').innerText = 'BENCHMARK READY • RUN DEMO OR OPEN LIVE INGESTION';
+      document.getElementById('systemStatusText').innerText = 'BENCHMARK READY';
 
     } catch (err) {
       console.error('Error loading scenario:', err);
@@ -1511,7 +1511,7 @@ class OceanShieldApp {
       this.sarPreviewImg.src = this.srToggle.checked ? data.super_resolution_base64 : data.segmentation_overlay_base64;
       this.renderSarResponse(data);
       if (this.sarUploadForm) this.sarUploadForm.hidden = true;
-      document.getElementById('systemStatusText').innerText = 'UPLOADED SAR SCREENED • ADD MET-OCEAN + AIS TO CONTINUE';
+      document.getElementById('systemStatusText').innerText = 'SAR SCREENED';
     } catch (err) {
       console.error('Error analysing live SAR:', err);
       document.getElementById('systemStatusText').innerText = 'SAR ANALYSIS FAILED';

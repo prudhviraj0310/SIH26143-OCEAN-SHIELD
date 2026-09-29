@@ -247,11 +247,11 @@ html, body {
   background: var(--c2-border-light);
 }
 
-/* Right Navigation Controls */
 .nav-controls {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .sector-dropdown-wrap {
@@ -261,7 +261,8 @@ html, body {
   background: rgba(14, 22, 42, 0.8);
   border: 1px solid var(--c2-border);
   border-radius: 8px;
-  padding: 3px 10px;
+  padding: 3px 8px;
+  max-width: 250px;
 }
 
 .sector-label {
@@ -270,6 +271,7 @@ html, body {
   color: var(--text-muted);
   font-family: var(--font-mono);
   letter-spacing: 0.05em;
+  flex-shrink: 0;
 }
 
 .styled-select {
@@ -282,6 +284,10 @@ html, body {
   cursor: pointer;
   outline: none;
   padding-right: 4px;
+  max-width: 180px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .styled-select option {
@@ -292,15 +298,17 @@ html, body {
 .btn-tactical {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 7px 14px;
+  gap: 6px;
+  padding: 6px 11px;
   border-radius: 8px;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   font-family: var(--font-ui);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn-hazard {
@@ -337,11 +345,19 @@ html, body {
   font-size: 0.70rem;
   font-family: var(--font-mono);
   font-weight: 600;
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: var(--radius-pill);
-  background: rgba(16, 185, 129, 0.1);
+  background: rgba(16, 185, 129, 0.12);
   border: 1px solid var(--accent-emerald);
   color: var(--accent-emerald);
+  white-space: nowrap;
+  flex-shrink: 0;
+  height: 28px;
+  letter-spacing: 0.3px;
+}
+
+.badge-status span#systemStatusText {
+  white-space: nowrap;
 }
 
 .pulse-dot {
