@@ -6,18 +6,26 @@
 
 set -e
 
-KEY_FILE="/Users/prudhviraj/Downloads/planning for sih/sih265_key.pem"
+# Prefer oceanshield_key.pem if present, else fallback to sih265_key.pem
+if [ -n "$2" ]; then
+    KEY_FILE="$2"
+elif [ -f "/Users/prudhviraj/Downloads/planning for sih/oceanshield_key.pem" ]; then
+    KEY_FILE="/Users/prudhviraj/Downloads/planning for sih/oceanshield_key.pem"
+else
+    KEY_FILE="/Users/prudhviraj/Downloads/planning for sih/sih265_key.pem"
+fi
+
 USER="azureuser"
 
 if [ -z "$1" ]; then
-    echo "❌ Usage: ./scripts/setup_azure_vm.sh <AZURE_VM_PUBLIC_IP>"
+    echo "❌ Usage: ./scripts/setup_azure_vm.sh <AZURE_VM_PUBLIC_IP> [KEY_FILE]"
     echo "Example: ./scripts/setup_azure_vm.sh 20.198.54.12"
     exit 1
 fi
 
 VM_IP="$1"
 
-echo "🔐 Ensuring SSH key permissions..."
+echo "🔐 Using SSH key: $KEY_FILE"
 chmod 400 "$KEY_FILE"
 
 echo "🚀 Connecting to Azure VM ($USER@$VM_IP)..."
@@ -68,6 +76,8 @@ SERVICE
 
 # Port redirect so port 80 maps directly to 8000
 sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8000 || true
+sudo iptables -t nat -A OUTPUT -p tcp -o lo --dport 80 -j REDIRECT --to-port 8000 || true
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent && sudo netfilter-persistent save || true
 
 sudo systemctl daemon-reload
 sudo systemctl enable oceanshield

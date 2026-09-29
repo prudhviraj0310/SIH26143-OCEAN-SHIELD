@@ -1165,8 +1165,12 @@ class OceanShieldApp {
     if (this.slickLayer) this.map.removeLayer(this.slickLayer);
     if (this.hindcastLayer) this.map.removeLayer(this.hindcastLayer);
     if (this.forecastLayer) this.map.removeLayer(this.forecastLayer);
-    if (this.originMarker) this.map.removeLayer(this.originMarker);
-    if (this.sarOverlayLayer) this.map.removeLayer(this.sarOverlayLayer);
+    if (this.sarOverlayLayer) {
+      this.map.removeLayer(this.sarOverlayLayer);
+      this.sarOverlayLayer = null;
+    }
+    const ctrl = document.getElementById('sarOpacityCtrl');
+    if (ctrl) ctrl.remove();
     this.particlesLayerGroup.clearLayers();
     this.vesselsLayerGroup.clearLayers();
     if (this.darkVesselsLayerGroup) this.darkVesselsLayerGroup.clearLayers();
@@ -1621,58 +1625,28 @@ class OceanShieldApp {
         }
       }
 
-      // Drape SAR imagery directly onto the map as a geo-referenced overlay
-      if (data.segmentation_overlay_base64 && this.sceneGeometry) {
-        this.drapeSAROverlay(data.segmentation_overlay_base64);
+      // Clean up any old raster overlays to keep tactical map vector-clean
+      if (this.sarOverlayLayer) {
+        this.map.removeLayer(this.sarOverlayLayer);
+        this.sarOverlayLayer = null;
       }
+      const oldCtrl = document.getElementById('sarOpacityCtrl');
+      if (oldCtrl) oldCtrl.remove();
   }
 
   drapeSAROverlay(base64Img) {
-    // Remove previous SAR overlay
+    // Keep tactical map vector-clean without broken image overlays
     if (this.sarOverlayLayer) {
       this.map.removeLayer(this.sarOverlayLayer);
+      this.sarOverlayLayer = null;
     }
-
-    // Calculate bounds from the explicit scene registration, never guessed implicitly.
-    const sc = this.sceneGeometry;
-    const halfExtentKm = (Math.max(sc.width, sc.height) * sc.pixelSize) / 2000.0;
-    const degPerKmLat = 1.0 / 111.32;
-    const degPerKmLon = 1.0 / (111.32 * Math.cos(sc.lat * Math.PI / 180));
-
-    const south = sc.lat - halfExtentKm * degPerKmLat;
-    const north = sc.lat + halfExtentKm * degPerKmLat;
-    const west = sc.lon - halfExtentKm * degPerKmLon;
-    const east = sc.lon + halfExtentKm * degPerKmLon;
-
-    const imageBounds = [[south, west], [north, east]];
-
-    this.sarOverlayLayer = L.imageOverlay(`data:image/png;base64,${base64Img}`, imageBounds, {
-      opacity: 0.55,
-      interactive: false
-    }).addTo(this.map);
-
-    // Add opacity slider control
-    this.addSAROpacityControl();
+    const ctrl = document.getElementById('sarOpacityCtrl');
+    if (ctrl) ctrl.remove();
   }
 
   addSAROpacityControl() {
-    // Only add once
-    if (document.getElementById('sarOpacityCtrl')) return;
-
-    const ctrl = document.createElement('div');
-    ctrl.id = 'sarOpacityCtrl';
-    ctrl.style.cssText = 'position:absolute; bottom:84px; left:50%; transform:translateX(-50%); z-index:950; background:rgba(9,14,27,0.92); padding:6px 14px; border-radius:20px; border:1px solid rgba(0,242,254,0.35); backdrop-filter:blur(16px); display:flex; align-items:center; gap:10px; box-shadow:0 8px 24px rgba(0,0,0,0.6);';
-    ctrl.innerHTML = `
-      <span style="font-size:0.68rem; color:#00f2fe; font-family:var(--font-mono); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">SAR Opacity</span>
-      <input type="range" id="sarOpacitySlider" min="0" max="100" value="55" style="width:100px; accent-color:#00f2fe; cursor:pointer;">
-    `;
-    document.getElementById('tacticalMap').appendChild(ctrl);
-
-    document.getElementById('sarOpacitySlider').addEventListener('input', (e) => {
-      if (this.sarOverlayLayer) {
-        this.sarOverlayLayer.setOpacity(e.target.value / 100);
-      }
-    });
+    const ctrl = document.getElementById('sarOpacityCtrl');
+    if (ctrl) ctrl.remove();
   }
 
   async runDriftSimulation() {
