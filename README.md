@@ -65,37 +65,6 @@ Every year, **hundreds of illegal oil discharges** go unattributed in India's Ex
 
 <br>
 
-## 🎯 What Makes This Different
-
-<table>
-<tr>
-<td width="50%">
-
-### ❌ What 120+ Competitors Do
-- Binary classification: oil / no oil
-- No drift physics — can't find where it came from
-- No vessel correlation — can't say who did it
-- Static maps with no temporal dimension
-- PDF reports with no data integrity verification
-- Single-model approaches (YOLO / basic CNN)
-
-</td>
-<td width="50%">
-
-### ✅ What OCEAN-SHIELD Does
-- **5-stage closed-loop forensic pipeline**
-- 4th-order Runge-Kutta Lagrangian hindcast to trace origin
-- AIS spatiotemporal correlation with kinematic scoring
-- Interactive 42-hour temporal playback (−18h to +24h)
-- Merkle-tree hash chain for evidentiary integrity
-- Dual model (U-Net + CFAR) with EO cross-validation
-
-</td>
-</tr>
-</table>
-
-<br>
-
 ## 🏗️ System Architecture
 
 The pipeline processes intelligence through **5 sequential stages**, each feeding the next. No stage operates in isolation — this is a closed-loop system.
