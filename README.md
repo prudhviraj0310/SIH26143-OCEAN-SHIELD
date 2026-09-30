@@ -1,4 +1,4 @@
-<![CDATA[<div align="center">
+<div align="center">
 
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
 <!-- HERO SECTION                                                               -->
@@ -22,25 +22,29 @@
 <br>
 
 <!-- Badges Row 1: Identity -->
-[![SIH26143](https://img.shields.io/badge/SIH26143-Problem_Statement-FF6B35?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyTDIgN3Y2YzAgNS41NSAzLjg0IDEwLjc0IDkgMTIgNS4xNi0xLjI2IDktNi40NSA5LTEyVjdsLTEwLTV6Ii8+PC9zdmc+)](https://www.sih.gov.in/)
-[![NTRO](https://img.shields.io/badge/NTRO-National_Technical_Research_Organisation-1a1a2e?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyem0wIDE4Yy00LjQyIDAtOC0zLjU4LTgtOHMzLjU4LTggOC04IDggMy41OCA4IDgtMy41OCA4LTggOHoiLz48L3N2Zz4=)](https://ntro.gov.in/)
-[![ICG](https://img.shields.io/badge/Indian_Coast_Guard-Target_Authority-0077B6?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0yMCA4SDRsLTItNmgyMGwtMiA2em0tMiAxMkg2VjEwaDEydjEwem0tNS0xdi0zaC0ydjNoMnptLTctOWgxNlY4SDZ2M3oiLz48L3N2Zz4=)](#)
+<a href="https://www.sih.gov.in/"><img src="https://img.shields.io/badge/SIH26143-Problem_Statement-FF6B35?style=for-the-badge" alt="SIH26143"></a>
+<a href="#"><img src="https://img.shields.io/badge/NTRO-National_Technical_Research_Organisation-1a1a2e?style=for-the-badge" alt="NTRO"></a>
+<a href="#"><img src="https://img.shields.io/badge/Indian_Coast_Guard-Target_Authority-0077B6?style=for-the-badge" alt="ICG"></a>
+
+<br>
 
 <!-- Badges Row 2: Tech Stack -->
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](#)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](#)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?style=flat-square&logo=fastapi&logoColor=white)](#)
-[![OpenCV](https://img.shields.io/badge/OpenCV-4.8+-5C3EE8?style=flat-square&logo=opencv&logoColor=white)](#)
-[![Leaflet](https://img.shields.io/badge/Leaflet-1.9.4-199900?style=flat-square&logo=leaflet&logoColor=white)](#)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)](#)
-[![NumPy](https://img.shields.io/badge/NumPy-1.26+-013243?style=flat-square&logo=numpy&logoColor=white)](#)
-[![SciPy](https://img.shields.io/badge/SciPy-1.10+-8CAAE6?style=flat-square&logo=scipy&logoColor=white)](#)
+<img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python">
+<img src="https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat-square&logo=pytorch&logoColor=white" alt="PyTorch">
+<img src="https://img.shields.io/badge/FastAPI-0.110+-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI">
+<img src="https://img.shields.io/badge/OpenCV-4.8+-5C3EE8?style=flat-square&logo=opencv&logoColor=white" alt="OpenCV">
+<img src="https://img.shields.io/badge/Leaflet-1.9.4-199900?style=flat-square&logo=leaflet&logoColor=white" alt="Leaflet">
+<img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker">
+<img src="https://img.shields.io/badge/NumPy-1.26+-013243?style=flat-square&logo=numpy&logoColor=white" alt="NumPy">
+<img src="https://img.shields.io/badge/SciPy-1.10+-8CAAE6?style=flat-square&logo=scipy&logoColor=white" alt="SciPy">
+
+<br>
 
 <!-- Badges Row 3: Metrics -->
-[![Lines of Code](https://img.shields.io/badge/Lines_of_Code-17,797-blue?style=flat-square)](#)
-[![Test Suite](https://img.shields.io/badge/Tests-21%2F21_Passing-brightgreen?style=flat-square)](#)
-[![License](https://img.shields.io/badge/License-Academic_/_SIH_2026-yellow?style=flat-square)](#)
-[![Deployment](https://img.shields.io/badge/Deploy-Render_%7C_Docker_%7C_AWS-purple?style=flat-square)](#)
+<img src="https://img.shields.io/badge/Lines_of_Code-17,797-blue?style=flat-square" alt="LOC">
+<img src="https://img.shields.io/badge/Tests-21%2F21_Passing-brightgreen?style=flat-square" alt="Tests">
+<img src="https://img.shields.io/badge/License-Academic_/_SIH_2026-yellow?style=flat-square" alt="License">
+<img src="https://img.shields.io/badge/Deploy-Render_%7C_Docker_%7C_AWS-purple?style=flat-square" alt="Deploy">
 
 <br>
 
@@ -687,9 +691,8 @@ python -m unittest src/ocean_shield/tests/test_pipeline.py -v
 
 <br>
 
-[![Made with 🌊](https://img.shields.io/badge/Made_with-🌊_Ocean_Intelligence-0077B6?style=for-the-badge)](#)
-[![SIH 2026](https://img.shields.io/badge/SIH-2026-FF6B35?style=for-the-badge)](#)
-[![India](https://img.shields.io/badge/🇮🇳-Made_in_India-138808?style=for-the-badge)](#)
+<img src="https://img.shields.io/badge/Made_with-🌊_Ocean_Intelligence-0077B6?style=for-the-badge" alt="Ocean Intelligence">
+<img src="https://img.shields.io/badge/SIH-2026-FF6B35?style=for-the-badge" alt="SIH 2026">
+<img src="https://img.shields.io/badge/🇮🇳-Made_in_India-138808?style=for-the-badge" alt="Made in India">
 
 </div>
-]]>
