@@ -53,21 +53,31 @@
       </div>
     </div>
 
-    <!-- Central Interactive Pipeline Stepper -->
+    <!-- Central Interactive Pipeline Stepper (Full 5-Stage Closed-Loop) -->
     <nav class="pipeline-stepper" aria-label="Investigation Pipeline Stepper">
-      <button id="btnDetectSAR" class="step-btn active" title="Step 1: Run Sentinel-1 SAR Segmentation">
+      <button id="btnDetectSAR" class="step-btn active" title="Stage 1: Sentinel-1 SAR Segmentation">
         <span class="step-num">1</span>
         <span class="step-label">SAR Slick</span>
       </button>
       <div class="step-connector"></div>
-      <button id="btnRunDrift" class="step-btn" title="Step 2: Compute Reverse Lagrangian Hydrodynamic Drift">
+      <button id="btnRunDrift" class="step-btn" title="Stage 2: Lagrangian RK4 Hindcast &amp; KDE HDR Envelopes">
         <span class="step-num">2</span>
         <span class="step-label">Hindcast</span>
       </button>
       <div class="step-connector"></div>
-      <button id="btnCorrelateAIS" class="step-btn btn-step-correlate" title="Step 3: Correlate Historic AIS Vessel Kinematics">
+      <button id="btnCorrelateAIS" class="step-btn btn-step-correlate" title="Stage 3: AIS Attribution &amp; TOPSIS MCDA Ranking">
         <span class="step-num">3</span>
         <span class="step-label">Rank AIS</span>
+      </button>
+      <div class="step-connector"></div>
+      <button id="btnStepCounterfactual" class="step-btn" title="Stage 4: Forward Counterfactual Physical Falsification">
+        <span class="step-num">4</span>
+        <span class="step-label">Counterfactual</span>
+      </button>
+      <div class="step-connector"></div>
+      <button id="btnStepDossier" class="step-btn" title="Stage 5: Generate MARPOL &amp; Section 65B Digital Court Dossier">
+        <span class="step-num">5</span>
+        <span class="step-label">Court Dossier</span>
       </button>
     </nav>
 
@@ -221,6 +231,20 @@
             <div class="legend-desc">
               <div class="legend-label">Cyan Dashed Line</div>
               <div class="legend-sub">Live AIS position-report layer when configured</div>
+            </div>
+          </div>
+          <div class="legend-item">
+            <span class="legend-line-sample" style="border: 1.5px dashed #00f2fe; background: rgba(0, 242, 254, 0.15); width: 24px; height: 14px; border-radius: 3px; display: inline-block;"></span>
+            <div class="legend-desc">
+              <div class="legend-label">Cyan Iso-Probability Contours</div>
+              <div class="legend-sub">95% / 75% / 50% Gaussian KDE Highest Density Region (HDR)</div>
+            </div>
+          </div>
+          <div class="legend-item">
+            <span class="legend-line-sample" style="border: 1.5px dashed #05d6a0; background: rgba(5, 214, 160, 0.2); width: 24px; height: 14px; border-radius: 3px; display: inline-block;"></span>
+            <div class="legend-desc">
+              <div class="legend-label">Green Dashed Corridor</div>
+              <div class="legend-sub">Stage 4 Forward Counterfactual Re-Simulation Footprint</div>
             </div>
           </div>
         </div>
@@ -380,6 +404,19 @@
               <span class="callout-label">Modelled Origin (x₀, y₀):</span>
               <span id="metricOriginCoords" class="callout-val cyan font-mono">Awaiting Step 2 execution...</span>
             </div>
+
+            <!-- Gaussian KDE Iso-Probability Region Callout -->
+            <div class="telemetry-callout kde-hdr-callout" id="kdeHdrBox" style="margin-top: 6px; border-left: 2px solid #00f2fe; padding-left: 8px;">
+              <span class="callout-label" style="color: #00f2fe;">🎯 95% KDE Credible Origin:</span>
+              <span id="metricKdeCredibleArea" class="callout-val font-mono" style="color: #f8fafc; font-size: 0.72rem;">Awaiting Step 2 execution...</span>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 6px; margin-bottom: 2px;">
+              <label class="cf-toggle-label font-mono" style="font-size: 0.70rem; color: #94a3b8; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="chkShowKdeContours" checked style="accent-color: #00f2fe;">
+                <span>Show 95% / 75% / 50% KDE HDR Contours</span>
+              </label>
+            </div>
           </div>
 
           <!-- Mackay ADIOS Physical Weathering Model -->
@@ -524,8 +561,23 @@
         <!-- PRIMARY SUSPECT INTELLIGENCE DOSSIER CARD -->
         <div class="card-box dossier-card" id="suspectBanner">
           <div class="card-header-row">
-            <span class="card-title-text">Lead Attribution Dossier</span>
-            <span class="tag tag-hazard">TOP REVIEW LEAD</span>
+            <div class="dossier-header-left">
+              <span class="card-title-text">Lead Attribution Dossier</span>
+              <span class="tag tag-hazard">TOP REVIEW LEAD</span>
+            </div>
+            <!-- Candidate Lead Navigation Controls (AlgoRise & Akhilesh pattern) -->
+            <div class="lead-nav-controls" id="leadNavControls" title="Cycle through candidate review leads">
+              <button id="btnPrevLead" class="btn-icon-subtle" title="Previous Candidate Lead" aria-label="Previous Lead">‹</button>
+              <span id="leadCandidateRank" class="lead-rank-text font-mono">Lead 1 of 6</span>
+              <button id="btnNextLead" class="btn-icon-subtle" title="Next Candidate Lead" aria-label="Next Lead">›</button>
+            </div>
+          </div>
+
+          <!-- Signal Strength & Integrity Summary Pills (AlgoRise Evidence pattern) -->
+          <div class="evidence-signals-summary" id="evidenceSignalsSummary">
+            <span id="pillSignalStrong" class="signal-pill pill-strong" title="Parameters with strong correlation (Score ≥ 75)">● 3 Strong Signals</span>
+            <span id="pillSignalWeak" class="signal-pill pill-weak" title="Parameters with weak correlation (Score < 50)">● 1 Weak Signal</span>
+            <span id="pillAisQuality" class="signal-pill pill-optimal" title="AIS Transponder broadcast health & spoof audit">AIS OPTIMAL (10s)</span>
           </div>
 
           <div class="suspect-identity-row">
@@ -543,7 +595,7 @@
             <div class="suspect-score-gauge">
               <div class="score-circle-wrap">
                 <div class="score-val" id="suspectScore">--%</div>
-                <span class="score-caption">LEAD SCORE</span>
+                <span class="score-caption" title="Forensic Multi-Factor Attribution Index (MFA-Index)">MFA-INDEX</span>
               </div>
             </div>
           </div>
@@ -605,6 +657,62 @@
           </div>
         </div>
 
+        <!-- STAGE 4: FORWARD COUNTERFACTUAL VERIFICATION CARD -->
+        <div class="card-box counterfactual-card" id="counterfactualCard">
+          <div class="card-header-row">
+            <div class="cf-title-wrap">
+              <span class="card-title-text">🔬 Counterfactual Verification</span>
+              <span class="tag tag-cf">STAGE 4 PHYSICS</span>
+            </div>
+            <span class="badge-verdict badge-cf-pending" id="cfVerdictBadge">AWAITING CORRELATION</span>
+          </div>
+
+          <p class="cf-description-text font-mono">
+            <strong>Hypothesis Falsification Test:</strong> Re-releases simulated oil particles from candidate vessel's reported AIS coordinates at release timestamp, advecting <em>forward</em> in time through active HYCOM currents and ERA5 wind leeway to verify if physics reproduce the observed slick footprint.
+          </p>
+
+          <!-- 4 Core Metrics Grid -->
+          <div class="cf-metrics-grid font-mono">
+            <div class="cf-metric-item">
+              <span class="cf-metric-label">CENTROID ERROR</span>
+              <b class="cf-metric-val" id="cfCentroidError">-- km</b>
+              <span class="cf-metric-sub">Distance to satellite slick</span>
+            </div>
+            <div class="cf-metric-item">
+              <span class="cf-metric-label">CONTAINMENT</span>
+              <b class="cf-metric-val" id="cfContainment">-- %</b>
+              <span class="cf-metric-sub">Particles in observed slick</span>
+            </div>
+            <div class="cf-metric-item">
+              <span class="cf-metric-label">JACCARD INDEX</span>
+              <b class="cf-metric-val" id="cfJaccard">--</b>
+              <span class="cf-metric-sub">Spatial IoU overlap</span>
+            </div>
+            <div class="cf-metric-item">
+              <span class="cf-metric-label">CAUSALITY SCORE</span>
+              <b class="cf-metric-val" id="cfCausalityScore">-- / 100</b>
+              <span class="cf-metric-sub">Hydrodynamic concurrence</span>
+            </div>
+          </div>
+
+          <!-- Scientific Explanation Box -->
+          <div class="cf-explanation-box font-mono" id="cfExplanation">
+            Run corridor screening to evaluate forward counterfactual hydrodynamic verification for the candidate lead.
+          </div>
+
+          <!-- Action & Toggle Controls -->
+          <div class="cf-actions-row">
+            <button id="btnRunCounterfactual" class="btn-tactical btn-cf-action" title="Re-simulate forward advection from candidate release point">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <span>Re-Simulate Forward Drift</span>
+            </button>
+            <label class="cf-toggle-label font-mono">
+              <input type="checkbox" id="chkShowCounterfactual" checked>
+              <span>Show Forward Plume on Map</span>
+            </label>
+          </div>
+        </div>
+
         <!-- CORRIDOR MARITIME TRAFFIC TABLE CARD -->
         <div class="card-box traffic-table-card">
           <div class="card-header-row">
@@ -612,11 +720,32 @@
               <span class="card-title-text">Corridor Maritime Traffic</span>
               <span class="badge-count" id="vesselCountTag">0 VESSELS</span>
             </div>
-            <button id="btnUploadAIS" class="btn-subtle btn-upload-ais" title="Ingest NOAA / MarineCadastre CSV">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-              <span>Ingest AIS CSV</span>
-            </button>
+            <div class="traffic-actions-group">
+              <button id="btnExportJSON" class="btn-subtle btn-export-json" title="Download Full Investigation JSON Dossier">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                <span>JSON</span>
+              </button>
+              <button id="btnUploadAIS" class="btn-subtle btn-upload-ais" title="Ingest NOAA / MarineCadastre CSV">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                <span>Ingest AIS CSV</span>
+              </button>
+            </div>
             <input type="file" id="aisFileInput" accept=".csv" style="display: none;">
+          </div>
+
+          <!-- Live Vessel Search & Risk Filter Bar (AlgoRise & Akhilesh pattern) -->
+          <div class="traffic-filter-bar">
+            <div class="traffic-search-wrap">
+              <svg class="search-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="trafficSearchInput" class="traffic-search-input" placeholder="Search vessel name, IMO, MMSI, class...">
+            </div>
+            <div class="traffic-risk-pills" id="trafficRiskPills">
+              <button class="risk-pill active" data-risk="all">All</button>
+              <button class="risk-pill pill-risk-high" data-risk="high" title="Score ≥ 70%">High</button>
+              <button class="risk-pill pill-risk-med" data-risk="medium" title="Score 40% - 69%">Med</button>
+              <button class="risk-pill pill-risk-low" data-risk="low" title="Score < 40%">Low</button>
+              <button class="risk-pill pill-risk-dark" data-risk="dark" title="Radar CFAR Blips">Radar</button>
+            </div>
           </div>
 
           <div class="table-scroll-container custom-scrollbar">
@@ -644,27 +773,61 @@
       </div>
     </aside>
 
-    <!-- FLOATING CENTER-BOTTOM TIMELINE CONTROLLER -->
-    <div class="floating-timeline-dock">
+    <!-- FLOATING CENTER-BOTTOM TIMELINE CONTROLLER (AlgoRise & Akhilesh C2 Transport Model) -->
+    <div class="floating-timeline-dock" role="region" aria-label="Lagrangian Drift Transport Timeline">
       <div class="timeline-meta-row">
         <div class="timeline-phase-wrap">
           <span id="timePhaseBadge" class="badge-pill badge-cyan">T = 0.0h (SATELLITE PASS)</span>
           <span class="timeline-timestamp font-mono" id="timeDateDisplay">2026-09-04 18:40 IST</span>
+          <span class="timeline-coord-badge font-mono" id="timelineCoordBadge" title="Spill slick centroid / model origin coordinates">22.585° N, 69.185° E</span>
         </div>
-        <div class="timeline-legend">
-          <span class="legend-dot dot-crimson"></span><span class="legend-text">Hindcast (-18h)</span>
-          <span class="legend-sep">&bull;</span>
-          <span class="legend-dot dot-amber"></span><span class="legend-text">Forecast (+24h)</span>
+
+        <div class="timeline-meta-right">
+          <!-- Playback Speed Multiplier Group (AlgoRise TimelineControl pattern) -->
+          <div class="speed-toggle-group" id="speedToggleGroup" title="Simulation Playback Cadence">
+            <button class="speed-btn active" data-speed="1" title="Normal 1x Speed">1x</button>
+            <button class="speed-btn" data-speed="2" title="Fast 2x Speed">2x</button>
+            <button class="speed-btn" data-speed="4" title="Rapid 4x Speed">4x</button>
+          </div>
+
+          <div class="timeline-legend">
+            <span class="legend-dot dot-crimson"></span><span class="legend-text">Hindcast (-18h)</span>
+            <span class="legend-sep">&bull;</span>
+            <span class="legend-dot dot-amber"></span><span class="legend-text">Forecast (+24h)</span>
+          </div>
         </div>
       </div>
 
       <div class="timeline-transport-row">
-        <button id="btnPlayPause" class="btn-play-control" title="Play / Pause Particle Simulation">
+        <!-- Step Backward (-1h) Button (Akhilesh TemporalScrubber pattern) -->
+        <button id="btnStepBack" class="btn-transport-step" title="Step Backward (-1 Hour)" aria-label="Step Backward 1 hour">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 20L9 12l10-8v16z"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+        </button>
+
+        <!-- Play / Pause Simulation Button -->
+        <button id="btnPlayPause" class="btn-play-control" title="Play / Pause Particle Simulation" aria-label="Play or Pause">
           <svg id="playIcon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
         </button>
 
+        <!-- Step Forward (+1h) Button (Akhilesh TemporalScrubber pattern) -->
+        <button id="btnStepForward" class="btn-transport-step" title="Step Forward (+1 Hour)" aria-label="Step Forward 1 hour">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 4l10 8-10 8V4z"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+        </button>
+
+        <!-- Track with Milestone Ticks and Progress Fill -->
         <div class="slider-wrapper">
-          <input type="range" id="timeSlider" class="c2-range-slider" min="-18" max="24" step="0.5" value="0">
+          <div class="slider-track-container">
+            <input type="range" id="timeSlider" class="c2-range-slider" min="-18" max="24" step="0.5" value="0">
+            <!-- Event Milestone Tick Points along Rail -->
+            <div class="timeline-ticks-rail" id="timelineTicksRail">
+              <span class="tick-mark" style="left: 0%;" data-time="-18" title="-18h: Hindcast Horizon"><span class="tick-dot"></span><span class="tick-label">-18h</span></span>
+              <span class="tick-mark" style="left: 14.3%;" data-time="-12" title="-12h: Release Window Open"><span class="tick-dot"></span><span class="tick-label">-12h</span></span>
+              <span class="tick-mark" style="left: 28.6%;" data-time="-6" title="-6h: AIS CPA Intersection"><span class="tick-dot"></span><span class="tick-label">-6h</span></span>
+              <span class="tick-mark tick-mark-zero" style="left: 42.8%;" data-time="0" title="0h: Sentinel-1 SAR Pass"><span class="tick-dot"></span><span class="tick-label">0h (SAR)</span></span>
+              <span class="tick-mark" style="left: 71.4%;" data-time="12" title="+12h: Near-Shore Drift Plume"><span class="tick-dot"></span><span class="tick-label">+12h</span></span>
+              <span class="tick-mark" style="left: 100%;" data-time="24" title="+24h: 24h Forecast Horizon"><span class="tick-dot"></span><span class="tick-label">+24h</span></span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

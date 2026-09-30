@@ -308,7 +308,205 @@ class TestOceanShieldPipeline(unittest.TestCase):
         # No unbounded velocity extraction is permitted.
         self.assertFalse(provider.has_coverage(6.0, 6.0))
 
+    def test_forward_counterfactual_verification(self):
+        """Validates Stage 4 Forward Counterfactual Verification (Physical Re-Simulation)."""
+        _, current_field, scenario_data = get_scenario_sar_and_currents("mumbai_high")
+        slick_center = scenario_data["center"]
+        obs_lat = slick_center["lat"]
+        obs_lon = slick_center["lon"]
+
+        # Run hindcast to get origin
+        hindcast = self.drift_engine.run_hindcast(
+            obs_lat, obs_lon, current_field,
+            max_lookback_hours=12.0, target_slick_age_hours=8.5
+        )
+        origin = hindcast["origin_release_point"]
+
+        # 1. Forward re-simulation from candidate origin coordinates (Physical Hypothesis Match)
+        cf_match = self.drift_engine.run_forward_counterfactual(
+            release_lat=origin["lat"],
+            release_lon=origin["lon"],
+            release_time_rel_h=origin["estimated_t0_hours_relative"],
+            current_field=current_field,
+            observed_slick_lat=obs_lat,
+            observed_slick_lon=obs_lon,
+            observed_slick_area_km2=18.5,
+            vessel_info={"mmsi": 354921000, "vessel_name": "MV ORIENTAL MARINER"}
+        )
+
+        self.assertIn("verification_metrics", cf_match)
+        metrics = cf_match["verification_metrics"]
+        self.assertLess(metrics["centroid_distance_km"], 2.5, "Centroid error should be small for true release point")
+        self.assertGreaterEqual(metrics["predicted_containment_percent"], 40.0)
+        self.assertGreater(metrics["jaccard_index"], 0.25)
+        self.assertEqual(cf_match["verdict"], "CONFIRMED_PHYSICAL_MATCH")
+        self.assertIn("forward_trajectory", cf_match)
+        self.assertGreater(len(cf_match["forward_trajectory"]), 5)
+
+        # 2. Forward re-simulation from an unrelated distant position (Counterfactual Refutation)
+        cf_refute = self.drift_engine.run_forward_counterfactual(
+            release_lat=obs_lat + 0.8,
+            release_lon=obs_lon - 0.8,
+            release_time_rel_h=-8.5,
+            current_field=current_field,
+            observed_slick_lat=obs_lat,
+            observed_slick_lon=obs_lon,
+            observed_slick_area_km2=18.5,
+            vessel_info={"mmsi": 999999999, "vessel_name": "INNOCENT VESSEL"}
+        )
+        self.assertEqual(cf_refute["verdict"], "PHYSICALLY_REFUTED")
+        self.assertGreater(cf_refute["verification_metrics"]["centroid_distance_km"], 10.0)
+        self.assertEqual(cf_refute["verification_metrics"]["predicted_containment_percent"], 0.0)
+
+    def test_kde_highest_density_region_contours(self):
+        """Validates Gaussian KDE 95%/75%/50% Highest Density Region (HDR) contour extraction."""
+        _, current_field, scenario_data = get_scenario_sar_and_currents("mumbai_high")
+        slick_center = scenario_data["center"]
+        obs_lat = slick_center["lat"]
+        obs_lon = slick_center["lon"]
+
+        hindcast = self.drift_engine.run_hindcast(
+            obs_lat, obs_lon, current_field,
+            max_lookback_hours=10.0, target_slick_age_hours=7.0
+        )
+
+        self.assertIn("kde_origin_contours", hindcast)
+        kde = hindcast["kde_origin_contours"]
+        self.assertIn("contours", kde)
+        self.assertIn("method", kde)
+        self.assertIn("peak_density_lat", kde)
+        self.assertIn("peak_density_lon", kde)
+
+        contours = kde["contours"]
+        self.assertGreaterEqual(len(contours), 3)
+
+        levels_found = [round(c["level"], 2) for c in contours]
+        self.assertIn(0.95, levels_found)
+        self.assertIn(0.75, levels_found)
+        self.assertIn(0.50, levels_found)
+
+        c95 = next(c for c in contours if round(c["level"], 2) == 0.95)
+        c50 = next(c for c in contours if round(c["level"], 2) == 0.50)
+
+        # 95% HDR must enclose a larger area than 50% HDR
+        if c95.get("approximate_area_km2") and c50.get("approximate_area_km2"):
+            self.assertGreater(c95["approximate_area_km2"], c50["approximate_area_km2"])
+
+        # Check coordinates format
+        self.assertTrue(len(c95["polygon_coords"]) >= 3 or len(c95["all_polygons"]) >= 1)
+        sample_pt = c95["polygon_coords"][0] if c95["polygon_coords"] else c95["all_polygons"][0][0]
+        self.assertEqual(len(sample_pt), 2)  # [lat, lon]
+
+    def test_ais_spoofing_detection(self):
+        """Validates Forensic AIS Integrity & Spoofing Detector (gaps, speed jumps, MMSI MID, draught)."""
+        # 1. Continuous clean trajectory
+        clean_track = [
+            {"relative_time_hours": -2.0, "sog_knots": 14.0, "draught_m": 12.0},
+            {"relative_time_hours": -1.8, "sog_knots": 13.8, "draught_m": 12.0},
+            {"relative_time_hours": -1.6, "sog_knots": 13.5, "draught_m": 12.0},
+            {"relative_time_hours": -1.4, "sog_knots": 13.2, "draught_m": 12.0},
+        ]
+        audit_clean = self.ais_engine.detect_ais_spoofing_and_gaps(clean_track, mmsi=419001234)
+        self.assertFalse(audit_clean["has_anomalies"])
+        self.assertEqual(audit_clean["integrity_rating"], "VERIFIED_CONTINUOUS")
+        self.assertTrue(audit_clean["mmsi_valid"])
+
+        # 2. Corrupted trajectory with 45-min transponder blackout near origin
+        gap_track = [
+            {"relative_time_hours": -3.0, "sog_knots": 14.0},
+            {"relative_time_hours": -2.25, "sog_knots": 14.0},  # 45 min gap
+            {"relative_time_hours": -2.1, "sog_knots": 14.0}
+        ]
+        audit_gap = self.ais_engine.detect_ais_spoofing_and_gaps(gap_track, mmsi=419001234, cpa_time_relative_h=-2.5)
+        self.assertTrue(audit_gap["has_anomalies"])
+        self.assertTrue(audit_gap["corridor_blackout"])
+        self.assertGreaterEqual(audit_gap["max_gap_minutes"], 45.0)
+
+        # 3. Physically impossible acceleration jump (> 3 kts/min)
+        accel_track = [
+            {"relative_time_hours": -1.0, "sog_knots": 6.0},
+            {"relative_time_hours": -0.98, "sog_knots": 18.0}  # 12 kts in 1.2 min = 10 kts/min
+        ]
+        audit_accel = self.ais_engine.detect_ais_spoofing_and_gaps(accel_track, mmsi=419001234)
+        self.assertTrue(audit_accel["has_anomalies"])
+        self.assertGreater(audit_accel["max_acceleration_kts_min"], 3.0)
+        self.assertTrue(any("KINEMATIC_SPEED_JUMP" in a for a in audit_accel["anomalies_detected"]))
+
+        # 4. Unallocated ITU MID validation
+        audit_mid = self.ais_engine.detect_ais_spoofing_and_gaps(clean_track, mmsi=999123456)
+        self.assertFalse(audit_mid["mmsi_valid"])
+        self.assertTrue(any("UNALLOCATED_MID" in a for a in audit_mid["anomalies_detected"]))
+
+    def test_topsis_mcda_ranking(self):
+        """Validates TOPSIS Multi-Criteria Decision Analysis & Borda Count ranking."""
+        candidates = [
+            {
+                "mmsi": 419001111,
+                "vessel_name": "PRIME SUSPECT TANKER",
+                "vessel_type": "Tanker",
+                "closest_approach": {"distance_nm": 0.3, "time_diff_h": 0.2},
+                "kinematics": {"speed_drop_knots": 6.5, "course_variance_deg": 18.0}
+            },
+            {
+                "mmsi": 419002222,
+                "vessel_name": "DISTANT CARGO SHIP",
+                "vessel_type": "Cargo",
+                "closest_approach": {"distance_nm": 8.5, "time_diff_h": 3.8},
+                "kinematics": {"speed_drop_knots": 0.5, "course_variance_deg": 2.0}
+            },
+            {
+                "mmsi": 419003333,
+                "vessel_name": "MEDIAN TANKER",
+                "vessel_type": "Tanker",
+                "closest_approach": {"distance_nm": 2.5, "time_diff_h": 1.2},
+                "kinematics": {"speed_drop_knots": 3.0, "course_variance_deg": 5.0}
+            }
+        ]
+
+        ranked = self.ais_engine.compute_topsis_rankings(candidates)
+        self.assertEqual(len(ranked), 3)
+
+        # Candidate with smallest CPA, tightest time coincidence, and large deceleration must win TOPSIS Rank #1
+        top_lead = next(v for v in ranked if v["topsis_rank"] == 1)
+        self.assertEqual(top_lead["mmsi"], 419001111)
+        self.assertGreater(top_lead["topsis_closeness_score"], 60.0)
+        self.assertEqual(top_lead["borda_points"], 3)
+
+        # Distant cargo ship must rank lowest
+        lowest = next(v for v in ranked if v["topsis_rank"] == 3)
+        self.assertEqual(lowest["mmsi"], 419002222)
+        self.assertLess(lowest["topsis_closeness_score"], top_lead["topsis_closeness_score"])
+        self.assertEqual(lowest["borda_points"], 1)
+
+    def test_cryptographic_merkle_evidence_hash(self):
+        """Validates Merkle Tree Root generation and cryptographic immutability."""
+        import hashlib
+        from src.ocean_shield.report_generator import DossierReportGenerator
+        
+        leaf_hashes = [
+            hashlib.sha256(b"SAR_RASTER_ASSET").hexdigest(),
+            hashlib.sha256(b"AIS_TELEMETRY_ASSET").hexdigest(),
+            hashlib.sha256(b"HYCOM_METOCEAN_ASSET").hexdigest(),
+            hashlib.sha256(b"PYTORCH_UNET_WEIGHTS_ASSET").hexdigest(),
+            hashlib.sha256(b"INCIDENT_MANIFEST_JSON").hexdigest()
+        ]
+
+        root1 = DossierReportGenerator.compute_merkle_root(leaf_hashes)
+        self.assertEqual(len(root1), 64)
+        self.assertTrue(all(c in "0123456789abcdef" for c in root1))
+
+        # Deterministic check
+        root2 = DossierReportGenerator.compute_merkle_root(list(leaf_hashes))
+        self.assertEqual(root1, root2)
+
+        # Tamper sensitivity check: changing even one byte in one leaf must completely change the Merkle root
+        tampered_leaves = list(leaf_hashes)
+        tampered_leaves[0] = hashlib.sha256(b"TAMPERED_SAR_RASTER").hexdigest()
+        root_tampered = DossierReportGenerator.compute_merkle_root(tampered_leaves)
+        self.assertNotEqual(root1, root_tampered)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+

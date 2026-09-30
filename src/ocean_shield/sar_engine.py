@@ -42,11 +42,21 @@ class SAREngine:
         self._unet_model_path = model_path
 
         self.unet_model: Optional[SAR_UNet] = None
-        self.model_loaded = False
+        self._model_loaded = False
+
+    @property
+    def model_loaded(self) -> bool:
+        """Transparently lazy-load U-Net weights on access."""
+        self._ensure_unet_loaded()
+        return self._model_loaded
+
+    @model_loaded.setter
+    def model_loaded(self, value: bool):
+        self._model_loaded = value
 
     def _ensure_unet_loaded(self):
         """Lazy-load U-Net weights on first inference call (saves ~150 MB at startup)."""
-        if self.model_loaded or self.unet_model is not None:
+        if self._model_loaded or self.unet_model is not None:
             return
         model_path = self._unet_model_path
         if model_path and os.path.exists(model_path):
@@ -56,7 +66,7 @@ class SAREngine:
                 state_dict = checkpoint.get("model_state_dict", checkpoint) if isinstance(checkpoint, dict) else checkpoint
                 self.unet_model.load_state_dict(state_dict)
                 self.unet_model.eval()
-                self.model_loaded = True
+                self._model_loaded = True
             except Exception as e:
                 print(f"⚠️ SAREngine: Could not load U-Net weights ({e}), falling back to CFAR edge mode")
 

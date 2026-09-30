@@ -233,6 +233,169 @@ class AISEngine:
             "course_comment": course_comment
         }
 
+    @staticmethod
+    def detect_ais_spoofing_and_gaps(
+        trajectory: List[Dict[str, Any]],
+        mmsi: Optional[int] = None,
+        origin_time_relative_h: float = 0.0,
+        cpa_time_relative_h: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Forensic AIS Integrity & Spoofing Detector:
+        1. Transponder Blackout Gaps: flags blackout > 30 min in proximity to origin.
+        2. Kinematic Speed Jumps: flags physically impossible acceleration > 3.0 kts/min.
+        3. Draught Drop / De-ballasting Signature: checks for sudden draught reduction.
+        4. MMSI / MID Validity: verifies standard 9-digit ITU MID (201-775).
+        """
+        track = sorted(trajectory, key=lambda p: p.get("relative_time_hours", 0.0))
+        anomalies = []
+        is_suspicious = False
+        max_gap_min = 0.0
+        max_accel_kts_min = 0.0
+
+        # 1. MMSI Validity check
+        mmsi_valid = True
+        if mmsi is not None:
+            mmsi_str = str(mmsi)
+            if len(mmsi_str) != 9:
+                anomalies.append("INVALID_MMSI_LENGTH: Transponder ID does not match 9-digit ITU standard")
+                mmsi_valid = False
+            else:
+                try:
+                    mid = int(mmsi_str[:3])
+                    if not (201 <= mid <= 775):
+                        anomalies.append(f"UNALLOCATED_MID: Maritime Identification Digit {mid} is outside allocated ITU range")
+                        mmsi_valid = False
+                except ValueError:
+                    mmsi_valid = False
+
+        # 2. Transponder Gap & Acceleration checks
+        cpa_t = cpa_time_relative_h if cpa_time_relative_h is not None else origin_time_relative_h
+        corridor_gap = False
+
+        for i in range(1, len(track)):
+            p_prev = track[i-1]
+            p_curr = track[i]
+            t_prev = float(p_prev.get("relative_time_hours", 0.0))
+            t_curr = float(p_curr.get("relative_time_hours", 0.0))
+            dt_hours = abs(t_curr - t_prev)
+            dt_min = dt_hours * 60.0
+
+            if dt_min > max_gap_min:
+                max_gap_min = dt_min
+
+            # Check if gap occurs near CPA / origin window (within 2.5 hours)
+            if dt_min > 30.0 and abs(t_prev - cpa_t) <= 2.5:
+                corridor_gap = True
+                anomalies.append(f"CORRIDOR_TRANSPONDER_BLACKOUT: {dt_min:.1f} min gap during closest approach window")
+
+            # Speed jump check (acceleration > 3.0 kts / min)
+            sog_prev = float(p_prev.get("sog_knots", 0.0))
+            sog_curr = float(p_curr.get("sog_knots", 0.0))
+            if dt_min > 0.05:
+                accel = abs(sog_curr - sog_prev) / dt_min
+                if accel > max_accel_kts_min:
+                    max_accel_kts_min = accel
+                if accel > 3.0:
+                    anomalies.append(f"KINEMATIC_SPEED_JUMP: Impossible acceleration of {accel:.1f} kts/min (GPS spoofing / replay artifact)")
+
+        # 3. Draught change check (if draught field provided)
+        draughts = [float(p.get("draught_m", 0.0)) for p in track if p.get("draught_m") is not None]
+        if len(draughts) >= 2 and draughts[0] > 0:
+            draught_drop = draughts[0] - draughts[-1]
+            if draught_drop >= 0.4:
+                anomalies.append(f"DRAUGHT_REDUCTION_DETECTED: {draught_drop:.2f}m draught reduction across corridor (cargo / ballast discharge indicator)")
+
+        if anomalies:
+            is_suspicious = True
+
+        return {
+            "has_anomalies": is_suspicious,
+            "anomalies_detected": anomalies,
+            "anomaly_count": len(anomalies),
+            "max_gap_minutes": round(max_gap_min, 1),
+            "max_acceleration_kts_min": round(max_accel_kts_min, 2),
+            "corridor_blackout": corridor_gap,
+            "mmsi_valid": mmsi_valid,
+            "integrity_rating": "COMPROMISED / ANOMALOUS" if is_suspicious else "VERIFIED_CONTINUOUS"
+        }
+
+    @staticmethod
+    def compute_topsis_rankings(
+        candidate_vessels: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        TOPSIS (Technique for Order Preference by Similarity to Ideal Solution)
+        Multi-Criteria Decision Analysis (MCDA) + Borda Count Rank Aggregation.
+
+        Evaluates 5 orthogonal attribution criteria:
+          C1 [Cost]: CPA Distance (NM) — lower is closer to discharge origin
+          C2 [Cost]: Delta-T Time Coincidence (h) — lower is better time alignment
+          C3 [Benefit]: Speed Deceleration Near Origin (knots) — higher drop indicates discharge
+          C4 [Benefit]: Ship Hazard Prior Score — higher tanker/hazardous capacity
+          C5 [Benefit]: Course Zigzag Variance (deg) — higher maneuvering
+        """
+        if not candidate_vessels:
+            return []
+        if len(candidate_vessels) == 1:
+            v = candidate_vessels[0]
+            v["topsis_closeness_score"] = 100.0
+            v["topsis_rank"] = 1
+            v["borda_points"] = 1
+            return [v]
+
+        n = len(candidate_vessels)
+        weights = np.array([0.35, 0.25, 0.20, 0.10, 0.10], dtype=np.float64)
+        is_benefit = np.array([False, False, True, True, True], dtype=bool)
+
+        X = np.zeros((n, 5), dtype=np.float64)
+        for i, v in enumerate(candidate_vessels):
+            cpa = v.get("closest_approach", {})
+            kin = v.get("kinematics", {})
+            X[i, 0] = max(0.05, float(cpa.get("distance_nm", 15.0)))
+            X[i, 1] = max(0.05, float(cpa.get("time_diff_h", 5.0)))
+            X[i, 2] = max(0.0, float(kin.get("speed_drop_knots", 0.0)))
+            X[i, 3] = float(AISEngine.VESSEL_TYPE_WEIGHTS.get(v.get("vessel_type"), 40.0))
+            X[i, 4] = max(0.0, float(kin.get("course_variance_deg", 0.0)))
+
+        # 1. Vector normalization
+        norms = np.sqrt(np.sum(X ** 2, axis=0))
+        norms[norms == 0] = 1.0
+        R = X / norms
+
+        # 2. Weighted normalized matrix
+        V = R * weights
+
+        # 3. Positive-Ideal (A+) and Negative-Ideal (A-)
+        A_plus = np.zeros(5)
+        A_minus = np.zeros(5)
+        for j in range(5):
+            if is_benefit[j]:
+                A_plus[j] = np.max(V[:, j])
+                A_minus[j] = np.min(V[:, j])
+            else:
+                A_plus[j] = np.min(V[:, j])
+                A_minus[j] = np.max(V[:, j])
+
+        # 4. Euclidean separation measures
+        S_plus = np.sqrt(np.sum((V - A_plus) ** 2, axis=1))
+        S_minus = np.sqrt(np.sum((V - A_minus) ** 2, axis=1))
+
+        # 5. Relative Closeness to Ideal Solution C_i in [0, 1]
+        denom = S_plus + S_minus
+        denom[denom == 0] = 1e-6
+        C = S_minus / denom
+
+        topsis_scores = [round(float(c * 100.0), 1) for c in C]
+        rank_indices = np.argsort(topsis_scores)[::-1]
+
+        for rank, idx in enumerate(rank_indices, 1):
+            candidate_vessels[idx]["topsis_closeness_score"] = topsis_scores[idx]
+            candidate_vessels[idx]["topsis_rank"] = rank
+            candidate_vessels[idx]["borda_points"] = n - rank + 1
+
+        return candidate_vessels
+
     def score_and_rank_suspects(
         self,
         candidate_vessels: List[Dict[str, Any]],
@@ -278,6 +441,21 @@ class AISEngine:
                 attribution_tier = "LOW-PRIORITY CORRIDOR TRAFFIC"
                 flag_color = "#05d6a0"  # Green
 
+            pt = cpa.get("point") or {}
+            candidate_release_point = {
+                "lat": pt.get("lat", origin_lat),
+                "lon": pt.get("lon", origin_lon),
+                "relative_time_hours": pt.get("relative_time_hours", origin_time_relative_h)
+            }
+
+            # AIS Spoofing & Integrity Audit
+            spoofing_audit = self.detect_ais_spoofing_and_gaps(
+                v.get("trajectory", []),
+                v.get("mmsi"),
+                origin_time_relative_h,
+                cpa.get("time_diff_h")
+            )
+
             v_result = {
                 "mmsi": v.get("mmsi"),
                 "imo": v.get("imo"),
@@ -290,9 +468,11 @@ class AISEngine:
                 "dwt_tonnes": v.get("dwt_tonnes"),
                 "lead_priority_score": composite_score,
                 "composite_suspect_score": composite_score,
+                "mfa_attribution_index": composite_score,
                 "total_score": composite_score,
                 "attribution_tier": attribution_tier,
                 "flag_color": flag_color,
+                "candidate_release_point": candidate_release_point,
                 "score_breakdown": {
                     "proximity_score": round(s_prox, 1),
                     "temporal_score": round(s_time, 1),
@@ -302,11 +482,15 @@ class AISEngine:
                 },
                 "closest_approach": cpa,
                 "kinematics": kinematics,
+                "spoofing_audit": spoofing_audit,
                 "full_trajectory": v.get("trajectory", []),
                 "data_origin": v.get("data_origin", "Scenario Physics Simulation (Synthetic Trajectory)"),
                 "is_real_ais": v.get("is_real_ais", False)
             }
             ranked_vessels.append(v_result)
+
+        # Multi-Criteria Decision Analysis (TOPSIS + Borda Count)
+        ranked_vessels = self.compute_topsis_rankings(ranked_vessels)
 
         # Sort by composite suspect score descending
         ranked_vessels.sort(key=lambda x: x["lead_priority_score"], reverse=True)

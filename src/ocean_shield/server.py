@@ -211,6 +211,21 @@ class CaseSummaryRequest(BaseModel):
     evidence_provenance: Optional[Dict[str, Any]] = None
 
 
+class CounterfactualRequest(BaseModel):
+    """Parameters for Stage 4 Forward Counterfactual Verification (Physical Re-Simulation)."""
+    scenario_id: str = "gulf_of_kachchh"
+    vessel_mmsi: Optional[Any] = None
+    vessel_name: Optional[str] = "Suspect Vessel"
+    release_lat: float
+    release_lon: float
+    release_time_rel_h: float
+    observed_slick_lat: float
+    observed_slick_lon: float
+    observed_slick_polygon: Optional[List[Any]] = None
+    observed_slick_area_km2: Optional[float] = None
+    demo_mode: bool = True
+
+
 # --- Endpoints ---
 
 @app.get("/", response_class=HTMLResponse)
@@ -708,6 +723,7 @@ async def simulate_drift(req: SimulateDriftRequest):
         "origin_release_point": hindcast_res["origin_release_point"],
         "hindcast_trajectory": hindcast_res["hindcast_trajectory"],
         "total_drift_distance_km": hindcast_res["total_drift_distance_km"],
+        "kde_origin_contours": hindcast_res.get("kde_origin_contours", {}),
         "forecast_trajectory": forecast_res["forecast_trajectory"],
         "weathering_summary": forecast_res.get("weathering_summary", {}),
         "beaching_warning": forecast_res["beaching_warning"],
@@ -758,6 +774,30 @@ async def correlate_ais(req: CorrelateAISRequest):
         radar_targets=radar_tgts
     )
 
+    # Stage 4: Forward Counterfactual Verification (Physical Re-Simulation)
+    primary_lead = results.get("primary_review_lead")
+    if primary_lead and primary_lead.get("candidate_release_point"):
+        crp = primary_lead["candidate_release_point"]
+        try:
+            cf_res = drift_engine.run_forward_counterfactual(
+                release_lat=float(crp["lat"]),
+                release_lon=float(crp["lon"]),
+                release_time_rel_h=float(crp["relative_time_hours"]),
+                current_field=current_field,
+                observed_slick_lat=float(req.origin_lat),
+                observed_slick_lon=float(req.origin_lon),
+                vessel_info={
+                    "mmsi": primary_lead.get("mmsi"),
+                    "vessel_name": primary_lead.get("vessel_name", "Primary Lead")
+                }
+            )
+            primary_lead["counterfactual_verification"] = cf_res
+            results["counterfactual_verification"] = cf_res
+            results["counterfactual_ready"] = True
+        except Exception as e:
+            logger.warning(f"Counterfactual verification calculation notice: {e}")
+            results["counterfactual_ready"] = False
+
     results["ais_provenance"] = req.ais_provenance or {
         "source_kind": "benchmark AIS trajectories (simulated; not live AIS)",
         "scenario_id": req.scenario_id,
@@ -770,6 +810,42 @@ async def correlate_ais(req: CorrelateAISRequest):
         "Corroborate with calibrated imagery, chain-of-custody records, and human review."
     )
     return results
+
+
+@app.post("/api/verify-counterfactual")
+async def verify_counterfactual(req: CounterfactualRequest):
+    """
+    Stage 4: Forward Counterfactual Verification (Physical Re-Simulation).
+    Re-seeds particles at the vessel's reported AIS coordinates and candidate release time t_release,
+    integrates forward in time through active hydrodynamic current fields & wind leeway up to T0,
+    and computes Centroid Error (km), Containment (%), Jaccard Index (IoU), and Physics Verdict.
+    """
+    _, current_field, scenario_data = resolve_scenario_sar_and_currents(req.scenario_id)
+
+    slick_area = req.observed_slick_area_km2
+    slick_polygon = req.observed_slick_polygon
+    if slick_area is None:
+        slick_area = scenario_data.get("primary_slick", {}).get("area_km2", 12.0)
+
+    try:
+        cf_res = drift_engine.run_forward_counterfactual(
+            release_lat=req.release_lat,
+            release_lon=req.release_lon,
+            release_time_rel_h=req.release_time_rel_h,
+            current_field=current_field,
+            observed_slick_lat=req.observed_slick_lat,
+            observed_slick_lon=req.observed_slick_lon,
+            observed_slick_polygon=slick_polygon,
+            observed_slick_area_km2=slick_area,
+            vessel_info={
+                "mmsi": req.vessel_mmsi,
+                "vessel_name": req.vessel_name
+            }
+        )
+        return cf_res
+    except Exception as e:
+        logger.error(f"Failed to run forward counterfactual: {e}")
+        raise HTTPException(status_code=500, detail=f"Forward counterfactual verification failed: {e}")
 
 
 @app.get("/api/export-dossier/{scenario_id}")

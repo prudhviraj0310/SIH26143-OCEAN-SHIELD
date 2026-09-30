@@ -34,6 +34,10 @@ class OceanShieldApp {
     this.originMarker = null;
     this.particlesLayerGroup = null;
     this.vesselsLayerGroup = null;
+    this.counterfactualLayerGroup = null;
+    this.counterfactualResults = null;
+    this.kdeContoursLayerGroup = null;
+    this.kdeContoursData = null;
     this.sarOverlayLayer = null;
 
     this.initElements();
@@ -47,6 +51,8 @@ class OceanShieldApp {
     this.btnDetectSAR = document.getElementById('btnDetectSAR');
     this.btnRunDrift = document.getElementById('btnRunDrift');
     this.btnCorrelateAIS = document.getElementById('btnCorrelateAIS');
+    this.btnStepCounterfactual = document.getElementById('btnStepCounterfactual');
+    this.btnStepDossier = document.getElementById('btnStepDossier');
     this.btnDownloadDossier = document.getElementById('btnDownloadDossier');
     this.srToggle = document.getElementById('srToggle');
     this.modelSelect = document.getElementById('modelSelect');
@@ -85,6 +91,12 @@ class OceanShieldApp {
     this.playIcon = document.getElementById('playIcon');
     this.timePhaseBadge = document.getElementById('timePhaseBadge');
     this.timeDateDisplay = document.getElementById('timeDateDisplay');
+    this.timelineCoordBadge = document.getElementById('timelineCoordBadge');
+    this.speedToggleGroup = document.getElementById('speedToggleGroup');
+    this.btnStepBack = document.getElementById('btnStepBack');
+    this.btnStepForward = document.getElementById('btnStepForward');
+    this.timelineTicksRail = document.getElementById('timelineTicksRail');
+    this.playbackSpeed = 1;
 
     // Metrics
     this.metricArea = document.getElementById('metricArea');
@@ -107,7 +119,7 @@ class OceanShieldApp {
     this.metricVolExp = document.getElementById('metricVolExp');
     this.metricWeatheringState = document.getElementById('metricWeatheringState');
 
-    // Suspect card elements
+    // Suspect card elements & Candidate Lead Navigation
     this.suspectVesselName = document.getElementById('suspectVesselName');
     this.suspectIMO = document.getElementById('suspectIMO');
     this.suspectMMSI = document.getElementById('suspectMMSI');
@@ -115,8 +127,22 @@ class OceanShieldApp {
     this.suspectType = document.getElementById('suspectType');
     this.suspectScore = document.getElementById('suspectScore');
     this.suspectSummary = document.getElementById('suspectSummary');
+    this.btnPrevLead = document.getElementById('btnPrevLead');
+    this.btnNextLead = document.getElementById('btnNextLead');
+    this.leadCandidateRank = document.getElementById('leadCandidateRank');
+    this.pillSignalStrong = document.getElementById('pillSignalStrong');
+    this.pillSignalWeak = document.getElementById('pillSignalWeak');
+    this.pillAisQuality = document.getElementById('pillAisQuality');
+    this.selectedLeadIndex = 0;
+
+    // Traffic table & Live Filter elements
     this.vesselTableBody = document.getElementById('vesselTableBody');
     this.vesselCountTag = document.getElementById('vesselCountTag');
+    this.trafficSearchInput = document.getElementById('trafficSearchInput');
+    this.trafficRiskPills = document.getElementById('trafficRiskPills');
+    this.btnExportJSON = document.getElementById('btnExportJSON');
+    this.trafficFilterQuery = '';
+    this.trafficFilterRisk = 'all';
 
     // Anomaly bars
     this.barProx = document.getElementById('barProx');
@@ -141,6 +167,22 @@ class OceanShieldApp {
     this.execSuspectName = document.getElementById('execSuspectName');
     this.execSuspectDetails = document.getElementById('execSuspectDetails');
     this.expertModeBtnText = document.getElementById('expertModeBtnText');
+
+    // Stage 4 Counterfactual Verification elements
+    this.counterfactualCard = document.getElementById('counterfactualCard');
+    this.cfVerdictBadge = document.getElementById('cfVerdictBadge');
+    this.cfCentroidError = document.getElementById('cfCentroidError');
+    this.cfContainment = document.getElementById('cfContainment');
+    this.cfJaccard = document.getElementById('cfJaccard');
+    this.cfCausalityScore = document.getElementById('cfCausalityScore');
+    this.cfExplanation = document.getElementById('cfExplanation');
+    this.btnRunCounterfactual = document.getElementById('btnRunCounterfactual');
+    this.chkShowCounterfactual = document.getElementById('chkShowCounterfactual');
+
+    // Gaussian KDE HDR elements
+    this.chkShowKdeContours = document.getElementById('chkShowKdeContours');
+    this.metricKdeCredibleArea = document.getElementById('metricKdeCredibleArea');
+    this.kdeHdrBox = document.getElementById('kdeHdrBox');
   }
 
   initMap() {
@@ -198,7 +240,9 @@ class OceanShieldApp {
       '🏷️ Reference Labels': refLabels,
       '⚓ NGA World Port Index — reference catalogue': this.indianPortsLayer,
       '⚠️ Authority spill incident feed — live when configured': this.liveIncidentsLayer,
-      '🚢 AISStream PositionReports — live when configured': this.liveAisLayer
+      '🚢 AISStream PositionReports — live when configured': this.liveAisLayer,
+      '🎯 Origin Probability (95/75/50% KDE HDR)': this.kdeContoursLayerGroup,
+      '🔬 Stage 4 Counterfactual Re-Simulation': this.counterfactualLayerGroup
     };
 
     L.control.layers(baseMaps, overlayMaps, { position: 'topright', collapsed: true }).addTo(this.map);
@@ -206,6 +250,8 @@ class OceanShieldApp {
     this.particlesLayerGroup = L.layerGroup().addTo(this.map);
     this.vesselsLayerGroup = L.layerGroup().addTo(this.map);
     this.darkVesselsLayerGroup = L.layerGroup().addTo(this.map);
+    this.counterfactualLayerGroup = L.layerGroup().addTo(this.map);
+    this.kdeContoursLayerGroup = L.layerGroup().addTo(this.map);
 
     // Cursor coordinates readout
     this.map.on('mousemove', (e) => {
@@ -534,6 +580,56 @@ class OceanShieldApp {
     this.btnCorrelateAIS.addEventListener('click', () => this.runAISCorrelation());
     this.btnDownloadDossier.addEventListener('click', () => this.downloadDossier());
 
+    if (this.btnStepCounterfactual) {
+      this.btnStepCounterfactual.addEventListener('click', () => {
+        const stage4Card = document.getElementById('stage4Card');
+        if (stage4Card) {
+          stage4Card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          stage4Card.style.boxShadow = '0 0 25px rgba(0, 242, 254, 0.4)';
+          setTimeout(() => { stage4Card.style.boxShadow = ''; }, 2000);
+        }
+        this.runCounterfactualVerification(this.selectedVessel);
+      });
+    }
+
+    if (this.btnStepDossier) {
+      this.btnStepDossier.addEventListener('click', () => this.downloadDossier());
+    }
+
+    // Counterfactual Verification actions
+    if (this.btnRunCounterfactual) {
+      this.btnRunCounterfactual.addEventListener('click', () => this.runCounterfactualVerification());
+    }
+    if (this.chkShowCounterfactual) {
+      this.chkShowCounterfactual.addEventListener('change', (e) => {
+        if (!this.counterfactualLayerGroup) return;
+        if (e.target.checked) {
+          if (!this.map.hasLayer(this.counterfactualLayerGroup)) {
+            this.counterfactualLayerGroup.addTo(this.map);
+          }
+        } else {
+          if (this.map.hasLayer(this.counterfactualLayerGroup)) {
+            this.map.removeLayer(this.counterfactualLayerGroup);
+          }
+        }
+      });
+    }
+
+    if (this.chkShowKdeContours) {
+      this.chkShowKdeContours.addEventListener('change', (e) => {
+        if (!this.kdeContoursLayerGroup) return;
+        if (e.target.checked) {
+          if (!this.map.hasLayer(this.kdeContoursLayerGroup)) {
+            this.kdeContoursLayerGroup.addTo(this.map);
+          }
+        } else {
+          if (this.map.hasLayer(this.kdeContoursLayerGroup)) {
+            this.map.removeLayer(this.kdeContoursLayerGroup);
+          }
+        }
+      });
+    }
+
     // Executive Simple Mode / Expert Mode Toggles
     this.btnSimpleView?.addEventListener('click', () => this.setSimpleMode(true));
     this.btnExpertView?.addEventListener('click', () => this.setSimpleMode(false));
@@ -591,6 +687,71 @@ class OceanShieldApp {
     });
 
     this.btnPlayPause.addEventListener('click', () => this.togglePlayback());
+
+    if (this.btnStepBack) {
+      this.btnStepBack.addEventListener('click', () => {
+        this.setTimeOffset(Math.max(-18.0, this.currentRelativeTime - 1.0));
+      });
+    }
+
+    if (this.btnStepForward) {
+      this.btnStepForward.addEventListener('click', () => {
+        this.setTimeOffset(Math.min(24.0, this.currentRelativeTime + 1.0));
+      });
+    }
+
+    if (this.speedToggleGroup) {
+      this.speedToggleGroup.querySelectorAll('.speed-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          this.speedToggleGroup.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          this.playbackSpeed = parseFloat(btn.dataset.speed) || 1;
+          if (this.isPlaying) {
+            this.pausePlayback();
+            this.startPlayback();
+          }
+        });
+      });
+    }
+
+    if (this.timelineTicksRail) {
+      this.timelineTicksRail.querySelectorAll('.tick-mark').forEach(tick => {
+        tick.addEventListener('click', () => {
+          const t = parseFloat(tick.dataset.time);
+          if (!isNaN(t)) this.setTimeOffset(t);
+        });
+      });
+    }
+
+    if (this.btnPrevLead) {
+      this.btnPrevLead.addEventListener('click', () => this.navigateLead(-1));
+    }
+
+    if (this.btnNextLead) {
+      this.btnNextLead.addEventListener('click', () => this.navigateLead(1));
+    }
+
+    if (this.trafficSearchInput) {
+      this.trafficSearchInput.addEventListener('input', (e) => {
+        this.trafficFilterQuery = e.target.value.toLowerCase().trim();
+        this.filterAndRenderVessels();
+      });
+    }
+
+    if (this.trafficRiskPills) {
+      this.trafficRiskPills.querySelectorAll('.risk-pill').forEach(pill => {
+        pill.addEventListener('click', () => {
+          this.trafficRiskPills.querySelectorAll('.risk-pill').forEach(p => p.classList.remove('active'));
+          pill.classList.add('active');
+          this.trafficFilterRisk = pill.dataset.risk || 'all';
+          this.filterAndRenderVessels();
+        });
+      });
+    }
+
+    if (this.btnExportJSON) {
+      this.btnExportJSON.addEventListener('click', () => this.exportInvestigationJSON());
+    }
 
     // ── C2 Modern UX: Segmented Tab Switching ──────────────────────────────
     document.querySelectorAll('.dock-tab').forEach(tab => {
@@ -1174,10 +1335,44 @@ class OceanShieldApp {
     this.particlesLayerGroup.clearLayers();
     this.vesselsLayerGroup.clearLayers();
     if (this.darkVesselsLayerGroup) this.darkVesselsLayerGroup.clearLayers();
+    if (this.counterfactualLayerGroup) this.counterfactualLayerGroup.clearLayers();
+    this.counterfactualResults = null;
+    if (this.kdeContoursLayerGroup) this.kdeContoursLayerGroup.clearLayers();
+    this.kdeContoursData = null;
+    if (this.metricKdeCredibleArea) {
+      this.metricKdeCredibleArea.innerText = 'Awaiting Step 2 execution...';
+    }
+    if (this.cfVerdictBadge) {
+      this.cfVerdictBadge.innerText = 'AWAITING CORRELATION';
+      this.cfVerdictBadge.className = 'badge-verdict badge-cf-pending';
+    }
+    if (this.cfCentroidError) this.cfCentroidError.innerText = '-- km';
+    if (this.cfContainment) this.cfContainment.innerText = '-- %';
+    if (this.cfJaccard) this.cfJaccard.innerText = '--';
+    if (this.cfCausalityScore) this.cfCausalityScore.innerText = '-- / 100';
+    if (this.cfExplanation) this.cfExplanation.innerText = 'Run corridor screening to evaluate forward counterfactual hydrodynamic verification for the candidate lead.';
 
     // Remove SOG chart if present
     const sogChart = document.getElementById('sogChartContainer');
     if (sogChart) sogChart.remove();
+
+    // Reset Candidate Lead Navigation & Traffic Filters
+    this.selectedLeadIndex = 0;
+    this.trafficFilterQuery = '';
+    this.trafficFilterRisk = 'all';
+    if (this.trafficSearchInput) this.trafficSearchInput.value = '';
+    if (this.trafficRiskPills) {
+      this.trafficRiskPills.querySelectorAll('.risk-pill').forEach(p => p.classList.remove('active'));
+      const allPill = this.trafficRiskPills.querySelector('[data-risk="all"]');
+      if (allPill) allPill.classList.add('active');
+    }
+    if (this.leadCandidateRank) this.leadCandidateRank.innerText = 'Lead 1 of --';
+    if (this.pillSignalStrong) this.pillSignalStrong.innerText = '● -- Strong Signals';
+    if (this.pillSignalWeak) this.pillSignalWeak.innerText = '● -- Weak Signals';
+    if (this.pillAisQuality) {
+      this.pillAisQuality.className = 'signal-pill pill-optimal';
+      this.pillAisQuality.innerText = 'AWAITING AIS';
+    }
   }
 
   setEvidenceState() {
@@ -1557,6 +1752,8 @@ class OceanShieldApp {
     if (this.btnDetectSAR) this.btnDetectSAR.classList.toggle('active', step >= 1);
     if (this.btnRunDrift) this.btnRunDrift.classList.toggle('active', step >= 2);
     if (this.btnCorrelateAIS) this.btnCorrelateAIS.classList.toggle('active', step >= 3);
+    if (this.btnStepCounterfactual) this.btnStepCounterfactual.classList.toggle('active', step >= 4);
+    if (this.btnStepDossier) this.btnStepDossier.classList.toggle('active', step >= 5);
   }
 
   renderSarResponse(data) {
@@ -1820,6 +2017,22 @@ class OceanShieldApp {
       if (this.execLandfallHours) this.execLandfallHours.innerText = '—';
       if (this.execHazardTarget) this.execHazardTarget.innerText = 'Requires shoreline polygon and asset layer';
 
+      // 🎯 Render Gaussian KDE Highest Density Region (HDR) Contours
+      if (data.kde_origin_contours) {
+        this.kdeContoursData = data.kde_origin_contours;
+        const contours = data.kde_origin_contours.contours || [];
+        const c95 = contours.find(c => Math.abs(c.level - 0.95) < 0.05);
+        if (this.metricKdeCredibleArea) {
+          const areaTxt = c95 && c95.approximate_area_km2 ? `${c95.approximate_area_km2} km²` : `±${origin.location_uncertainty_radius_km || 2.5} km`;
+          const pkLat = data.kde_origin_contours.peak_density_lat != null ? data.kde_origin_contours.peak_density_lat.toFixed(3) : origin.lat.toFixed(3);
+          const pkLon = data.kde_origin_contours.peak_density_lon != null ? data.kde_origin_contours.peak_density_lon.toFixed(3) : origin.lon.toFixed(3);
+          this.metricKdeCredibleArea.innerText = `95% HDR: ${areaTxt} • Mode (${pkLat}°, ${pkLon}°)`;
+        }
+        if (this.chkShowKdeContours ? this.chkShowKdeContours.checked : true) {
+          this.renderKdeOriginContours(data.kde_origin_contours, origin);
+        }
+      }
+
       this.renderParticlesAtTime(0.0);
       document.getElementById('systemStatusText').innerText = isBenchmarkDemo
         ? 'BENCHMARK TRANSPORT COMPLETE • SIMULATED / NOT LIVE'
@@ -1879,8 +2092,9 @@ class OceanShieldApp {
         this.suspectMMSI.innerText = culprit.mmsi;
         this.suspectFlag.innerText = culprit.flag_state;
         this.suspectType.innerText = culprit.vessel_type;
-        this.suspectScore.innerText = `${culprit.lead_priority_score.toFixed(1)}%`;
-        this.suspectSummary.innerText = `${isBenchmarkDemo ? 'Benchmark simulated lead' : 'Highest-ranked review lead'}: ${culprit.attribution_tier}. Match Confidence: ${culprit.lead_priority_score.toFixed(1)}% • CPA ${culprit.closest_approach.distance_nm} NM; analyst review required.`;
+        const topsisPart = culprit.topsis_closeness_score ? ` • TOPSIS Cᵢ: ${culprit.topsis_closeness_score}%` : '';
+        const spoofPart = culprit.spoofing_audit?.has_anomalies ? ` • ⚠️ AIS Gap/Spoof Flagged` : '';
+        this.suspectSummary.innerText = `${isBenchmarkDemo ? 'Benchmark simulated lead' : 'Highest-ranked review lead'}: ${culprit.attribution_tier}. Match Confidence: ${culprit.lead_priority_score.toFixed(1)}% • CPA ${culprit.closest_approach.distance_nm} NM${topsisPart}${spoofPart}; analyst review required.`;
 
         // Update Executive Simple HUD
         if (this.execSuspectName) this.execSuspectName.innerText = culprit.vessel_name || 'UNKNOWN';
@@ -1916,8 +2130,9 @@ class OceanShieldApp {
         this.suspectScore.classList.add('score-animate');
       }
 
-      // Render Table with both AIS suspects and Dark Vessels
-      this.renderVesselTable(data.ranked_suspects, data.dark_vessels_detected || []);
+      // Render Table with live filters (AlgoRise / Akhilesh pattern)
+      this.selectedLeadIndex = 0;
+      this.filterAndRenderVessels();
 
       // Plot Vessel Tracks on Map
       this.renderVesselTracks(data.ranked_suspects);
@@ -1925,9 +2140,16 @@ class OceanShieldApp {
       // Plot Dark Vessels (Non-cooperative radar contacts with disabled AIS)
       this.renderDarkVessels(data.dark_vessels_detected || []);
 
-      // Render SOG Speed-Over-Ground kinematic velocity chart for the culprit
-      if (culprit && culprit.full_trajectory) {
-        this.renderSOGChart(culprit);
+      if (culprit) {
+        this.selectSuspectVessel(culprit);
+      }
+
+      // Render Stage 4 Counterfactual Verification if returned by server
+      if (data.counterfactual_verification) {
+        this.renderCounterfactualVerification(data.counterfactual_verification);
+        if (this.chkShowCounterfactual && this.chkShowCounterfactual.checked) {
+          this.renderCounterfactualPlumeOnMap(data.counterfactual_verification);
+        }
       }
 
       document.getElementById('systemStatusText').innerText = isBenchmarkDemo
@@ -2011,6 +2233,345 @@ class OceanShieldApp {
     container.insertAdjacentHTML('afterend', svgHtml);
   }
 
+  selectSuspectVessel(vessel) {
+    if (!vessel) return;
+    this.selectedVessel = vessel;
+
+    this.suspectVesselName.innerText = vessel.vessel_name;
+    this.suspectIMO.innerText = vessel.imo || '--';
+    this.suspectMMSI.innerText = vessel.mmsi || '--';
+    this.suspectFlag.innerText = vessel.flag_state || '--';
+    this.suspectType.innerText = vessel.vessel_type || '--';
+    this.suspectScore.innerText = `${vessel.lead_priority_score.toFixed(1)}%`;
+    const topsisPart = vessel.topsis_closeness_score ? ` • TOPSIS Cᵢ: ${vessel.topsis_closeness_score}% (#${vessel.topsis_rank || 1})` : '';
+    const spoofPart = vessel.spoofing_audit?.has_anomalies ? ` • ⚠️ AIS Gap/Spoof Flagged (${vessel.spoofing_audit.anomaly_count})` : '';
+    this.suspectSummary.innerText = `Selected review lead: ${vessel.attribution_tier}. MFA Attribution Index: ${vessel.lead_priority_score.toFixed(1)}/100 • CPA ${vessel.closest_approach.distance_nm} NM${topsisPart}${spoofPart}.`;
+
+    // Candidate Rank Counter (AlgoRise / Akhilesh pattern)
+    const allSuspects = this.aisResults?.all_ranked_suspects || this.aisResults?.ranked_suspects || [];
+    const idx = allSuspects.findIndex(v => v.mmsi === vessel.mmsi || v.vessel_name === vessel.vessel_name);
+    if (idx >= 0) this.selectedLeadIndex = idx;
+    if (this.leadCandidateRank) {
+      this.leadCandidateRank.innerText = `Lead ${this.selectedLeadIndex + 1} of ${allSuspects.length || 1}`;
+    }
+
+    // Evidence Signals (Strong vs Weak Signals & AIS Transponder Health)
+    const b = vessel.score_breakdown || {};
+    let strongCount = 0;
+    let weakCount = 0;
+    const prox = b.proximity_score || 0;
+    const temp = b.temporal_score || 0;
+    const speedDrop = vessel.kinematics?.speed_drop_knots || 0;
+    const topsis = vessel.topsis_closeness_score || 0;
+
+    if (prox >= 70) strongCount++; else if (prox < 40) weakCount++;
+    if (temp >= 70) strongCount++; else if (temp < 40) weakCount++;
+    if (speedDrop >= 3.0) strongCount++; else if (speedDrop < 1.0) weakCount++;
+    if (topsis >= 60) strongCount++; else if (topsis < 40) weakCount++;
+
+    if (this.pillSignalStrong) {
+      this.pillSignalStrong.innerText = `● ${strongCount} Strong Signal${strongCount === 1 ? '' : 's'}`;
+    }
+    if (this.pillSignalWeak) {
+      this.pillSignalWeak.innerText = `● ${weakCount} Weak Signal${weakCount === 1 ? '' : 's'}`;
+    }
+    if (this.pillAisQuality) {
+      if (vessel.spoofing_audit?.has_anomalies) {
+        this.pillAisQuality.className = 'signal-pill pill-degraded';
+        this.pillAisQuality.innerText = '⚠️ AIS GAP / SPOOF';
+        this.pillAisQuality.title = (vessel.spoofing_audit.anomalies_detected || []).join('; ');
+      } else {
+        this.pillAisQuality.className = 'signal-pill pill-optimal';
+        this.pillAisQuality.innerText = 'AIS OPTIMAL (10s)';
+        this.pillAisQuality.title = 'Continuous nominal broadcast intervals validated';
+      }
+    }
+
+    // Animate and set progress bars
+    if (this.barProx) this.barProx.style.width = `${b.proximity_score || 0}%`;
+    if (this.barTime) this.barTime.style.width = `${b.temporal_score || 0}%`;
+    if (this.barSpeed) this.barSpeed.style.width = `${Math.min(100, Math.round(speedDrop * 15))}%`;
+    if (this.barType) this.barType.style.width = `${vessel.vessel_type?.toLowerCase().includes('tanker') ? 85 : 45}%`;
+
+    if (this.scoreProx) this.scoreProx.innerText = `${b.proximity_score || 0} / 100`;
+    if (this.scoreTime) this.scoreTime.innerText = `${b.temporal_score || 0} / 100`;
+    if (this.scoreSpeed) this.scoreSpeed.innerText = `${vessel.kinematics?.speed_drop_knots || 0} kts drop`;
+    if (this.scoreType) this.scoreType.innerText = `${vessel.vessel_type} (MARPOL)`;
+
+    if (vessel.full_trajectory) {
+      this.renderSOGChart(vessel);
+    }
+
+    // Highlight active row in traffic table
+    if (this.vesselTableBody) {
+      const rows = this.vesselTableBody.querySelectorAll('.vessel-row:not(.dark-vessel-row)');
+      rows.forEach(r => r.style.outline = 'none');
+      const activeRow = this.vesselTableBody.querySelector(`[data-vessel-idx="${this.selectedLeadIndex}"]`);
+      if (activeRow) {
+        activeRow.style.outline = '2px solid var(--accent-cyan, #00f2fe)';
+      }
+    }
+
+    // Run Stage 4 Counterfactual Verification for this selected vessel
+    this.runCounterfactualVerification(vessel);
+  }
+
+  renderCounterfactualVerification(cf) {
+    if (!cf) return;
+    this.counterfactualResults = cf;
+
+    const m = cf.verification_metrics || {};
+    if (this.cfCentroidError) this.cfCentroidError.innerText = m.centroid_distance_km !== undefined ? `${m.centroid_distance_km.toFixed(2)} km` : '-- km';
+    if (this.cfContainment) this.cfContainment.innerText = m.predicted_containment_percent !== undefined ? `${m.predicted_containment_percent.toFixed(1)}%` : '-- %';
+    if (this.cfJaccard) this.cfJaccard.innerText = m.jaccard_index !== undefined ? m.jaccard_index.toFixed(3) : '--';
+    if (this.cfCausalityScore) this.cfCausalityScore.innerText = m.physical_causality_score !== undefined ? `${m.physical_causality_score}/100` : '-- / 100';
+
+    if (this.cfVerdictBadge) {
+      this.cfVerdictBadge.innerText = cf.verdict_badge || cf.verdict || 'VERIFIED';
+      this.cfVerdictBadge.className = 'badge-verdict';
+      if (cf.verdict === 'CONFIRMED_PHYSICAL_MATCH') {
+        this.cfVerdictBadge.classList.add('badge-cf-match');
+      } else if (cf.verdict === 'PLAUSIBLE_CORRIDOR') {
+        this.cfVerdictBadge.classList.add('badge-cf-corridor');
+      } else {
+        this.cfVerdictBadge.classList.add('badge-cf-refuted');
+      }
+    }
+
+    if (this.cfExplanation) {
+      this.cfExplanation.innerText = cf.explanation || 'Forward hydrodynamic re-simulation completed.';
+      if (cf.verdict === 'CONFIRMED_PHYSICAL_MATCH') {
+        this.cfExplanation.style.borderLeftColor = '#05d6a0';
+      } else if (cf.verdict === 'PLAUSIBLE_CORRIDOR') {
+        this.cfExplanation.style.borderLeftColor = '#f59e0b';
+      } else {
+        this.cfExplanation.style.borderLeftColor = '#ff3366';
+      }
+    }
+  }
+
+  renderKdeOriginContours(kdeData, origin) {
+    if (!this.kdeContoursLayerGroup) return;
+    this.kdeContoursLayerGroup.clearLayers();
+    if (!kdeData || !kdeData.contours || kdeData.contours.length === 0) return;
+
+    // Draw from outermost (95%) to innermost (50%)
+    const sortedContours = [...kdeData.contours].sort((a, b) => b.level - a.level);
+
+    const styleMap = {
+      0.95: { color: '#00f2fe', fillColor: '#00f2fe', fillOpacity: 0.10, weight: 1.8, dashArray: '4, 4' },
+      0.75: { color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.18, weight: 2.0, dashArray: '5, 5' },
+      0.50: { color: '#818cf8', fillColor: '#818cf8', fillOpacity: 0.28, weight: 2.2, dashArray: null }
+    };
+
+    sortedContours.forEach(c => {
+      const levelKey = Math.round(c.level * 100) / 100;
+      const style = styleMap[levelKey] || {
+        color: c.color || '#00f2fe',
+        fillColor: c.color || '#00f2fe',
+        fillOpacity: 0.15,
+        weight: 2,
+        dashArray: '4, 4'
+      };
+
+      const polys = (c.all_polygons && c.all_polygons.length > 0)
+        ? c.all_polygons
+        : (c.polygon_coords && c.polygon_coords.length >= 3 ? [c.polygon_coords] : []);
+
+      polys.forEach(pts => {
+        if (!pts || pts.length < 3) return;
+        L.polygon(pts, style)
+          .bindTooltip(`
+            <div style="font-family:var(--font-sans); font-size:0.75rem; padding:4px 6px;">
+              <strong style="color:${style.color};">🎯 GAUSSIAN KDE ${c.label}</strong><br>
+              <span style="color:#f8fafc;">Highest Density Region (HDR)</span><br>
+              <span style="color:#94a3b8; font-size:0.68rem;">Credible Area: ${c.approximate_area_km2 || '--'} km² &bull; Prob: ${Math.round(c.level * 100)}%</span>
+            </div>
+          `, { sticky: true, className: 'c2-map-tooltip' })
+          .bindPopup(`
+            <div class="c2-popup font-mono" style="font-size:0.75rem;">
+              <b style="color:${style.color};">🎯 GAUSSIAN KDE ${c.label} ORIGIN ENVELOPE</b><br>
+              Method: <b>${kdeData.method || 'gaussian_kde_hdr'}</b><br>
+              Probability Mass: <b>${Math.round(c.level * 100)}% Credible Region</b><br>
+              Envelope Area: <b>${c.approximate_area_km2 || '--'} km²</b><br>
+              Origin Hypothesis: <b>T - ${origin?.assumed_slick_age_hours || '--'}h</b><br>
+              <i>Scientific iso-probability contour enclosing the top ${Math.round(c.level * 100)}% of the backward particle density surface.</i>
+            </div>
+          `)
+          .addTo(this.kdeContoursLayerGroup);
+      });
+    });
+
+    // Peak Density Mode marker
+    if (kdeData.peak_density_lat != null && kdeData.peak_density_lon != null) {
+      const peakIcon = L.divIcon({
+        className: 'kde-peak-marker',
+        html: `
+          <div style="position:relative; width:14px; height:14px; display:flex; align-items:center; justify-content:center;">
+            <div style="position:absolute; width:14px; height:14px; border-radius:50%; background:rgba(0,242,254,0.3); animation:pulse-glow 1.8s infinite;"></div>
+            <div style="width:8px; height:8px; border-radius:50%; background:#00f2fe; border:1.5px solid #ffffff; box-shadow:0 0 8px #00f2fe;"></div>
+          </div>
+        `,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7]
+      });
+
+      L.marker([kdeData.peak_density_lat, kdeData.peak_density_lon], { icon: peakIcon })
+        .bindTooltip(`
+          <div style="font-family:var(--font-sans); font-size:0.75rem; padding:4px 6px;">
+            <strong style="color:#00f2fe;">✦ KDE Peak Mode (Maximum Likelihood Origin)</strong><br>
+            <span style="color:#cbd5e1; font-size:0.70rem;">${kdeData.peak_density_lat.toFixed(4)}° N, ${kdeData.peak_density_lon.toFixed(4)}° E</span>
+          </div>
+        `, { sticky: true, className: 'c2-map-tooltip' })
+        .bindPopup(`
+          <div class="c2-popup font-mono" style="font-size:0.75rem;">
+            <b style="color:#00f2fe;">✦ KDE PEAK MODE (MAXIMUM LIKELIHOOD ORIGIN)</b><br>
+            Coordinates: <b>${kdeData.peak_density_lat.toFixed(4)}° N, ${kdeData.peak_density_lon.toFixed(4)}° E</b><br>
+            Method: <b>Gaussian Kernel Density Estimation (Silverman rule)</b><br>
+            <i>Point of maximum spatial probability density across all backwards-advected Lagrangian particles.</i>
+          </div>
+        `)
+        .addTo(this.kdeContoursLayerGroup);
+    }
+  }
+
+  renderCounterfactualPlumeOnMap(cf) {
+    if (!this.counterfactualLayerGroup) return;
+    this.counterfactualLayerGroup.clearLayers();
+    if (!cf) return;
+
+    const traj = cf.forward_trajectory || [];
+    const pred = cf.predicted_at_t0 || {};
+    const verdict = cf.verdict || 'CONFIRMED_PHYSICAL_MATCH';
+    const color = verdict === 'CONFIRMED_PHYSICAL_MATCH' ? '#05d6a0' : (verdict === 'PLAUSIBLE_CORRIDOR' ? '#f59e0b' : '#ff3366');
+
+    // 1. Draw forward simulation trajectory line
+    if (traj.length > 1) {
+      const pts = traj.map(step => [step.centroid.lat, step.centroid.lon]);
+      L.polyline(pts, {
+        color: color,
+        weight: 3.5,
+        dashArray: '6, 6',
+        opacity: 0.95
+      }).bindTooltip(`
+        <div style="font-family:var(--font-sans); font-size:0.75rem; padding:4px 6px;">
+          <strong style="color:${color};">🔬 FORWARD COUNTERFACTUAL DRIFT</strong><br>
+          <span style="color:#ffffff;">Physics Re-Simulation from ${cf.vessel_name || 'Suspect'}</span><br>
+          <span style="color:#94a3b8; font-size:0.68rem;">T = ${cf.release_state?.time_relative_h || '--'}h &rarr; T0 (${traj.length} steps RK4)</span>
+        </div>
+      `, { sticky: true, className: 'c2-map-tooltip' }).addTo(this.counterfactualLayerGroup);
+
+      // Candidate release marker
+      if (cf.release_state) {
+        L.circleMarker([cf.release_state.lat, cf.release_state.lon], {
+          radius: 7,
+          fillColor: '#f59e0b',
+          color: '#ffffff',
+          weight: 2,
+          fillOpacity: 1.0
+        }).bindPopup(`
+          <div class="c2-popup font-mono" style="font-size:0.75rem;">
+            <b style="color:#f59e0b;">📍 CANDIDATE AIS RELEASE POINT</b><br>
+            Vessel: <b>${cf.vessel_name || 'Suspect'}</b><br>
+            Coords: ${cf.release_state.lat.toFixed(4)}°N, ${cf.release_state.lon.toFixed(4)}°E<br>
+            Time: ${cf.release_state.time_relative_h}h relative to detection<br>
+            <i>Initial discharge seeded at reported AIS transponder coordinates</i>
+          </div>
+        `).addTo(this.counterfactualLayerGroup);
+      }
+    }
+
+    // 2. Draw predicted footprint polygon at T0
+    if (pred.predicted_footprint_polygon && pred.predicted_footprint_polygon.length > 2) {
+      L.polygon(pred.predicted_footprint_polygon, {
+        color: color,
+        fillColor: color,
+        weight: 2,
+        fillOpacity: 0.35,
+        dashArray: '4, 4'
+      }).bindPopup(`
+        <div class="c2-popup font-mono" style="font-size:0.75rem;">
+          <b style="color:${color};">🎯 PREDICTED COUNTERFACTUAL FOOTPRINT</b><br>
+          Centroid Error: <b>${cf.verification_metrics?.centroid_distance_km || '--'} km</b><br>
+          Containment: <b>${cf.verification_metrics?.predicted_containment_percent || '--'}%</b><br>
+          Jaccard IoU: <b>${cf.verification_metrics?.jaccard_index || '--'}</b><br>
+          Verdict: <b style="color:${color};">${cf.verdict_badge || verdict}</b>
+        </div>
+      `).addTo(this.counterfactualLayerGroup);
+    }
+
+    // 3. Draw sample particles at T0
+    if (pred.particles_sample && pred.particles_sample.length > 0) {
+      pred.particles_sample.forEach(pt => {
+        L.circleMarker([pt[1], pt[0]], {
+          radius: 2.5,
+          fillColor: color,
+          color: '#ffffff',
+          weight: 0.5,
+          fillOpacity: 0.85
+        }).addTo(this.counterfactualLayerGroup);
+      });
+    }
+  }
+
+  async runCounterfactualVerification(vessel = null) {
+    const targetVessel = vessel || (this.aisResults ? this.aisResults.primary_review_lead : null);
+    if (!targetVessel || !targetVessel.candidate_release_point) {
+      this.showToast('No candidate AIS release state available for counterfactual verification.', 'warning');
+      return;
+    }
+    const crp = targetVessel.candidate_release_point;
+    const origin = this.driftResults ? this.driftResults.origin_release_point : null;
+    const slick = this.sarResults ? this.sarResults.primary_slick : null;
+    const obsLat = slick ? slick.centroid.lat : (origin ? origin.lat : crp.lat);
+    const obsLon = slick ? slick.centroid.lon : (origin ? origin.lon : crp.lon);
+    const obsArea = slick ? slick.area_km2 : 12.0;
+
+    if (this.btnRunCounterfactual) {
+      this.btnRunCounterfactual.disabled = true;
+      this.btnRunCounterfactual.innerHTML = `<span>Simulating RK4 Forward...</span>`;
+    }
+
+    try {
+      const resp = await fetch('/api/verify-counterfactual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scenario_id: this.activeScenarioId,
+          vessel_mmsi: targetVessel.mmsi,
+          vessel_name: targetVessel.vessel_name,
+          release_lat: crp.lat,
+          release_lon: crp.lon,
+          release_time_rel_h: crp.relative_time_hours,
+          observed_slick_lat: obsLat,
+          observed_slick_lon: obsLon,
+          observed_slick_area_km2: obsArea,
+          demo_mode: this.scenarioSelector.value !== 'custom'
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Counterfactual simulation failed.');
+
+      this.renderCounterfactualVerification(data);
+      if (this.chkShowCounterfactual && this.chkShowCounterfactual.checked) {
+        this.renderCounterfactualPlumeOnMap(data);
+      }
+      this.updateStepperState(4);
+      this.showToast(`Forward verification complete: ${data.verdict_badge}`, data.verdict === 'CONFIRMED_PHYSICAL_MATCH' ? 'success' : 'info');
+    } catch (err) {
+      console.error('Counterfactual verification error:', err);
+      this.showToast(err.message || 'Error running counterfactual verification', 'error');
+    } finally {
+      if (this.btnRunCounterfactual) {
+        this.btnRunCounterfactual.disabled = false;
+        this.btnRunCounterfactual.innerHTML = `
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          <span>Re-Simulate Forward Drift</span>
+        `;
+      }
+    }
+  }
+
   renderDarkVessels(darkVessels) {
     if (!this.darkVesselsLayerGroup) return;
     this.darkVesselsLayerGroup.clearLayers();
@@ -2071,9 +2632,11 @@ class OceanShieldApp {
     suspects.forEach((v, idx) => {
       const isTopLead = idx === 0;
       const rowClass = isTopLead ? 'vessel-row culprit' : 'vessel-row';
+      const topsisBadge = v.topsis_closeness_score ? `<span style="font-size:0.60rem; padding:1px 4px; border-radius:3px; background:rgba(0,242,254,0.15); color:#00f2fe; margin-left:4px; font-weight:700;">TOPSIS ${v.topsis_closeness_score}%</span>` : '';
+      const spoofBadge = (v.spoofing_audit && v.spoofing_audit.has_anomalies) ? `<span title="${(v.spoofing_audit.anomalies_detected || []).join('; ')}" style="font-size:0.58rem; padding:1px 4px; border-radius:3px; background:rgba(239,68,68,0.2); color:#ef4444; margin-left:4px; font-weight:700; cursor:help;">⚠️ GAP/SPOOF</span>` : '';
       rowsHtml += `
-        <tr class="${rowClass}">
-          <td><b style="color:${v.flag_color};">${v.vessel_name}</b><br><span style="font-size:0.65rem; color:var(--text-muted);">IMO ${v.imo}</span></td>
+        <tr class="${rowClass}" data-vessel-idx="${idx}">
+          <td><b style="color:${v.flag_color};">${v.vessel_name}</b>${topsisBadge}${spoofBadge}<br><span style="font-size:0.65rem; color:var(--text-muted);">IMO ${v.imo}</span></td>
           <td>${v.vessel_type}</td>
           <td>${v.closest_approach.distance_nm} NM</td>
           <td style="color:${v.kinematics.speed_drop_knots > 4.0 ? 'var(--accent-crimson)' : 'inherit'};">
@@ -2084,6 +2647,111 @@ class OceanShieldApp {
       `;
     });
     this.vesselTableBody.innerHTML = rowsHtml;
+
+    // Attach click listener to each vessel row to trigger Stage 4 counterfactual verification
+    const aisRows = this.vesselTableBody.querySelectorAll('.vessel-row:not(.dark-vessel-row)');
+    aisRows.forEach((row, idx) => {
+      row.style.cursor = 'pointer';
+      row.title = 'Click to select vessel and run Stage 4 Forward Counterfactual Verification';
+      row.addEventListener('click', () => {
+        aisRows.forEach(r => r.style.outline = 'none');
+        row.style.outline = '2px solid var(--accent-cyan, #00f2fe)';
+        const v = suspects[idx];
+        if (v) this.selectSuspectVessel(v);
+      });
+    });
+  }
+
+  // Live Corridor Traffic Search & Risk Filter (AlgoRise / Akhilesh pattern)
+  filterAndRenderVessels() {
+    if (!this.aisResults) return;
+    const allSuspects = this.aisResults.all_ranked_suspects || this.aisResults.ranked_suspects || [];
+    const allDark = this.aisResults.dark_vessels_detected || this.aisResults.dark_vessels || [];
+
+    const query = (this.trafficFilterQuery || '').toLowerCase();
+    const risk = this.trafficFilterRisk || 'all';
+
+    const filteredSuspects = allSuspects.filter(v => {
+      const name = (v.vessel_name || '').toLowerCase();
+      const type = (v.vessel_type || '').toLowerCase();
+      const imo = String(v.imo || '').toLowerCase();
+      const mmsi = String(v.mmsi || '').toLowerCase();
+      const flag = (v.flag_state || '').toLowerCase();
+      const matchesQuery = !query || name.includes(query) || type.includes(query) || imo.includes(query) || mmsi.includes(query) || flag.includes(query);
+
+      const score = Number(v.lead_priority_score) || 0;
+      let matchesRisk = true;
+      if (risk === 'high') {
+        matchesRisk = score >= 70;
+      } else if (risk === 'medium') {
+        matchesRisk = score >= 40 && score < 70;
+      } else if (risk === 'low') {
+        matchesRisk = score < 40;
+      } else if (risk === 'dark') {
+        matchesRisk = false;
+      }
+      return matchesQuery && matchesRisk;
+    });
+
+    const filteredDark = (risk === 'all' || risk === 'dark') ? allDark.filter(dv => {
+      const id = (dv.target_id || '').toLowerCase();
+      return !query || id.includes(query) || 'radar'.includes(query);
+    }) : [];
+
+    this.renderVesselTable(filteredSuspects, filteredDark);
+  }
+
+  // Candidate Lead Previous / Next Cycler (AlgoRise SuspectPanel pattern)
+  navigateLead(delta) {
+    if (!this.aisResults) return;
+    const allSuspects = this.aisResults.all_ranked_suspects || this.aisResults.ranked_suspects || [];
+    if (!allSuspects.length) return;
+
+    const count = allSuspects.length;
+    this.selectedLeadIndex = (this.selectedLeadIndex + delta + count) % count;
+    const vessel = allSuspects[this.selectedLeadIndex];
+    if (vessel) {
+      this.selectSuspectVessel(vessel);
+      if (this.vesselTableBody) {
+        const rows = this.vesselTableBody.querySelectorAll('.vessel-row:not(.dark-vessel-row)');
+        rows.forEach(r => r.style.outline = 'none');
+        const activeRow = this.vesselTableBody.querySelector(`[data-vessel-idx="${this.selectedLeadIndex}"]`);
+        if (activeRow) {
+          activeRow.style.outline = '2px solid var(--accent-cyan, #00f2fe)';
+          activeRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+    }
+  }
+
+  // Export Full Investigation JSON Dossier (Akhilesh / AlgoRise pattern)
+  exportInvestigationJSON() {
+    if (!this.aisResults && !this.sarResults && !this.driftResults) {
+      this.showToast('Run investigation pipeline before exporting JSON dossier.', 'warning');
+      return;
+    }
+    const dossier = {
+      project: "OCEAN-SHIELD",
+      problem_statement: "SIH26143",
+      timestamp_utc: new Date().toISOString(),
+      active_sector: this.activeScenarioId,
+      sar_detection: this.sarResults,
+      drift_simulation: this.driftResults,
+      ais_attribution: this.aisResults,
+      counterfactual_verification: this.counterfactualResults || (this.aisResults ? this.aisResults.counterfactual_verification : null),
+      provenance: {
+        sar: this.sarProvenance,
+        ais: this.aisProvenance
+      }
+    };
+    const blob = new Blob([JSON.stringify(dossier, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `OCEAN_SHIELD_DOSSIER_${this.activeScenarioId}_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    this.showToast('Forensic JSON dossier exported successfully.', 'success');
   }
 
   renderVesselTracks(vessels) {
@@ -2176,6 +2844,15 @@ class OceanShieldApp {
       }
     }
 
+    // Dynamic Live Coordinates Badge (AlgoRise Timeline pattern)
+    if (closestStep && Number.isFinite(closestStep.lat) && Number.isFinite(closestStep.lon)) {
+      const latStr = `${Math.abs(closestStep.lat).toFixed(4)}° ${closestStep.lat >= 0 ? 'N' : 'S'}`;
+      const lonStr = `${Math.abs(closestStep.lon).toFixed(4)}° ${closestStep.lon >= 0 ? 'E' : 'W'}`;
+      if (this.timelineCoordBadge) {
+        this.timelineCoordBadge.innerText = `${latStr}, ${lonStr}`;
+      }
+    }
+
     // Render sampled particles
     const color = hours < 0 ? '#ff3366' : (hours > 0 ? '#f59e0b' : '#00f2fe');
     if (closestStep.particles_sample) {
@@ -2208,13 +2885,14 @@ class OceanShieldApp {
   startPlayback() {
     this.isPlaying = true;
     this.playIcon.innerHTML = `<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>`;
+    const intervalMs = Math.max(30, Math.round(150 / (this.playbackSpeed || 1)));
     this.playInterval = setInterval(() => {
       let nextTime = this.currentRelativeTime + 0.5;
       if (nextTime > 24.0) {
         nextTime = -18.0;
       }
       this.setTimeOffset(nextTime);
-    }, 150);
+    }, intervalMs);
   }
 
   pausePlayback() {
@@ -2237,7 +2915,10 @@ class OceanShieldApp {
           scenario_id: this.activeScenarioId,
           sar_results: this.sarResults,
           drift_results: this.driftResults,
-          ais_results: this.aisResults,
+          ais_results: {
+            ...this.aisResults,
+            counterfactual_verification: this.counterfactualResults || (this.aisResults ? this.aisResults.counterfactual_verification : null)
+          },
           evidence_provenance: { sar: this.sarProvenance, ais: this.aisProvenance }
         })
       });
@@ -2252,6 +2933,7 @@ class OceanShieldApp {
       anchor.download = 'Ocean_Shield_Case_Summary.pdf';
       anchor.click();
       URL.revokeObjectURL(url);
+      this.updateStepperState(5);
       document.getElementById('systemStatusText').innerText = 'CASE SUMMARY EXPORTED';
     } catch (error) {
       console.error('Case summary export failed:', error);
