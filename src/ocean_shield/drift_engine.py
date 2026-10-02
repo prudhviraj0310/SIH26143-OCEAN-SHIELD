@@ -1037,6 +1037,27 @@ class DriftEngine:
             circle_iou = int_area / max(un_area, 0.01)
 
         jaccard_index = round(min(0.96, max(0.0, 0.45 * circle_iou + 0.55 * (containment_percent / 100.0))), 3)
+
+        # Compute Modified Hausdorff Distance (Dubuisson & Jain, 1994)
+        sim_pts = [(float(p_lat[i]), float(p_lon[i])) for i in range(0, num_p, max(1, num_p // 40))]
+        obs_pts = poly_points if (poly_points and len(poly_points) >= 3) else [(observed_slick_lat, observed_slick_lon)]
+        
+        # d(sim -> obs)
+        sum_sim_to_obs = 0.0
+        for s_lat, s_lon in sim_pts:
+            min_d = min(haversine_distance_km(s_lat, s_lon, o_lat, o_lon) for o_lat, o_lon in obs_pts)
+            sum_sim_to_obs += min_d
+        d_sim_obs = sum_sim_to_obs / max(1, len(sim_pts))
+        
+        # d(obs -> sim)
+        sum_obs_to_sim = 0.0
+        for o_lat, o_lon in obs_pts:
+            min_d = min(haversine_distance_km(o_lat, o_lon, s_lat, s_lon) for s_lat, s_lon in sim_pts)
+            sum_obs_to_sim += min_d
+        d_obs_sim = sum_obs_to_sim / max(1, len(obs_pts))
+        
+        modified_hausdorff_km = round(max(d_sim_obs, d_obs_sim), 2)
+
         trajectory_reaches_slick = bool(min_dist_to_slick_km <= max(2.5, r_obs_km))
 
         # Forensic causality verdict
@@ -1112,6 +1133,7 @@ class DriftEngine:
                 "centroid_distance_km": centroid_distance_km,
                 "predicted_containment_percent": containment_percent,
                 "jaccard_index": jaccard_index,
+                "modified_hausdorff_distance_km": modified_hausdorff_km,
                 "trajectory_reaches_slick": trajectory_reaches_slick,
                 "physical_causality_score": causality_score
             },
