@@ -1143,3 +1143,79 @@ class DriftEngine:
             "explanation": explanation,
             "forward_trajectory": forward_trajectory
         }
+
+    def track_multi_spill_shared_origin(
+        self,
+        spill_detections: List[Dict[str, Any]],
+        current_field: OceanCurrentField,
+        hindcast_hours: float = 12.0
+    ) -> Dict[str, Any]:
+        """
+        Multi-Spill Simultaneous Tracking with Shared Origin Analysis.
+        Simultaneously advects multiple slick observations backwards in time,
+        identifying whether distinct patches converge to a shared origin corridor,
+        indicating sequential bilge dumps or a continuous discharge trail from a single vessel.
+        """
+        if not spill_detections:
+            return {"error": "No spill detections provided"}
+
+        hindcast_results = []
+        for idx, slick in enumerate(spill_detections):
+            lat = float(slick.get("center_lat", slick.get("lat", 22.0)))
+            lon = float(slick.get("center_lon", slick.get("lon", 69.0)))
+            poly = slick.get("polygon", slick.get("coordinates", []))
+            
+            hc = self.run_hindcast(
+                initial_lat=lat,
+                initial_lon=lon,
+                current_field=current_field,
+                target_slick_age_hours=hindcast_hours
+            )
+            hindcast_results.append({
+                "spill_index": idx + 1,
+                "slick_id": slick.get("id", f"SLICK_{idx+1:02d}"),
+                "observed_lat": lat,
+                "observed_lon": lon,
+                "origin_lat": hc["origin_release_point"]["lat"],
+                "origin_lon": hc["origin_release_point"]["lon"],
+                "origin_time_relative_h": hc["origin_release_point"]["estimated_t0_hours_relative"],
+                "trajectory": hc["hindcast_trajectory"]
+            })
+
+        origins = [(h["origin_lat"], h["origin_lon"]) for h in hindcast_results]
+        pairwise_dists = []
+        for i in range(len(origins)):
+            for j in range(i + 1, len(origins)):
+                d = haversine_distance_km(origins[i][0], origins[i][1], origins[j][0], origins[j][1])
+                pairwise_dists.append(d)
+
+        mean_origin_dist = float(np.mean(pairwise_dists)) if pairwise_dists else 0.0
+        is_shared_origin = bool(mean_origin_dist < 8.0)
+
+        sequential_speeds_knots = []
+        for i in range(len(hindcast_results) - 1):
+            h1 = hindcast_results[i]
+            h2 = hindcast_results[i+1]
+            dist_km = haversine_distance_km(h1["origin_lat"], h1["origin_lon"], h2["origin_lat"], h2["origin_lon"])
+            dt_h = abs(float(h1["origin_time_relative_h"]) - float(h2["origin_time_relative_h"]))
+            if dt_h > 0.05:
+                speed_kt = (dist_km / 1.852) / dt_h
+                sequential_speeds_knots.append(round(speed_kt, 1))
+
+        pattern = "COMMON_POINT_SOURCE" if mean_origin_dist < 3.0 else (
+            "SEQUENTIAL_VOYAGE_TRAIL" if is_shared_origin else "INDEPENDENT_MULTIPLE_SPILLS"
+        )
+
+        return {
+            "spill_count": len(spill_detections),
+            "spills_analyzed": hindcast_results,
+            "mean_origin_separation_km": round(mean_origin_dist, 2),
+            "is_shared_origin_hypothesis": is_shared_origin,
+            "discharge_pattern": pattern,
+            "sequential_transit_speeds_knots": sequential_speeds_knots,
+            "forensic_summary": (
+                f"Multi-spill simultaneous hindcast indicates {pattern.replace('_', ' ').title()}. "
+                f"Backward advection reveals mean origin separation of {mean_origin_dist:.2f} km, "
+                f"{'consistent with a single transiting vessel discharging in sequence' if is_shared_origin else 'indicating unrelated discharge events'}."
+            )
+        }

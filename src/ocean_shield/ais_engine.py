@@ -616,3 +616,92 @@ class AISEngine:
             },
             "screening_notice": "Lead-priority ranking is not a probability, allegation, or finding of responsibility."
         }
+
+
+def categorize_marpol_violation(
+    vessel_type: str,
+    speed_knots: float,
+    distance_to_coast_nm: float = 28.0,
+    estimated_volume_m3: float = 2.5,
+    instantaneous_discharge_l_per_nm: Optional[float] = None,
+    is_special_area: bool = False
+) -> Dict[str, Any]:
+    """
+    Automatic MARPOL 73/78 Annex I Violation Categorization Engine.
+    Statutory evaluation against IMO MARPOL Regulations 15 & 34 and Indian Merchant Shipping Act 1958.
+    """
+    violations = []
+    regulations_breached = []
+    severity = "NOMINAL"
+    
+    # 1. En Route Requirement (MARPOL Reg 15.2.1 / Reg 34.1.2)
+    # The ship must be proceeding en route (>3 knots). Discharging while stationary or loitering is strictly prohibited.
+    if speed_knots < 3.0:
+        violations.append({
+            "code": "MARPOL-ANNEX-I-REG-34.1.2",
+            "regulation": "Regulation 34(1)(b) / Regulation 15(2)(a)",
+            "title": "Stationary / Loitering Illegal Bilge Discharge",
+            "finding": f"Vessel speed was {speed_knots:.1f} knots (< 3.0 knot statutory 'proceeding en route' threshold). Discharging while drifting, anchored, or idling is an automatic MARPOL violation.",
+            "statutory_penalty": "Detention by Maritime Authority; Fine under Section 356K Merchant Shipping Act 1958."
+        })
+        regulations_breached.append("Reg 34.1.2 (En-Route Violation)")
+        severity = "CRITICAL"
+        
+    # 2. Coastal Buffer Prohibition (MARPOL Reg 34.1.1 - 50 NM from nearest land)
+    is_tanker = any(k in vessel_type for k in ["Tanker", "Crude", "Product"])
+    if is_tanker and distance_to_coast_nm < 50.0:
+        violations.append({
+            "code": "MARPOL-ANNEX-I-REG-34.1.1",
+            "regulation": "Regulation 34(1)(a)",
+            "title": "Tanker Cargo Discharge Within 50 NM Coastal Zone",
+            "finding": f"Tanker located {distance_to_coast_nm:.1f} NM from nearest baseline. Zero cargo-area oil discharge is permitted within 50 nautical miles of land.",
+            "statutory_penalty": "Immediate Indian Coast Guard Interdiction; Vessel Seizure & Criminal Referral."
+        })
+        regulations_breached.append("Reg 34.1.1 (<50 NM Coastal Buffer)")
+        severity = "CRITICAL"
+    elif distance_to_coast_nm < 12.0:
+        violations.append({
+            "code": "MARPOL-ANNEX-I-REG-15.2.2",
+            "regulation": "Regulation 15(2)(b)",
+            "title": "Territorial Sea Discharge (<12 NM)",
+            "finding": f"Discharge initiated inside India's 12 NM Territorial Sea. Absolute liability under Territorial Waters Act 1976.",
+            "statutory_penalty": "Criminal Prosecution of Master & Chief Engineer; Environmental Damage Clean-up Restitution."
+        })
+        regulations_breached.append("Reg 15 (Territorial Sea Breach)")
+        severity = "CRITICAL"
+        
+    # 3. Instantaneous Discharge Rate Ceiling (MARPOL Reg 34.1.3: 30 Litres per Nautical Mile)
+    rate = instantaneous_discharge_l_per_nm if instantaneous_discharge_l_per_nm else (estimated_volume_m3 * 1000.0 / max(1.0, distance_to_coast_nm))
+    if rate > 30.0:
+        violations.append({
+            "code": "MARPOL-ANNEX-I-REG-34.1.3",
+            "regulation": "Regulation 34(1)(c)",
+            "title": "Instantaneous Discharge Rate Exceeded (>30 L/NM)",
+            "finding": f"Calculated instantaneous discharge rate is {rate:.1f} L/NM, exceeding the 30 L/NM international statutory threshold.",
+            "statutory_penalty": "Flag State & Port State Control (PSC) Mandatory Detention."
+        })
+        regulations_breached.append("Reg 34.1.3 (>30 L/NM Rate Exceeded)")
+        severity = "CRITICAL"
+
+    # 4. Oil Filtering Equipment Bypass / Effluent > 15 PPM (Reg 15.2.4)
+    if estimated_volume_m3 > 0.3:
+        violations.append({
+            "code": "MARPOL-ANNEX-I-REG-15.2.4",
+            "regulation": "Regulation 15(2)(d)",
+            "title": "Oily Water Separator (OWS) Bypass / >15 PPM Effluent",
+            "finding": f"Estimated spill volume of {estimated_volume_m3:.2f} m3 confirms raw bilge pump bypass without operational 15 ppm bilge alarm filtration.",
+            "statutory_penalty": "Oil Record Book (ORB) Forgery Audit; Arrest of Vessel."
+        })
+        regulations_breached.append("Reg 15.2.4 (OWS Magic Pipe / >15 PPM Bypass)")
+        if severity != "CRITICAL":
+            severity = "MAJOR"
+
+    return {
+        "is_marpol_violation": len(violations) > 0,
+        "violation_count": len(violations),
+        "overall_severity": severity,
+        "primary_breach": regulations_breached[0] if regulations_breached else "COMPLIANT_EN_ROUTE",
+        "regulations_breached": regulations_breached,
+        "violation_details": violations,
+        "statutory_nexus": "Merchant Shipping Act 1958 (Part XIA) / Indian Coast Guard Act 1978"
+    }

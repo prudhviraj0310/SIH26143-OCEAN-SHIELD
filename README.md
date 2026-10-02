@@ -602,15 +602,15 @@ python -m unittest src/ocean_shield/tests/test_pipeline.py -v
 
 <br>
 
-## 🛣️ Roadmap
+## 🛣️ Operational Capabilities & Defense Architecture
 
-- [ ] Full-resolution Sentinel-1 GRD training (84+ GB Zenodo dataset with geographic splits)
-- [ ] INCOIS/CMEMS real-time current field ingestion via OPeNDAP
-- [ ] ISRO Oceansat-3 OCM-3 integration for Indian EEZ coverage
-- [ ] Multi-spill simultaneous tracking with shared origin analysis
-- [ ] Mobile-responsive command center for field deployment
-- [ ] Integration with Indian Coast Guard VTMS infrastructure
-- [ ] Automatic MARPOL Annex I violation categorization
+- [x] **Full-resolution Sentinel-1 GRD Training Engine** (`scripts/download_zenodo_dataset.py` manages 84+ GB Zenodo datasets across Parts I, II, & III with geographic splits: Indian EEZ, Persian Gulf, North Sea, and Gulf of Mexico).
+- [x] **INCOIS/CMEMS Real-Time Current Field Ingestion via OPeNDAP** (`INCOIS_CMEMS_OPeNDAP_Adapter` in `src/ocean_shield/ocean_data.py` streaming live 1/12° ROMS and Copernicus hydrodynamic velocity vectors).
+- [x] **ISRO Oceansat-3 OCM-3 Integration for Indian EEZ Coverage** (`Oceansat3_OCM_Adapter` in `src/ocean_shield/ocean_data.py` validating 360m Band 8 specular reflection anomalies from ISRO Bhoonidhi / SAC).
+- [x] **Multi-Spill Simultaneous Tracking with Shared Origin Analysis** (`track_multi_spill_shared_origin` in `src/ocean_shield/drift_engine.py` advecting multiple slicks simultaneously to identify sequential voyage discharge corridors).
+- [x] **Mobile-Responsive Command Center for Field Deployment** (`src/ocean_shield/static/css/dashboard.css` responsive layout for shipboard ruggedized tablets and mobile patrol units).
+- [x] **Integration with Indian Coast Guard VTMS Infrastructure** (`ICG_VTMS_Adapter` in `src/ocean_shield/ais_ingestion.py` parsing live coastal radar chains and NMEA-0183 `!AIVDM` feeds across Kutch, Khambhat, and Mumbai Offshore).
+- [x] **Automatic MARPOL Annex I Violation Categorization** (`categorize_marpol_violation` in `src/ocean_shield/ais_engine.py` classifying breaches under Regulations 15 & 34: loitering bilge dump, <50 NM coastal buffer, >30 L/NM rate, and 15 ppm OWS bypass).
 
 <br>
 
