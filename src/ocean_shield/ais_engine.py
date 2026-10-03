@@ -412,8 +412,17 @@ class AISEngine:
 
         for v in candidate_vessels:
             cpa = v["closest_approach"]
-            dist_nm = cpa["distance_nm"]
-            time_diff_h = cpa["time_diff_h"]
+            raw_dist = cpa.get("distance_nm", 999.0)
+            raw_time = cpa.get("time_diff_h", 999.0)
+            try:
+                dist_nm = float(raw_dist) if not math.isnan(float(raw_dist)) and float(raw_dist) >= 0 else 999.0
+            except (ValueError, TypeError):
+                dist_nm = 999.0
+
+            try:
+                time_diff_h = float(raw_time) if not math.isnan(float(raw_time)) else 999.0
+            except (ValueError, TypeError):
+                time_diff_h = 999.0
 
             # 1. Proximity score (Gaussian spatial decay)
             s_prox = 100.0 * math.exp(-(dist_nm ** 2) / (2.0 * (self.cpa_sigma_nm ** 2)))
@@ -626,6 +635,8 @@ class AISEngine:
             "ranked_suspects": ranked,
             "dark_vessels_detected": dark_vessels,
             "dark_vessels_count": len(dark_vessels),
+            "bayesian_legal_gate": primary_suspect.get("abstention_verdict") if primary_suspect else None,
+            "adversarial_stress_test": primary_suspect.get("adversarial_stress_test") if primary_suspect else None,
             "origin_query": {
                 "origin_lat": origin_lat,
                 "origin_lon": origin_lon,

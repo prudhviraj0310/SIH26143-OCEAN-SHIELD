@@ -91,8 +91,18 @@ class FalsificationAndAbstentionEngine:
             }
 
         # Softmax calibration for Bayesian likelihoods
-        scores = [float(c.get("composite_score", 0.0)) for c in ranked_candidates]
-        max_s = max(scores)
+        scores = []
+        for c in ranked_candidates:
+            s_raw = c.get("composite_score", 0.0)
+            try:
+                s_val = float(s_raw)
+                if math.isnan(s_val) or math.isinf(s_val) or s_val < 0:
+                    s_val = 0.0
+            except (ValueError, TypeError):
+                s_val = 0.0
+            scores.append(s_val)
+
+        max_s = max(scores) if scores else 0.0
         exp_scores = [math.exp((s - max_s) / cls.TEMPERATURE) for s in scores]
         sum_exp = sum(exp_scores)
         posteriors = [e / sum_exp for e in exp_scores]
