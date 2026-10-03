@@ -383,13 +383,15 @@ class DossierReportGenerator:
         # Bayesian Legal Gate (Shannon Entropy)
         abst = culprit.get("abstention_verdict", {})
         if abst:
-            h_norm = abst.get("entropy_metrics", {}).get("normalized_entropy", 0.0)
+            h_norm = abst.get("entropy_metrics", {}).get("normalized_entropy")
+            h_norm_val = float(h_norm) if (h_norm is not None and isinstance(h_norm, (int, float))) else 0.0
+            conf_val = float(abst.get('confidence_score') or 0.0)
             dec_color = "#16a34a" if not abst.get("is_abstention") else "#d97706"
             suspect_rows.append([
                 Paragraph("Bayesian Legal Gate", body_style),
                 Paragraph(f"<font color='{dec_color}'><b>{abst.get('decision', 'EVALUATED')}</b></font>", body_style),
-                Paragraph(f"Shannon Entropy H<sub>norm</sub>={h_norm:.2f} (Threshold &le;0.82) &bull; Prevents false accusation", body_style),
-                Paragraph(f"<b>{abst.get('confidence_score', 0):.1f}% Conf</b>", body_bold)
+                Paragraph(f"Shannon Entropy H<sub>norm</sub>={h_norm_val:.2f} (Threshold &le;0.82) &bull; Prevents false accusation", body_style),
+                Paragraph(f"<b>{conf_val:.1f}% Conf</b>", body_bold)
             ])
 
         # Adversarial Falsification Stress Test

@@ -151,6 +151,25 @@ def _decode_uploaded_sar(content: bytes) -> np.ndarray:
     return image
 
 
+def _apply_sar_quality_gate(results: Dict[str, Any], quality: Dict[str, Any]) -> Dict[str, Any]:
+    """Prevent a visual dark-feature mask becoming false metric evidence."""
+    results = dict(results)
+    results["observability"] = quality
+    if not quality["operational_eligible"]:
+        for feature in [results.get("primary_slick"), *results.get("all_slicks", [])]:
+            if not feature:
+                continue
+            feature["area_km2_unverified"] = feature.get("area_km2")
+            feature["area_km2"] = None
+            feature["centroid"] = None
+            feature["polygon_geojson"] = None
+            feature["classification"] = "SAR dark-feature candidate — operational interpretation withheld"
+            feature["confidence_score"] = None
+        results["radar_detected_ships"] = []
+        results["active_engine"] = f"{results.get('active_engine', 'candidate extractor')} — quality-gated"
+    return results
+
+
 # --- Request Models ---
 class LiveMissionRequest(BaseModel):
     lat: float = Field(default=22.585, ge=-90.0, le=90.0)
@@ -483,10 +502,24 @@ async def analyze_sar(req: AnalyzeSARRequest):
     center_lat = scenario_data["center"]["lat"]
     center_lon = scenario_data["center"]["lon"]
 
-    # Process SAR scene using chosen model (PyTorch U-Net or CFAR Edge)
+    metadata = scenario_data.get("satellite_metadata", {})
+    conditions = scenario_data.get("ocean_conditions", {})
+    wind_speed_ms = math.hypot(float(conditions.get("base_wind_u", 0.0)), float(conditions.get("base_wind_v", 0.0)))
+    is_synthetic = "synthetic" in str(metadata.get("data_origin", "")).lower()
+    quality = sar_engine.assess_observability(
+        wind_speed_ms,
+        radiometrically_calibrated=bool(metadata.get("radiometrically_calibrated", False)),
+        has_geotransform=bool(metadata.get("has_geotransform", False)),
+        has_incidence_angle=bool(metadata.get("incidence_angle_normalized", False)),
+        is_synthetic=is_synthetic,
+    )
+
+    # Process SAR scene as a visual candidate screen; the gate below prevents
+    # unproven pixels from becoming map, area, radar, or legal evidence.
     results = sar_engine.process_sar_scene(
         sar_img, center_lat, center_lon, pixel_size_m=pixel_size, model_type=req.model_type
     )
+    results = _apply_sar_quality_gate(results, quality)
 
     # Super-resolution enhanced image for inspection
     sr_img = sar_engine.enhance_sar_super_resolution(sar_img, scale_factor=2)
@@ -514,7 +547,8 @@ async def analyze_sar(req: AnalyzeSARRequest):
         "super_resolution_base64": sr_b64,
         "radar_detected_ships": results.get("radar_detected_ships", []),
         "active_engine": results.get("active_engine", "PyTorch U-Net"),
-        "metadata": scenario_data["satellite_metadata"]
+        "metadata": metadata,
+        "screening_notice": "Candidate dark-feature screening only. No oil identity, quantity, source, legal finding, or operational map is produced without an eligible observability record.",
     }
 
 
@@ -536,6 +570,14 @@ async def analyze_sar_upload(request: Request):
     model_type = request.headers.get("X-Model-Type", "unet")
     filename = request.headers.get("X-File-Name", "sar-raster")
     acquisition_time_utc = request.headers.get("X-Acquisition-Time-UTC", "").strip()
+    wind_raw = request.headers.get("X-Wind-Speed-M-S", "").strip()
+    try:
+        wind_speed_ms = float(wind_raw) if wind_raw else None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="X-Wind-Speed-M-S must be numeric when supplied.") from exc
+    radiometrically_calibrated = request.headers.get("X-Radiometrically-Calibrated", "false").lower() == "true"
+    has_geotransform = request.headers.get("X-Has-Geotransform", "false").lower() == "true"
+    has_incidence_angle = request.headers.get("X-Incidence-Angle-Normalized", "false").lower() == "true"
     if acquisition_time_utc:
         try:
             datetime.fromisoformat(acquisition_time_utc.replace("Z", "+00:00"))
@@ -556,6 +598,13 @@ async def analyze_sar_upload(request: Request):
     results = sar_engine.process_sar_scene(
         sar_image, center_lat, center_lon, pixel_size_m=pixel_size_m, model_type=model_type
     )
+    quality = sar_engine.assess_observability(
+        wind_speed_ms,
+        radiometrically_calibrated=radiometrically_calibrated,
+        has_geotransform=has_geotransform,
+        has_incidence_angle=has_incidence_angle,
+    )
+    results = _apply_sar_quality_gate(results, quality)
     if model_type == "unet" and sar_engine.model_loaded:
         mask, _ = sar_engine.predict_unet(sar_image)
     else:
@@ -578,9 +627,13 @@ async def analyze_sar_upload(request: Request):
             "scene_center": {"lat": center_lat, "lon": center_lon},
             "pixel_size_m": pixel_size_m,
             "acquisition_time_utc": acquisition_time_utc or None,
-            "georeferencing": "user-supplied centre and pixel size; original GeoTIFF transform not retained",
+            "wind_speed_ms": wind_speed_ms,
+            "radiometrically_calibrated": radiometrically_calibrated,
+            "has_geotransform": has_geotransform,
+            "incidence_angle_normalized": has_incidence_angle,
+            "georeferencing": "operator declaration; original GeoTIFF transform is not parsed by this endpoint",
         },
-        "screening_notice": "Automated screening result. Analyst review and validated sensor calibration are required before operational or legal use.",
+        "screening_notice": "Candidate dark-feature screening only. Analyst review and a complete observability record are required before operational or legal use.",
     }
 
     # --- Render Free-Tier: reclaim upload inference memory ---

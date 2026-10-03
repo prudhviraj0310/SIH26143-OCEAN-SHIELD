@@ -55,10 +55,22 @@ class SAREngine:
         self._model_loaded = value
 
     def _ensure_unet_loaded(self):
-        """Lazy-load U-Net weights on first inference call (saves ~150 MB at startup)."""
+        """Load a U-Net only when its independent validation record is present.
+
+        A checkpoint is not evidence that it detects oil.  In particular, a model
+        trained from a backscatter threshold merely learns that threshold.  We
+        therefore fail closed unless a checked-in validation record establishes a
+        geographically independent, human-labelled test set and calibration.
+        """
         if self._model_loaded or self.unet_model is not None:
             return
         model_path = self._unet_model_path
+        validation_path = os.path.abspath(os.path.join(
+            os.path.dirname(__file__), "..", "..", "models", "sar_unet_validation.json"
+        ))
+        if not os.path.exists(validation_path):
+            print("⚠️ SAREngine: U-Net checkpoint disabled: no independent validation record; using candidate extractor")
+            return
         if model_path and os.path.exists(model_path):
             try:
                 self.unet_model = SAR_UNet(n_channels=1, n_classes=1, bilinear=True).to(self.device)
@@ -234,8 +246,6 @@ class SAREngine:
 
         # Geometry and lookalike screening classification
         is_oil, screening_score = self.classify_slick_vs_lookalike(elongation, complexity, area_km2)
-        # Multi-factor confidence score combining morphology, aspect ratio, and backscatter contrast
-        confidence_score = round(min(98.5, max(68.0, screening_score * 0.92 + 18.0)), 1)
 
         return {
             "centroid": {"lat": round(slick_lat, 6), "lon": round(slick_lon, 6)},
@@ -248,7 +258,8 @@ class SAREngine:
             "estimated_mass_tonnes": None,
             "classification": "SAR dark-feature candidate" if is_oil else "SAR dark-feature / lookalike candidate",
             "screening_score": screening_score,
-            "confidence_score": confidence_score,
+            "confidence_score": round(min(98.5, max(68.0, screening_score * 0.92 + 18.0)), 1),
+            "confidence_status": "morphological_screening_heuristic",
             "limitations": [
                 "Oil identity and lookalikes are not resolved from geometry alone.",
                 "Film thickness, mass, age, and source are not inferable from this single scene.",
@@ -586,6 +597,48 @@ class SAREngine:
             "radar_detected_ships": radar_ships,
             "active_engine": active_engine,
             "mask_dimensions": {"width": w, "height": h}
+        }
+
+    @staticmethod
+    def assess_observability(
+        wind_speed_ms: Optional[float],
+        *,
+        radiometrically_calibrated: bool,
+        has_geotransform: bool,
+        has_incidence_angle: bool,
+        is_synthetic: bool = False,
+    ) -> Dict[str, Any]:
+        """Return an explicit science gate for a C-band dark-feature screen.
+
+        Oil contrast is not interpretable when the sea is too calm or when high
+        wind/wave breaking entrains the slick.  Missing calibration/geolocation is
+        also a hard stop for metric area and vessel correlation.
+        """
+        blockers: List[str] = []
+        warnings: List[str] = []
+        if is_synthetic:
+            blockers.append("synthetic scene: demonstration output cannot be operational evidence")
+        if wind_speed_ms is None or not math.isfinite(float(wind_speed_ms)):
+            blockers.append("scene-time 10 m wind is missing")
+        elif float(wind_speed_ms) < 3.0:
+            blockers.append("wind below 3 m/s: calm sea and oil are both SAR-dark")
+        elif float(wind_speed_ms) > 12.0:
+            blockers.append("wind above 12 m/s: wave breaking/entrainment obscures surface slicks")
+        elif float(wind_speed_ms) > 10.0:
+            warnings.append("10–12 m/s is a marginal C-band oil-observability regime")
+        if not radiometrically_calibrated:
+            blockers.append("sigma-nought/radiometric calibration is not verified")
+        if not has_geotransform:
+            blockers.append("original geotransform is absent: metric area and AIS correlation are withheld")
+        if not has_incidence_angle:
+            warnings.append("incidence-angle normalization is missing; backscatter contrast is less comparable")
+        return {
+            "status": "OBSERVABLE_CANDIDATE_SCREEN" if not blockers else "NOT_OPERATIONALLY_INTERPRETABLE",
+            "operational_eligible": not blockers,
+            "wind_speed_ms": round(float(wind_speed_ms), 2) if wind_speed_ms is not None and math.isfinite(float(wind_speed_ms)) else None,
+            "blockers": blockers,
+            "warnings": warnings,
+            "allowed_output": "candidate dark features only" if blockers else "candidate dark features pending analyst confirmation",
         }
 
     def estimate_slick_age_from_sar(

@@ -15,7 +15,7 @@ Exports production checkpoints:
 
 import sys
 import os
-import glob
+import json
 import math
 import numpy as np
 import cv2
@@ -33,57 +33,42 @@ class Sentinel1SAROilSpillDataset(Dataset):
     (Zenodo Record 4672426) with calibrated Sigma0 backscatter (dB).
     Samples genuine patches of oil slicks and sea clutter.
     """
-    def __init__(self, mask_dir: str = "", target_size: int = 256, samples_per_epoch: int = 60):
+    def __init__(self, manifest_path: str, target_size: int = 256, samples_per_epoch: int = 60):
         self.target_size = target_size
         self.samples_per_epoch = samples_per_epoch
-        self.real_scene = None
-        self.oil_locations = None
-
-        # Ingest authentic Zenodo Sentinel-1 C-Band SAR scene
-        real_scene_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "datasets", "real_sar", "2018_09_26.tif")
-        )
-        if os.path.exists(real_scene_path):
-            try:
-                import tifffile
-                self.real_scene = tifffile.imread(real_scene_path)
-                h, w = self.real_scene.shape
-                pad = target_size // 2
-                valid_mask = (self.real_scene[pad:h-pad, pad:w-pad] < -26.0) & (self.real_scene[pad:h-pad, pad:w-pad] > -38.0)
-                locs = np.argwhere(valid_mask)
-                if len(locs) > 0:
-                    self.oil_locations = locs + pad
-                    print(f"🛰️ Ingested real Zenodo Sentinel-1 SAR scene {self.real_scene.shape} with {len(self.oil_locations)} verified oil pixels.")
-            except Exception as e:
-                print(f"Error loading Sentinel-1 SAR TIFF: {e}")
-        if self.real_scene is None or self.oil_locations is None or len(self.oil_locations) == 0:
-            raise RuntimeError(
-                f"Real Sentinel-1 SAR dataset is required for training: {real_scene_path}. "
-                f"Download via scripts/download_zenodo_dataset.py"
-            )
+        if not manifest_path or not os.path.exists(manifest_path):
+            raise RuntimeError("Training requires a human-labelled manifest JSON; threshold-derived labels are prohibited.")
+        with open(manifest_path, "r", encoding="utf-8") as handle:
+            manifest = json.load(handle)
+        self.samples = manifest.get("samples", [])
+        if not self.samples:
+            raise RuntimeError("Label manifest has no samples.")
+        self.validation = manifest.get("validation", {})
+        required_validation = {"split_strategy", "held_out_scene_ids", "annotator_protocol"}
+        missing = required_validation.difference(self.validation)
+        if missing:
+            raise RuntimeError(f"Label manifest omits independent-validation fields: {sorted(missing)}")
 
     def __len__(self):
         return self.samples_per_epoch
 
     def __getitem__(self, idx: int):
-        half = self.target_size // 2
-        # 70% chance of sampling oil slick patch, 30% clean sea clutter
-        if np.random.rand() < 0.7:
-            center_idx = np.random.randint(0, len(self.oil_locations))
-            cy, cx = self.oil_locations[center_idx]
-            cy = int(np.clip(cy + np.random.randint(-half // 2, half // 2 + 1), half, self.real_scene.shape[0] - half))
-            cx = int(np.clip(cx + np.random.randint(-half // 2, half // 2 + 1), half, self.real_scene.shape[1] - half))
-        else:
-            cy = np.random.randint(half, self.real_scene.shape[0] - half)
-            cx = np.random.randint(half, self.real_scene.shape[1] - half)
-
-        patch_db = self.real_scene[cy - half:cy + half, cx - half:cx + half].astype(np.float32)
+        record = self.samples[idx % len(self.samples)]
+        import tifffile
+        scene = tifffile.imread(record["sar_path"]).astype(np.float32)
+        mask_full = tifffile.imread(record["mask_path"]).astype(np.float32)
+        if scene.shape != mask_full.shape or scene.ndim != 2:
+            raise ValueError("Each SAR raster and human annotation mask must be matching single-band arrays.")
+        h, w = scene.shape
+        if h < self.target_size or w < self.target_size:
+            raise ValueError("Annotated scene is smaller than the requested patch size.")
+        y0 = np.random.randint(0, h - self.target_size + 1)
+        x0 = np.random.randint(0, w - self.target_size + 1)
+        patch_db = scene[y0:y0 + self.target_size, x0:x0 + self.target_size]
+        mask = (mask_full[y0:y0 + self.target_size, x0:x0 + self.target_size] > 0).astype(np.float32)
 
         # Radiometric normalization: map calibrated Sentinel-1 ocean backscatter [-35 dB, -5 dB] to [0.0, 1.0]
         norm_patch = np.clip((patch_db - (-35.0)) / 30.0, 0.0, 1.0)
-
-        # Ground truth: Bragg wave damping under crude oil (< -25.5 dB)
-        mask = (patch_db < -25.5).astype(np.float32)
 
         # Augmentation
         if np.random.rand() > 0.5:
@@ -113,16 +98,14 @@ def calculate_metrics(pred: torch.Tensor, target: torch.Tensor, threshold: float
     return iou, dice, precision, recall
 
 
-def train_model(epochs: int = 5, batch_size: int = 4, lr: float = 1e-3):
+def train_model(manifest_path: str, epochs: int = 5, batch_size: int = 4, lr: float = 1e-3):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"🚀 Training SAR_UNet on device: {device}")
 
-    # Dataset paths
-    mask_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "datasets", "zenodo_sentinel1_sar"))
     models_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models"))
     os.makedirs(models_dir, exist_ok=True)
 
-    dataset = Sentinel1SAROilSpillDataset(mask_dir, target_size=256, samples_per_epoch=40)
+    dataset = Sentinel1SAROilSpillDataset(manifest_path, target_size=256, samples_per_epoch=40)
     train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     model = SAR_UNet(n_channels=1, n_classes=1, bilinear=True).to(device)
@@ -202,4 +185,8 @@ def train_model(epochs: int = 5, batch_size: int = 4, lr: float = 1e-3):
 
 
 if __name__ == "__main__":
-    train_model(epochs=3, batch_size=4, lr=1e-3)
+    import argparse
+    parser = argparse.ArgumentParser(description="Train only from human-labelled, geography-separated SAR data.")
+    parser.add_argument("--manifest", required=True, help="Manifest containing SAR/mask paths and independent-split metadata")
+    args = parser.parse_args()
+    train_model(args.manifest, epochs=3, batch_size=4, lr=1e-3)

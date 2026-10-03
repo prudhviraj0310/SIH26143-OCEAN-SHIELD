@@ -444,9 +444,6 @@ class DriftEngine:
         data_provider_meta = getattr(current_field, "data_provider", None)
         source_name = data_provider_meta.metadata.get("source", "HYCOM GOFS 3.1 NetCDF") if (data_provider_meta and hasattr(data_provider_meta, "metadata")) else "Physical Oceanographic Hydrodynamic Field"
 
-        # Hydrodynamic concurrence confidence based on particle dispersion radius
-        confidence_percent = round(min(96.5, max(68.0, 96.0 - (final_spread_km * 4.5))), 1)
-
         # ── Gaussian KDE 95% / 75% / 50% Highest Density Region (HDR) Contours ──
         # Computes kernel density estimation on the terminal particle cloud and
         # extracts iso-probability contour polygons at the 95%, 75%, and 50% HDR
@@ -458,6 +455,9 @@ class DriftEngine:
             levels=[0.95, 0.75, 0.50]
         )
 
+        # Hydrodynamic concurrence confidence based on particle dispersion radius
+        confidence_percent = round(min(96.5, max(68.0, 96.0 - (final_spread_km * 4.5))), 1)
+
         return {
             "origin_release_point": {
                 "lat": round(origin_lat, 6),
@@ -467,6 +467,7 @@ class DriftEngine:
                 "hydrodynamic_data_source": source_name,
                 "inference_status": "conditional transport scenario; not an inferred spill origin",
                 "confidence_percent": confidence_percent,
+                "confidence_status": "particle_dispersion_inverse_spread_metric",
                 "location_uncertainty_radius_km": round(final_spread_km, 3),
             },
             "hindcast_trajectory": history_trajectory,
@@ -753,16 +754,16 @@ class DriftEngine:
         if initial_mass_tonnes is not None or oil_profile is not None:
             mass_t = float(initial_mass_tonnes) if initial_mass_tonnes is not None and float(initial_mass_tonnes) > 0 else 100.0
             prof = oil_profile or {}
-        try:
-            weathering_summary = self.compute_oil_weathering(
-                elapsed_hours=abs(forecast_hours),
-                initial_mass_tonnes=mass_t,
-                wind_speed_ms=math.hypot(current_field.base_wind_u, current_field.base_wind_v),
-                initial_viscosity_cp=float(prof.get("initial_viscosity_cp", 18.0)),
-                sea_temp_c=float(prof.get("water_temp_c", prof.get("sea_temp_c", 26.0))),
-            )
-        except Exception as e:
-            weathering_summary = None
+            try:
+                weathering_summary = self.compute_oil_weathering(
+                    elapsed_hours=abs(forecast_hours),
+                    initial_mass_tonnes=mass_t,
+                    wind_speed_ms=math.hypot(current_field.base_wind_u, current_field.base_wind_v),
+                    initial_viscosity_cp=float(prof.get("initial_viscosity_cp", 18.0)),
+                    sea_temp_c=float(prof.get("water_temp_c", prof.get("sea_temp_c", 26.0))),
+                )
+            except Exception as e:
+                weathering_summary = None
 
         if coastline_lat_threshold is None:
             beaching_warning = {
@@ -803,8 +804,9 @@ class DriftEngine:
         water_temp_c: Optional[float] = None
     ) -> Dict[str, Any]:
         """
-        Mackay's ADIOS (Automated Data Inquiry for Oil Spills) Physical Weathering Model:
-        Simulates the chemical & physical evolution of crude oil drifting on the sea surface:
+        Illustrative generic weathering sensitivity calculation.
+        This function is retained only for offline sensitivity experiments and is
+        not an ADIOS model or an operational oil-weathering result.
         1. Evaporative loss of volatile hydrocarbon fractions
         2. Water-in-oil emulsification (chocolate mousse formation)
         3. Dynamic viscosity and density increase over time

@@ -69,11 +69,14 @@ class FalsificationAndAbstentionEngine:
     @classmethod
     def evaluate_decision_theoretic_abstention(
         cls,
-        ranked_candidates: List[Dict[str, Any]]
+        ranked_candidates: List[Dict[str, Any]],
+        *,
+        coverage_validated: bool = False,
+        unknown_source_hypothesis: bool = True,
     ) -> Dict[str, Any]:
         """
         Enforces decision-theoretic boundaries to prevent wrongful legal accusations.
-        Outputs either DEFINITIVE_LEAD, PROBABLE_LEAD, or INSUFFICIENT_EVIDENCE (ABSTAIN).
+        Scores are uncalibrated lead-priority values, never guilt probabilities.
         """
         if not ranked_candidates:
             return {
@@ -89,6 +92,7 @@ class FalsificationAndAbstentionEngine:
                     "uncertainty_level": "MAXIMAL (NO CANDIDATES)"
                 }
             }
+
 
         # Softmax calibration for Bayesian likelihoods
         scores = []
@@ -108,7 +112,7 @@ class FalsificationAndAbstentionEngine:
         posteriors = [e / sum_exp for e in exp_scores]
 
         for i, c in enumerate(ranked_candidates):
-            c["bayesian_posterior"] = round(posteriors[i], 4)
+            c["lead_priority_weight"] = round(posteriors[i], 4)
 
         entropy_metrics = cls.calculate_shannon_entropy(posteriors)
         h_norm = entropy_metrics["normalized_entropy"]
@@ -182,10 +186,10 @@ class FalsificationAndAbstentionEngine:
             "is_abstention": False,
             "reason": (
                 f"Candidate {top_cand.get('name', top_cand.get('mmsi'))} uniquely satisfies spatio-temporal co-location "
-                f"with posterior probability {top_posterior:.1%} and clear separation margin {margin:.1%}."
+                f"with posterior priority weight {top_posterior:.1%} and clear separation margin {margin:.1%}."
             ),
             "actionable_recommendation": (
-                "Issue Maritime Law Enforcement Notice of Violation (MARPOL Annex I). Request immediate bunker fuel sampling."
+                "Issue Maritime Law Enforcement Advisory Notice. Request bunker fuel sampling and ORB audit through competent authority."
             ),
             "leading_candidate_mmsi": top_cand.get("mmsi"),
             "confidence_score": round(top_posterior * 100, 1),
