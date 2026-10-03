@@ -2094,7 +2094,10 @@ class OceanShieldApp {
         this.suspectType.innerText = culprit.vessel_type;
         const topsisPart = culprit.topsis_closeness_score ? ` • TOPSIS Cᵢ: ${culprit.topsis_closeness_score}%` : '';
         const spoofPart = culprit.spoofing_audit?.has_anomalies ? ` • ⚠️ AIS Gap/Spoof Flagged` : '';
-        this.suspectSummary.innerText = `${isBenchmarkDemo ? 'Benchmark simulated lead' : 'Highest-ranked review lead'}: ${culprit.attribution_tier}. Match Confidence: ${culprit.lead_priority_score.toFixed(1)}% • CPA ${culprit.closest_approach.distance_nm} NM${topsisPart}${spoofPart}; analyst review required.`;
+        const abstentionPart = culprit.abstention_verdict ? `<div style="margin-top:4px; font-size:11px; color:#38bdf8;">⚖️ <strong>Bayesian Legal Gate:</strong> ${culprit.abstention_verdict.decision} (H_norm: ${culprit.abstention_verdict.entropy_metrics.normalized_entropy}) — ${culprit.abstention_verdict.reason}</div>` : '';
+        const advPart = culprit.adversarial_stress_test ? `<div style="margin-top:2px; font-size:11px; color:#34d399;">🛡️ <strong>Adversarial Stress Test:</strong> ${culprit.adversarial_stress_test.verdict} (${culprit.adversarial_stress_test.adversarial_robustness_score}% passed under ±20% current, ±1% leeway, GPS jitter)</div>` : '';
+
+        this.suspectSummary.innerHTML = `<div>${isBenchmarkDemo ? 'Benchmark simulated lead' : 'Highest-ranked review lead'}: <strong>${culprit.attribution_tier}</strong>. Match Confidence: <strong>${culprit.lead_priority_score.toFixed(1)}%</strong> • CPA <strong>${culprit.closest_approach.distance_nm} NM</strong>${topsisPart}${spoofPart}</div>${abstentionPart}${advPart}`;
 
         // Update Executive Simple HUD
         if (this.execSuspectName) this.execSuspectName.innerText = culprit.vessel_name || 'UNKNOWN';
@@ -3178,13 +3181,26 @@ class OceanShieldApp {
   }
 }
 
-// Instantiate on DOM load
+// Instantiate on DOM load with fail-safe splash dismissal
 window.addEventListener('DOMContentLoaded', () => {
-  window.oceanShield = new OceanShieldApp();
-  // Dismiss splash once app is initialized
-  const splash = document.getElementById('appSplash');
-  if (splash) {
-    splash.style.opacity = '0';
-    setTimeout(() => splash.remove(), 500);
+  // Absolute fallback: remove splash after 1.5s regardless of exceptions
+  setTimeout(() => {
+    const s = document.getElementById('appSplash');
+    if (s) {
+      s.style.opacity = '0';
+      setTimeout(() => s.remove(), 400);
+    }
+  }, 1500);
+
+  try {
+    window.oceanShield = new OceanShieldApp();
+  } catch (err) {
+    console.error('OceanShield initialization error:', err);
+  } finally {
+    const splash = document.getElementById('appSplash');
+    if (splash) {
+      splash.style.opacity = '0';
+      setTimeout(() => splash.remove(), 400);
+    }
   }
 });

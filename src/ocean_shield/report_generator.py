@@ -380,6 +380,29 @@ class DossierReportGenerator:
                 Paragraph(f"<b>{spoof.get('integrity_rating', 'NORMAL')}</b>", body_bold)
             ])
 
+        # Bayesian Legal Gate (Shannon Entropy)
+        abst = culprit.get("abstention_verdict", {})
+        if abst:
+            h_norm = abst.get("entropy_metrics", {}).get("normalized_entropy", 0.0)
+            dec_color = "#16a34a" if not abst.get("is_abstention") else "#d97706"
+            suspect_rows.append([
+                Paragraph("Bayesian Legal Gate", body_style),
+                Paragraph(f"<font color='{dec_color}'><b>{abst.get('decision', 'EVALUATED')}</b></font>", body_style),
+                Paragraph(f"Shannon Entropy H<sub>norm</sub>={h_norm:.2f} (Threshold &le;0.82) &bull; Prevents false accusation", body_style),
+                Paragraph(f"<b>{abst.get('confidence_score', 0):.1f}% Conf</b>", body_bold)
+            ])
+
+        # Adversarial Falsification Stress Test
+        adv = culprit.get("adversarial_stress_test", {})
+        if adv:
+            adv_color = "#16a34a" if "RESISTANT" in adv.get("verdict", "") else "#dc2626"
+            suspect_rows.append([
+                Paragraph("Adversarial Stress Test", body_style),
+                Paragraph(f"<font color='{adv_color}'><b>{adv.get('verdict', 'TESTED')}</b></font>", body_style),
+                Paragraph("4 physical attacks: &plusmn;20% ocean current, &plusmn;1% leeway, GPS noise, AIS continuity", body_style),
+                Paragraph(f"<b>{adv.get('adversarial_robustness_score', 0):.0f}% Robust</b>", body_bold)
+            ])
+
         suspect_table = Table(suspect_rows, colWidths=[140, 120, 190, 90])
         suspect_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),

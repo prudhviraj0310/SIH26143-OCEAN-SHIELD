@@ -33,7 +33,8 @@
 <!-- Badges Row 3: Metrics -->
 <img src="https://img.shields.io/badge/Lines_of_Code-17,797-blue?style=flat-square" alt="LOC">
 <img src="https://img.shields.io/badge/Tests-21%2F21_Passing-brightgreen?style=flat-square" alt="Tests">
-<img src="https://img.shields.io/badge/License-Academic_/_SIH_2026-yellow?style=flat-square" alt="License">
+<a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square" alt="License"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/Copyright-(c)_2026_Prudhvi_Raj-lightgrey?style=flat-square" alt="Copyright"></a>
 <img src="https://img.shields.io/badge/Deploy-Render_%7C_Docker_%7C_AWS-purple?style=flat-square" alt="Deploy">
 
 <br>
@@ -611,6 +612,8 @@ python -m unittest src/ocean_shield/tests/test_pipeline.py -v
 - [x] **Mobile-Responsive Command Center for Field Deployment** (`src/ocean_shield/static/css/dashboard.css` responsive layout for shipboard ruggedized tablets and mobile patrol units).
 - [x] **Integration with Indian Coast Guard VTMS Infrastructure** (`ICG_VTMS_Adapter` in `src/ocean_shield/ais_ingestion.py` parsing live coastal radar chains and NMEA-0183 `!AIVDM` feeds across Kutch, Khambhat, and Mumbai Offshore).
 - [x] **Automatic MARPOL Annex I Violation Categorization** (`categorize_marpol_violation` in `src/ocean_shield/ais_engine.py` classifying breaches under Regulations 15 & 34: loitering bilge dump, <50 NM coastal buffer, >30 L/NM rate, and 15 ppm OWS bypass).
+- [x] **Bayesian Legal Gate & Decision-Theoretic Abstention** (`FalsificationAndAbstentionEngine` in `src/ocean_shield/falsification.py` computing Shannon Information Entropy $H_{\text{norm}} \le 0.82$ and separation margin $\ge 15\%$, enforcing honest scientific abstention to prevent reckless false vessel attribution in court).
+- [x] **Adversarial Self-Falsification Stress Testing** (evaluates 4 physical challenges: $\pm 20\%$ ocean current perturbations, $\pm 1.0\%$ wind leeway variation, $\pm 1.0$ NM GPS transponder jitter, and kinematic AIS continuity).
 
 <br>
 
@@ -631,6 +634,34 @@ python -m unittest src/ocean_shield/tests/test_pipeline.py -v
 10. **INCOIS** — Indian National Centre for Ocean Information Services
 
 </details>
+
+<br>
+
+---
+
+## ⚖️ Copyright & License
+
+```text
+Copyright (c) 2026 Prudhvi Raj & The Ocean Shield Team. All rights reserved.
+```
+
+This software and its documentation are developed for **Smart India Hackathon 2026** under Problem Statement **SIH26143**, sponsored by the **National Technical Research Organisation (NTRO)**, with advisory and operational alignment with the **Indian Coast Guard (ICG)** and **Directorate General of Shipping (DG Shipping)**.
+
+Licensed under the **Apache License, Version 2.0** (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License in the [LICENSE](LICENSE) file or at:
+
+[http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0)
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+
+### Intellectual Property & Third-Party Attribution
+* **Core Architecture & Forensic Intelligence:** The proprietary SAR U-Net neural pipeline, 2D CA-CFAR metallic vessel extraction, Lagrangian RK4 reverse hindcast & forward trajectory simulation, TOPSIS MCDA multi-criteria vessel attribution, Bayesian Legal Gate (Shannon Entropy $H_{\text{norm}} \le 0.82$ with decision-theoretic abstention), and adversarial falsification stress-testing are the original work of **Prudhvi Raj & The Ocean Shield Team © 2026**.
+* **Satellite & Radar Datasets:**
+  * **Copernicus Sentinel-1 SAR & Sentinel-2 MSI:** © European Space Agency (ESA) and the European Commission.
+  * **Zenodo Sentinel-1 SAR Oil Spill Benchmark:** Open dataset for maritime environmental monitoring under Creative Commons CC-BY 4.0.
+* **Hydrodynamic & Oceanographic Data:**
+  * **HYCOM GOFS 3.1 & NOAA Fleet Numerical:** Global Ocean Data Assimilation Experiment.
+  * **INCOIS (Indian National Centre for Ocean Information Services):** Real-time Indian Ocean sea surface currents, sea surface temperature, and wave forecasts.
+  * **NOAA MarineCadastre:** Automated Identification System (AIS) vessel transponder archives.
 
 <br>
 

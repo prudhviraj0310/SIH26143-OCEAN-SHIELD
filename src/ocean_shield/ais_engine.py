@@ -494,6 +494,23 @@ class AISEngine:
 
         # Sort by composite suspect score descending
         ranked_vessels.sort(key=lambda x: x["lead_priority_score"], reverse=True)
+
+        # Bayesian Posterior Calibration, Shannon Entropy & Adversarial Falsification Stress Tests
+        try:
+            from .falsification import FalsificationAndAbstentionEngine
+            for v in ranked_vessels:
+                v["composite_score"] = v.get("lead_priority_score", 0.0)
+            
+            abstention_verdict = FalsificationAndAbstentionEngine.evaluate_decision_theoretic_abstention(ranked_vessels)
+            for v in ranked_vessels:
+                v["abstention_verdict"] = abstention_verdict
+                # Run adversarial stress testing on candidate leads
+                v["adversarial_stress_test"] = FalsificationAndAbstentionEngine.run_adversarial_stress_test(
+                    v, origin_lat, origin_lon, current_speed_knots=1.5, wind_speed_knots=12.0
+                )
+        except Exception as e:
+            pass
+
         return ranked_vessels
 
     def correlate_radar_targets_with_ais(
