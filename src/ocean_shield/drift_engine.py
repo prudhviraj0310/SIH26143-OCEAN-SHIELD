@@ -743,15 +743,21 @@ class DriftEngine:
 
             current_t_hours += (dt_sec / 3600.0)
 
+        # ADIOS Physical Weathering: Computed when initial_mass_tonnes or oil_profile is provided
         weathering_summary = None
-        if initial_mass_tonnes is not None and oil_profile:
+        if initial_mass_tonnes is not None or oil_profile is not None:
+            mass_t = float(initial_mass_tonnes) if initial_mass_tonnes is not None and float(initial_mass_tonnes) > 0 else 100.0
+            prof = oil_profile or {}
+        try:
             weathering_summary = self.compute_oil_weathering(
                 elapsed_hours=abs(forecast_hours),
-                initial_mass_tonnes=initial_mass_tonnes,
+                initial_mass_tonnes=mass_t,
                 wind_speed_ms=math.hypot(current_field.base_wind_u, current_field.base_wind_v),
-                initial_viscosity_cp=float(oil_profile.get("initial_viscosity_cp", 18.0)),
-                sea_temp_c=float(oil_profile.get("water_temp_c", 26.0)),
+                initial_viscosity_cp=float(prof.get("initial_viscosity_cp", 18.0)),
+                sea_temp_c=float(prof.get("water_temp_c", prof.get("sea_temp_c", 26.0))),
             )
+        except Exception as e:
+            weathering_summary = None
 
         if coastline_lat_threshold is None:
             beaching_warning = {

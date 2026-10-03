@@ -13,10 +13,14 @@ MAX_AIS_UPLOAD_BYTES = 25 * 1024 * 1024
 
 
 def _value(row: Dict[str, str], *names: str, default: str = "") -> str:
+    row_lower = {k.strip().lower(): v for k, v in row.items() if k}
     for name in names:
         value = row.get(name)
         if value is not None and str(value).strip():
             return str(value).strip()
+        val_lower = row_lower.get(name.strip().lower())
+        if val_lower is not None and str(val_lower).strip():
+            return str(val_lower).strip()
     return default
 
 
@@ -107,10 +111,14 @@ def parse_marinecadastre_csv(
         raise ValueError("AIS CSV must be UTF-8 encoded.") from exc
 
     reader = csv.DictReader(io.StringIO(text))
-    required = {"MMSI", "BaseDateTime", "LAT", "LON"}
-    headers = set(reader.fieldnames or [])
-    if not required.issubset(headers):
-        raise ValueError("AIS CSV requires MMSI, BaseDateTime, LAT, and LON columns.")
+    raw_headers = list(reader.fieldnames or [])
+    headers_lower = {h.strip().lower(): h for h in raw_headers}
+    has_lat = "lat" in headers_lower or "latitude" in headers_lower
+    has_lon = "lon" in headers_lower or "longitude" in headers_lower
+    has_mmsi = "mmsi" in headers_lower
+    has_time = "basedatetime" in headers_lower or "timestamp" in headers_lower or "time" in headers_lower or "datetime" in headers_lower
+    if not (has_lat and has_lon and has_mmsi and has_time):
+        raise ValueError("AIS CSV requires MMSI, BaseDateTime (or Timestamp), LAT, and LON columns.")
 
     vessel_rows: Dict[int, Dict[str, Any]] = {}
     rejected_rows = 0

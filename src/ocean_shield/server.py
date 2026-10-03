@@ -712,11 +712,14 @@ async def simulate_drift(req: SimulateDriftRequest):
     )
 
     # Forward Forecast + ADIOS Weathering
+    coastline_threshold = scenario_data.get("coastline_hazard", {}).get("coastline_lat_threshold") if scenario_data else None
+    init_mass = req.initial_mass_tonnes if req.initial_mass_tonnes is not None else (100.0 if req.demo_mode else None)
     forecast_res = drift_engine.run_forecast(
         req.slick_lat, req.slick_lon, current_field,
         forecast_hours=req.forecast_hours,
-        initial_mass_tonnes=req.initial_mass_tonnes,
+        initial_mass_tonnes=init_mass,
         oil_profile=req.oil_profile,
+        coastline_lat_threshold=coastline_threshold,
     )
 
     return {

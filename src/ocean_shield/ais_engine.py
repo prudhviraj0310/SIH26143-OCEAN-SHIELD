@@ -276,8 +276,18 @@ class AISEngine:
         for i in range(1, len(track)):
             p_prev = track[i-1]
             p_curr = track[i]
-            t_prev = float(p_prev.get("relative_time_hours", 0.0))
-            t_curr = float(p_curr.get("relative_time_hours", 0.0))
+            t_prev_raw = p_prev.get("relative_time_hours")
+            t_curr_raw = p_curr.get("relative_time_hours")
+            try:
+                t_prev = float(t_prev_raw) if t_prev_raw is not None else 0.0
+            except (ValueError, TypeError):
+                t_prev = 0.0
+
+            try:
+                t_curr = float(t_curr_raw) if t_curr_raw is not None else 0.0
+            except (ValueError, TypeError):
+                t_curr = 0.0
+
             dt_hours = abs(t_curr - t_prev)
             dt_min = dt_hours * 60.0
 
@@ -290,8 +300,18 @@ class AISEngine:
                 anomalies.append(f"CORRIDOR_TRANSPONDER_BLACKOUT: {dt_min:.1f} min gap during closest approach window")
 
             # Speed jump check (acceleration > 3.0 kts / min)
-            sog_prev = float(p_prev.get("sog_knots", 0.0))
-            sog_curr = float(p_curr.get("sog_knots", 0.0))
+            sog_prev_raw = p_prev.get("sog_knots")
+            sog_curr_raw = p_curr.get("sog_knots")
+            try:
+                sog_prev = float(sog_prev_raw) if sog_prev_raw is not None else 0.0
+            except (ValueError, TypeError):
+                sog_prev = 0.0
+
+            try:
+                sog_curr = float(sog_curr_raw) if sog_curr_raw is not None else 0.0
+            except (ValueError, TypeError):
+                sog_curr = 0.0
+
             if dt_min > 0.05:
                 accel = abs(sog_curr - sog_prev) / dt_min
                 if accel > max_accel_kts_min:
@@ -300,7 +320,17 @@ class AISEngine:
                     anomalies.append(f"KINEMATIC_SPEED_JUMP: Impossible acceleration of {accel:.1f} kts/min (GPS spoofing / replay artifact)")
 
         # 3. Draught change check (if draught field provided)
-        draughts = [float(p.get("draught_m", 0.0)) for p in track if p.get("draught_m") is not None]
+        draughts = []
+        for p in track:
+            d_raw = p.get("draught_m")
+            if d_raw is not None:
+                try:
+                    d_val = float(d_raw)
+                    if not math.isnan(d_val) and d_val > 0:
+                        draughts.append(d_val)
+                except (ValueError, TypeError):
+                    continue
+
         if len(draughts) >= 2 and draughts[0] > 0:
             draught_drop = draughts[0] - draughts[-1]
             if draught_drop >= 0.4:
@@ -350,13 +380,38 @@ class AISEngine:
 
         X = np.zeros((n, 5), dtype=np.float64)
         for i, v in enumerate(candidate_vessels):
-            cpa = v.get("closest_approach", {})
-            kin = v.get("kinematics", {})
-            X[i, 0] = max(0.05, float(cpa.get("distance_nm", 15.0)))
-            X[i, 1] = max(0.05, float(cpa.get("time_diff_h", 5.0)))
-            X[i, 2] = max(0.0, float(kin.get("speed_drop_knots", 0.0)))
+            cpa = v.get("closest_approach") or {}
+            kin = v.get("kinematics") or {}
+
+            d_raw = cpa.get("distance_nm")
+            try:
+                d_val = float(d_raw) if d_raw is not None and not math.isnan(float(d_raw)) else 15.0
+            except (ValueError, TypeError):
+                d_val = 15.0
+
+            t_raw = cpa.get("time_diff_h")
+            try:
+                t_val = float(t_raw) if t_raw is not None and not math.isnan(float(t_raw)) else 5.0
+            except (ValueError, TypeError):
+                t_val = 5.0
+
+            s_drop_raw = kin.get("speed_drop_knots")
+            try:
+                s_drop_val = float(s_drop_raw) if s_drop_raw is not None and not math.isnan(float(s_drop_raw)) else 0.0
+            except (ValueError, TypeError):
+                s_drop_val = 0.0
+
+            c_var_raw = kin.get("course_variance_deg")
+            try:
+                c_var_val = float(c_var_raw) if c_var_raw is not None and not math.isnan(float(c_var_raw)) else 0.0
+            except (ValueError, TypeError):
+                c_var_val = 0.0
+
+            X[i, 0] = max(0.05, d_val)
+            X[i, 1] = max(0.05, t_val)
+            X[i, 2] = max(0.0, s_drop_val)
             X[i, 3] = float(AISEngine.VESSEL_TYPE_WEIGHTS.get(v.get("vessel_type"), 40.0))
-            X[i, 4] = max(0.0, float(kin.get("course_variance_deg", 0.0)))
+            X[i, 4] = max(0.0, c_var_val)
 
         # 1. Vector normalization
         norms = np.sqrt(np.sum(X ** 2, axis=0))
