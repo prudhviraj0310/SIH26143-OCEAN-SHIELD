@@ -86,11 +86,16 @@ _SRI_LANKA = [
 
 def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Computes great circle distance between two points in kilometers."""
+    try:
+        phi1, phi2 = math.radians(float(lat1)), math.radians(float(lat2))
+        dphi = math.radians(float(lat2) - float(lat1))
+        dlambda = math.radians(float(lon2) - float(lon1))
+    except (ValueError, TypeError):
+        return 99999.0
+
     r = 6371.0  # Earth mean radius in km
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
     a = math.sin(dphi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2.0) ** 2
+    a = min(1.0, max(0.0, a))
     return r * (2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a)))
 
 
@@ -1035,8 +1040,12 @@ class DriftEngine:
             circle_iou = (smaller_r ** 2) / (larger_r ** 2)
         else:
             r1, r2 = r_pred_km, r_obs_km
-            part1 = r1 * r1 * math.acos((d * d + r1 * r1 - r2 * r2) / (2.0 * d * r1))
-            part2 = r2 * r2 * math.acos((d * d + r2 * r2 - r1 * r1) / (2.0 * d * r2))
+            denom1 = max(1e-6, 2.0 * d * r1)
+            denom2 = max(1e-6, 2.0 * d * r2)
+            arg1 = max(-1.0, min(1.0, (d * d + r1 * r1 - r2 * r2) / denom1))
+            arg2 = max(-1.0, min(1.0, (d * d + r2 * r2 - r1 * r1) / denom2))
+            part1 = r1 * r1 * math.acos(arg1)
+            part2 = r2 * r2 * math.acos(arg2)
             part3 = 0.5 * math.sqrt(max(0.0, (-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2)))
             int_area = part1 + part2 - part3
             un_area = math.pi * r1 * r1 + math.pi * r2 * r2 - int_area

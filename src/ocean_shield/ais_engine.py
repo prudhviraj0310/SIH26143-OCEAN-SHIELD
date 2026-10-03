@@ -57,12 +57,16 @@ class AISEngine:
     @staticmethod
     def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """Computes great circle distance between two points in kilometers."""
-        r = 6371.0  # Earth mean radius in km
-        phi1, phi2 = math.radians(lat1), math.radians(lat2)
-        dphi = math.radians(lat2 - lat1)
-        dlambda = math.radians(lon2 - lon1)
+        try:
+            phi1, phi2 = math.radians(float(lat1)), math.radians(float(lat2))
+            dphi = math.radians(float(lat2) - float(lat1))
+            dlambda = math.radians(float(lon2) - float(lon1))
+        except (ValueError, TypeError):
+            return 99999.0
 
+        r = 6371.0  # Earth mean radius in km
         a = math.sin(dphi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2.0) ** 2
+        a = min(1.0, max(0.0, a))
         c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
         return r * c
 
@@ -597,27 +601,39 @@ class AISEngine:
 
         for tgt in radar_targets:
             tgt_copy = dict(tgt)
-            target_time = float(tgt_copy.get("relative_time_hours", 0.0))
+            try:
+                target_time = float(tgt_copy.get("relative_time_hours", 0.0))
+            except (ValueError, TypeError):
+                target_time = 0.0
+
+            try:
+                tgt_lat = float(tgt_copy.get("lat", 0.0))
+                tgt_lon = float(tgt_copy.get("lon", 0.0))
+            except (ValueError, TypeError):
+                continue
+
             min_dist_nm = float("inf")
             matched_vessel = None
             time_aligned_positions = []
             for vessel in ais_vessels:
                 for point in vessel.get("trajectory", []):
                     try:
-                        time_delta = abs(float(point.get("relative_time_hours")) - target_time)
-                    except (TypeError, ValueError):
+                        time_delta = abs(float(point.get("relative_time_hours", 0.0)) - target_time)
+                        p_lat = float(point["lat"])
+                        p_lon = float(point["lon"])
+                    except (TypeError, ValueError, KeyError):
                         continue
                     if time_delta <= max_time_difference_h:
                         time_aligned_positions.append({
                             "mmsi": vessel.get("mmsi"),
                             "name": vessel.get("vessel_name", "UNKNOWN"),
-                            "lat": point["lat"],
-                            "lon": point["lon"],
+                            "lat": p_lat,
+                            "lon": p_lon,
                             "time_difference_h": time_delta,
                         })
 
             for ap in time_aligned_positions:
-                d_nm = self.haversine_distance_nm(tgt["lat"], tgt["lon"], ap["lat"], ap["lon"])
+                d_nm = self.haversine_distance_nm(tgt_lat, tgt_lon, ap["lat"], ap["lon"])
                 if d_nm < min_dist_nm:
                     min_dist_nm = d_nm
                     matched_vessel = ap
@@ -629,7 +645,7 @@ class AISEngine:
                 tgt_copy["status"] = "COOPERATIVE_AIS_VESSEL"
                 matched_targets.append(tgt_copy)
             else:
-                dist_to_origin_nm = self.haversine_distance_nm(tgt["lat"], tgt["lon"], origin_lat, origin_lon)
+                dist_to_origin_nm = self.haversine_distance_nm(tgt_lat, tgt_lon, origin_lat, origin_lon)
                 tgt_copy["has_matched_ais"] = False
                 tgt_copy["matched_mmsi"] = "NONE (NO TIME-ALIGNED AIS POSITION)"
                 tgt_copy["distance_to_spill_origin_nm"] = round(dist_to_origin_nm, 2)
