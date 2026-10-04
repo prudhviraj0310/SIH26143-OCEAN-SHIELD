@@ -5,10 +5,31 @@ reconstructs spatio-temporal vessel positions around the spill origin window (x0
 and produces analyst-review traffic leads. It does not determine responsibility.
 """
 
+import logging
 import math
+from copy import deepcopy
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Any, Optional
 import numpy as np
+
+from .falsification import FalsificationAndAbstentionEngine
+
+logger = logging.getLogger(__name__)
+
+
+def _json_safe(value: Any) -> Any:
+    """Unavailable numeric evidence is null, never a nonstandard JSON NaN."""
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (float, np.floating)):
+        return float(value) if math.isfinite(value) else None
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.bool_):
+        return bool(value)
+    return value
 
 
 class AISEngine:
@@ -74,6 +95,23 @@ class AISEngine:
         """Computes distance in Nautical Miles (1 NM = 1.852 km)."""
         return self.haversine_distance_km(lat1, lon1, lat2, lon2) / 1.852
 
+    @staticmethod
+    def _valid_position_track(trajectory: Any) -> List[Dict[str, Any]]:
+        """Use only finite actual fixes for proximity; the audit retains rejections."""
+        number = FalsificationAndAbstentionEngine.finite_number
+        track = []
+        for point in trajectory if isinstance(trajectory, (list, tuple)) else []:
+            if not isinstance(point, dict):
+                continue
+            time = number(point.get("relative_time_hours"))
+            lat, lon = number(point.get("lat"), -90, 90), number(point.get("lon"), -180, 180)
+            if time is None or lat is None or lon is None:
+                continue
+            track.append({**point, "relative_time_hours": time, "lat": lat, "lon": lon,
+                          "sog_knots": number(point.get("sog_knots"), 0, 102.2),
+                          "cog_degrees": number(point.get("cog_degrees"), 0, 360)})
+        return sorted(track, key=lambda point: point["relative_time_hours"])
+
     def filter_vessel_traffic(
         self,
         vessels: List[Dict[str, Any]],
@@ -92,7 +130,9 @@ class AISEngine:
         filtered_candidates = []
 
         for v in vessels:
-            track = sorted(v.get("trajectory", []), key=lambda point: point.get("relative_time_hours", 0.0))
+            if not isinstance(v, dict):
+                continue
+            track = self._valid_position_track(v.get("trajectory"))
             if not track:
                 continue
 
@@ -112,11 +152,17 @@ class AISEngine:
                 for pt in track:
                     pt_t = pt.get("relative_time_hours", 0.0)
                     for step in hindcast_trajectory:
-                        step_t = step.get("relative_time_hours", 0.0)
+                        if not isinstance(step, dict) or not isinstance(step.get("centroid"), dict):
+                            continue
+                        step_t = FalsificationAndAbstentionEngine.finite_number(step.get("relative_time_hours"))
+                        step_lat = FalsificationAndAbstentionEngine.finite_number(step["centroid"].get("lat"), -90, 90)
+                        step_lon = FalsificationAndAbstentionEngine.finite_number(step["centroid"].get("lon"), -180, 180)
+                        if step_t is None or step_lat is None or step_lon is None:
+                            continue
                         if abs(pt_t - step_t) <= 1.0:
                             d_nm = self.haversine_distance_nm(
                                 pt["lat"], pt["lon"],
-                                step["centroid"]["lat"], step["centroid"]["lon"]
+                                step_lat, step_lon
                             )
                             if d_nm < min_dist_nm:
                                 min_dist_nm = d_nm
@@ -149,17 +195,14 @@ class AISEngine:
         Computes navigation context only. Speed changes, course changes, and AIS
         reporting gaps have many benign causes and are not evidence of discharge.
         """
-        track = sorted(vessel.get("trajectory", []), key=lambda point: point.get("relative_time_hours", 0.0))
-        if len(track) < 3:
+        track = self._valid_position_track(vessel.get("trajectory"))
+        if len(track) < 3 or any(pt["sog_knots"] is None or pt["cog_degrees"] is None for pt in track):
             return {
-                "speed_drop_knots": 0.0,
-                "min_speed_near_origin": 0.0,
-                "cruise_speed": 14.0,
-                "speed_anomaly_score": 10.0,
-                "course_variance_deg": 0.0,
-                "course_anomaly_score": 10.0,
-                "has_ais_gap": False,
-                "behavior_summary": "Insufficient track points for kinematic analysis"
+                "status": "NOT_ASSESSED", "speed_drop_knots": None,
+                "min_speed_near_origin": None, "cruise_speed": None,
+                "speed_anomaly_score": None, "course_variance_deg": None,
+                "course_anomaly_score": None, "has_ais_gap": None,
+                "behavior_summary": "Insufficient valid speed/course telemetry for navigation context"
             }
 
         speeds = [pt.get("sog_knots", 14.0) for pt in track]
@@ -225,6 +268,7 @@ class AISEngine:
                 has_ais_gap = True
 
         return {
+            "status": "ASSESSED",
             "speed_drop_knots": round(speed_drop, 1),
             "min_speed_near_origin": round(min_near_speed, 1),
             "cruise_speed": round(cruise_speed, 1),
@@ -244,114 +288,106 @@ class AISEngine:
         origin_time_relative_h: float = 0.0,
         cpa_time_relative_h: Optional[float] = None
     ) -> Dict[str, Any]:
-        """
-        Forensic AIS Integrity & Spoofing Detector:
-        1. Transponder Blackout Gaps: flags blackout > 30 min in proximity to origin.
-        2. Kinematic Speed Jumps: flags physically impossible acceleration > 3.0 kts/min.
-        3. Draught Drop / De-ballasting Signature: checks for sudden draught reduction.
-        4. MMSI / MID Validity: verifies standard 9-digit ITU MID (201-775).
-        """
-        track = sorted(trajectory, key=lambda p: p.get("relative_time_hours", 0.0))
-        anomalies = []
-        is_suspicious = False
-        max_gap_min = 0.0
-        max_accel_kts_min = 0.0
+        """Audit supplied telemetry, never infer receiver coverage from silence.
 
-        # 1. MMSI Validity check
-        mmsi_valid = True
-        if mmsi is not None:
+        Continuity needs >=2 finite position/time fixes at distinct times spanning
+        the CPA time, with no rejected fixes. Severe flags block independently.
+        MMSI validation is a format/range check, not registry authentication.
+        """
+        number = FalsificationAndAbstentionEngine.finite_number
+        input_valid = isinstance(trajectory, (list, tuple))
+        raw_track = trajectory if input_valid else []
+        anomalies, reasons = [], []
+        timed_track, position_track = [], []
+        rejected = 0
+        identity_conflict = False
+        mmsi_valid = None
+        if mmsi is None:
+            reasons.append("Vessel identity is missing.")
+        else:
             mmsi_str = str(mmsi)
-            if len(mmsi_str) != 9:
-                anomalies.append("INVALID_MMSI_LENGTH: Transponder ID does not match 9-digit ITU standard")
-                mmsi_valid = False
-            else:
-                try:
-                    mid = int(mmsi_str[:3])
-                    if not (201 <= mid <= 775):
-                        anomalies.append(f"UNALLOCATED_MID: Maritime Identification Digit {mid} is outside allocated ITU range")
-                        mmsi_valid = False
-                except ValueError:
-                    mmsi_valid = False
+            mmsi_valid = len(mmsi_str) == 9 and mmsi_str.isdigit() and 201 <= int(mmsi_str[:3]) <= 775
+            if not mmsi_valid:
+                anomalies.append("INVALID_MMSI_OR_UNALLOCATED_MID: ID fails the 9-digit maritime MID range check.")
+        if not input_valid:
+            reasons.append("Trajectory must be a list of telemetry records.")
+        for raw in raw_track:
+            if not isinstance(raw, dict):
+                rejected += 1
+                continue
+            time = number(raw.get("relative_time_hours"))
+            lat, lon = number(raw.get("lat"), -90, 90), number(raw.get("lon"), -180, 180)
+            speed = number(raw.get("sog_knots"), 0, 102.2)
+            if raw.get("mmsi") is not None and str(raw["mmsi"]) != str(mmsi):
+                identity_conflict = True
+            if time is None:
+                rejected += 1
+                continue
+            point = {**raw, "relative_time_hours": time, "lat": lat, "lon": lon, "sog_knots": speed}
+            timed_track.append(point)
+            if lat is not None and lon is not None:
+                position_track.append(point)
+            if lat is None or lon is None or (raw.get("sog_knots") is not None and speed is None):
+                rejected += 1
+        timed_track.sort(key=lambda p: p["relative_time_hours"])
+        position_track.sort(key=lambda p: p["relative_time_hours"])
+        if identity_conflict:
+            anomalies.append("IDENTITY_CONFLICT: A position record reports a different MMSI.")
 
-        # 2. Transponder Gap & Acceleration checks
-        cpa_t = cpa_time_relative_h if cpa_time_relative_h is not None else origin_time_relative_h
-        corridor_gap = False
-
-        for i in range(1, len(track)):
-            p_prev = track[i-1]
-            p_curr = track[i]
-            t_prev_raw = p_prev.get("relative_time_hours")
-            t_curr_raw = p_curr.get("relative_time_hours")
-            try:
-                t_prev = float(t_prev_raw) if t_prev_raw is not None else 0.0
-            except (ValueError, TypeError):
-                t_prev = 0.0
-
-            try:
-                t_curr = float(t_curr_raw) if t_curr_raw is not None else 0.0
-            except (ValueError, TypeError):
-                t_curr = 0.0
-
-            dt_hours = abs(t_curr - t_prev)
-            dt_min = dt_hours * 60.0
-
-            if dt_min > max_gap_min:
-                max_gap_min = dt_min
-
-            # Check if gap occurs near CPA / origin window (within 2.5 hours)
-            if dt_min > 30.0 and abs(t_prev - cpa_t) <= 2.5:
+        cpa_t = number(cpa_time_relative_h if cpa_time_relative_h is not None else origin_time_relative_h)
+        max_gap_min = max_accel_kts_min = 0.0
+        corridor_gap = impossible_speed_jump = position_jump = False
+        for previous, current in zip(timed_track, timed_track[1:]):
+            t_previous, t_current = previous["relative_time_hours"], current["relative_time_hours"]
+            dt_min = (t_current - t_previous) * 60.0
+            max_gap_min = max(max_gap_min, dt_min)
+            if (dt_min > 30 and cpa_t is not None
+                    and t_previous <= cpa_t + 2.5 and t_current >= cpa_t - 2.5):
                 corridor_gap = True
-                anomalies.append(f"CORRIDOR_TRANSPONDER_BLACKOUT: {dt_min:.1f} min gap during closest approach window")
+                anomalies.append(f"CORRIDOR_TRANSPONDER_BLACKOUT: {dt_min:.1f} min reporting gap near CPA; verify receiver coverage.")
+            if previous["sog_knots"] is not None and current["sog_knots"] is not None:
+                speed_difference = abs(current["sog_knots"] - previous["sog_knots"])
+                acceleration = speed_difference / dt_min if dt_min > 0 else 0.0
+                max_accel_kts_min = max(max_accel_kts_min, acceleration)
+                if acceleration > 3 or (dt_min == 0 and speed_difference > 0):
+                    impossible_speed_jump = True
+                    anomalies.append("KINEMATIC_SPEED_JUMP: Inconsistent simultaneous speeds or acceleration above 3 kts/min.")
+        for previous, current in zip(position_track, position_track[1:]):
+            dt_hours = current["relative_time_hours"] - previous["relative_time_hours"]
+            distance_nm = AISEngine.haversine_distance_km(
+                previous["lat"], previous["lon"], current["lat"], current["lon"]) / 1.852
+            if (dt_hours == 0 and distance_nm > 0.1) or (dt_hours > 0 and distance_nm / dt_hours > 100):
+                position_jump = True
+                anomalies.append("POSITION_JUMP: Position displacement requires more than 100 knots or contradicts simultaneous fixes.")
 
-            # Speed jump check (acceleration > 3.0 kts / min)
-            sog_prev_raw = p_prev.get("sog_knots")
-            sog_curr_raw = p_curr.get("sog_knots")
-            try:
-                sog_prev = float(sog_prev_raw) if sog_prev_raw is not None else 0.0
-            except (ValueError, TypeError):
-                sog_prev = 0.0
-
-            try:
-                sog_curr = float(sog_curr_raw) if sog_curr_raw is not None else 0.0
-            except (ValueError, TypeError):
-                sog_curr = 0.0
-
-            if dt_min > 0.05:
-                accel = abs(sog_curr - sog_prev) / dt_min
-                if accel > max_accel_kts_min:
-                    max_accel_kts_min = accel
-                if accel > 3.0:
-                    anomalies.append(f"KINEMATIC_SPEED_JUMP: Impossible acceleration of {accel:.1f} kts/min (GPS spoofing / replay artifact)")
-
-        # 3. Draught change check (if draught field provided)
-        draughts = []
-        for p in track:
-            d_raw = p.get("draught_m")
-            if d_raw is not None:
-                try:
-                    d_val = float(d_raw)
-                    if not math.isnan(d_val) and d_val > 0:
-                        draughts.append(d_val)
-                except (ValueError, TypeError):
-                    continue
-
-        if len(draughts) >= 2 and draughts[0] > 0:
-            draught_drop = draughts[0] - draughts[-1]
-            if draught_drop >= 0.4:
-                anomalies.append(f"DRAUGHT_REDUCTION_DETECTED: {draught_drop:.2f}m draught reduction across corridor (cargo / ballast discharge indicator)")
-
-        if anomalies:
-            is_suspicious = True
-
+        position_times = [p["relative_time_hours"] for p in position_track]
+        span = position_times[-1] - position_times[0] if position_times else 0.0
+        cpa_covered = bool(position_times and cpa_t is not None and position_times[0] <= cpa_t <= position_times[-1])
+        if len(position_track) < 2:
+            reasons.append("At least two valid geographic position/time fixes are required.")
+        if len(set(position_times)) < 2:
+            reasons.append("At least two distinct finite telemetry times are required.")
+        if rejected:
+            reasons.append(f"{rejected} telemetry records have invalid/missing required fields.")
+        if not cpa_covered:
+            reasons.append("Valid position telemetry does not span the CPA time.")
+        telemetry_validated = input_valid and len(position_track) >= 2 and span > 0 and rejected == 0 and cpa_covered
+        status = "ASSESSED" if telemetry_validated and mmsi_valid is not None else "NOT_ASSESSED"
+        compromised = bool(anomalies)
         return {
-            "has_anomalies": is_suspicious,
-            "anomalies_detected": anomalies,
-            "anomaly_count": len(anomalies),
-            "max_gap_minutes": round(max_gap_min, 1),
-            "max_acceleration_kts_min": round(max_accel_kts_min, 2),
-            "corridor_blackout": corridor_gap,
-            "mmsi_valid": mmsi_valid,
-            "integrity_rating": "COMPROMISED / ANOMALOUS" if is_suspicious else "VERIFIED_CONTINUOUS"
+            "schema_version": 1, "status": status,
+            "has_anomalies": compromised, "anomalies_detected": anomalies, "anomaly_count": len(anomalies),
+            "assessment_reasons": reasons, "total_fixes": len(raw_track), "rejected_fixes": rejected,
+            "valid_time_fixes": len(timed_track), "valid_position_fixes": len(position_track),
+            "valid_speed_fixes": sum(p["sog_knots"] is not None for p in timed_track),
+            "time_span_hours": span, "cpa_time_covered": cpa_covered,
+            "telemetry_validated": telemetry_validated,
+            "max_gap_minutes": max_gap_min, "max_acceleration_kts_min": max_accel_kts_min,
+            "corridor_blackout": corridor_gap, "impossible_speed_jump": impossible_speed_jump,
+            "identity_conflict": identity_conflict, "position_jump": position_jump, "mmsi_valid": mmsi_valid,
+            "integrity_rating": ("COMPROMISED / ANOMALOUS" if compromised else
+                                 "VERIFIED_CONTINUOUS" if status == "ASSESSED" else "NOT_ASSESSED"),
+            "identity_check": "format_and_mid_range_only_not_registry_authentication",
         }
 
     @staticmethod
@@ -362,11 +398,11 @@ class AISEngine:
         TOPSIS (Technique for Order Preference by Similarity to Ideal Solution)
         Multi-Criteria Decision Analysis (MCDA) + Borda Count Rank Aggregation.
 
-        Evaluates 5 orthogonal attribution criteria:
+        Descriptive comparison of five criteria; not the evidence-gate ranking:
           C1 [Cost]: CPA Distance (NM) — lower is closer to discharge origin
           C2 [Cost]: Delta-T Time Coincidence (h) — lower is better time alignment
-          C3 [Benefit]: Speed Deceleration Near Origin (knots) — higher drop indicates discharge
-          C4 [Benefit]: Ship Hazard Prior Score — higher tanker/hazardous capacity
+          C3 [Benefit]: Speed Deceleration Near Origin (knots) — navigation context
+          C4 [Benefit]: Vessel Class Screen — descriptive metadata only
           C5 [Benefit]: Course Zigzag Variance (deg) — higher maneuvering
         """
         if not candidate_vessels:
@@ -460,7 +496,9 @@ class AISEngine:
         candidate_vessels: List[Dict[str, Any]],
         origin_lat: float,
         origin_lon: float,
-        origin_time_relative_h: float
+        origin_time_relative_h: float,
+        *,
+        coverage_validated: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Computes an uncalibrated lead-priority score. Only spatio-temporal
@@ -470,24 +508,16 @@ class AISEngine:
         ranked_vessels = []
 
         for v in candidate_vessels:
-            cpa = v.get("closest_approach") or {}
-            raw_dist = cpa.get("distance_nm", 999.0)
-            raw_time = cpa.get("time_diff_h", 999.0)
-            try:
-                dist_nm = float(raw_dist) if not math.isnan(float(raw_dist)) and float(raw_dist) >= 0 else 999.0
-            except (ValueError, TypeError):
-                dist_nm = 999.0
-
-            try:
-                time_diff_h = float(raw_time) if not math.isnan(float(raw_time)) else 999.0
-            except (ValueError, TypeError):
-                time_diff_h = 999.0
+            cpa = v.get("closest_approach")
+            cpa = cpa if isinstance(cpa, dict) else {}
+            dist_nm = FalsificationAndAbstentionEngine.finite_number(cpa.get("distance_nm"), 0)
+            time_diff_h = FalsificationAndAbstentionEngine.finite_number(cpa.get("time_diff_h"), 0)
 
             # 1. Proximity score (Gaussian spatial decay)
-            s_prox = 100.0 * math.exp(-(dist_nm ** 2) / (2.0 * (self.cpa_sigma_nm ** 2)))
+            s_prox = 100.0 * math.exp(-0.5 * min(40.0, dist_nm / self.cpa_sigma_nm) ** 2) if dist_nm is not None else None
 
             # 2. Temporal coincidence score (Gaussian temporal decay)
-            s_time = 100.0 * math.exp(-(time_diff_h ** 2) / (2.0 * (self.temporal_sigma_hours ** 2)))
+            s_time = 100.0 * math.exp(-0.5 * min(40.0, time_diff_h / self.temporal_sigma_hours) ** 2) if time_diff_h is not None else None
 
             # Navigation context is descriptive, not an attribution factor.
             kinematics = self.analyze_vessel_kinematics(v, origin_time_relative_h)
@@ -495,11 +525,14 @@ class AISEngine:
             s_course = kinematics["course_anomaly_score"]
             v_type = v.get("vessel_type", "Other / Unknown")
             s_type = None
-            composite_score = round(0.6 * s_prox + 0.4 * s_time, 1)
+            composite_score = 0.6 * s_prox + 0.4 * s_time if s_prox is not None and s_time is not None else None
 
             # Lead-priority tier. Scores are heuristic ranking signals, not a
             # calibrated probability or a finding of responsibility.
-            if composite_score >= 80.0:
+            if composite_score is None:
+                attribution_tier = "NOT_ASSESSED (INVALID CPA INPUT)"
+                flag_color = "#64748b"
+            elif composite_score >= 80.0:
                 attribution_tier = "HIGH-PRIORITY LEAD (REVIEW REQUIRED)"
                 flag_color = "#ff3366"  # Red
             elif composite_score >= 60.0:
@@ -511,18 +544,22 @@ class AISEngine:
 
             pt = cpa.get("point") or {}
             candidate_release_point = {
-                "lat": pt.get("lat", origin_lat),
-                "lon": pt.get("lon", origin_lon),
-                "relative_time_hours": pt.get("relative_time_hours", origin_time_relative_h)
+                "lat": FalsificationAndAbstentionEngine.finite_number(pt.get("lat"), -90, 90),
+                "lon": FalsificationAndAbstentionEngine.finite_number(pt.get("lon"), -180, 180),
+                "relative_time_hours": FalsificationAndAbstentionEngine.finite_number(pt.get("relative_time_hours"))
             }
+            if any(value is None for value in candidate_release_point.values()):
+                candidate_release_point = None
 
             # AIS Spoofing & Integrity Audit
-            spoofing_audit = self.detect_ais_spoofing_and_gaps(
-                v.get("trajectory", []),
-                v.get("mmsi"),
-                origin_time_relative_h,
-                cpa.get("time_diff_h")
-            )
+            try:
+                spoofing_audit = self.detect_ais_spoofing_and_gaps(
+                    v.get("trajectory", []), v.get("mmsi"), origin_time_relative_h,
+                    cpa.get("time_relative_h")
+                )
+            except Exception as exc:
+                logger.warning("AIS continuity audit unavailable: %s", exc)
+                spoofing_audit = {"status": "UNAVAILABLE", "integrity_rating": "NOT_ASSESSED"}
 
             v_result = {
                 "mmsi": v.get("mmsi"),
@@ -542,18 +579,24 @@ class AISEngine:
                 "flag_color": flag_color,
                 "candidate_release_point": candidate_release_point,
                 "score_breakdown": {
-                    "proximity_score": round(s_prox, 1),
-                    "temporal_score": round(s_time, 1),
-                    "speed_anomaly_score": round(s_speed, 1),
-                    "course_anomaly_score": round(s_course, 1),
+                    "proximity_score": s_prox,
+                    "temporal_score": s_time,
+                    "speed_anomaly_score": s_speed,
+                    "course_anomaly_score": s_course,
                     "vessel_type_score": None
                 },
-                "closest_approach": cpa,
+                "closest_approach": {
+                    "distance_nm": dist_nm,
+                    "distance_km": dist_nm * 1.852 if dist_nm is not None and dist_nm <= 1e307 else None,
+                    "time_diff_h": time_diff_h,
+                    "time_relative_h": FalsificationAndAbstentionEngine.finite_number(cpa.get("time_relative_h")),
+                    "point": candidate_release_point,
+                },
                 "kinematics": kinematics,
                 "spoofing_audit": spoofing_audit,
-                "full_trajectory": v.get("trajectory", []),
-                "data_origin": v.get("data_origin", "Scenario Physics Simulation (Synthetic Trajectory)"),
-                "is_real_ais": v.get("is_real_ais", False)
+                "full_trajectory": self._valid_position_track(v.get("trajectory")),
+                "data_origin": v.get("data_origin", "Not supplied; source provenance requires verification"),
+                "is_real_ais": v.get("is_real_ais")
             }
             ranked_vessels.append(v_result)
 
@@ -561,28 +604,56 @@ class AISEngine:
         ranked_vessels = self.compute_topsis_rankings(ranked_vessels)
 
         # Sort by composite suspect score descending
-        ranked_vessels.sort(key=lambda x: x["lead_priority_score"], reverse=True)
+        ranked_vessels.sort(key=lambda x: x["lead_priority_score"] if x["lead_priority_score"] is not None else -1, reverse=True)
 
-        # Bayesian Posterior Calibration, Shannon Entropy & Adversarial Falsification Stress Tests
+        # Sensitivity/integrity checks precede the final evidence-state decision.
         try:
-            from .falsification import FalsificationAndAbstentionEngine
             for v in ranked_vessels:
-                v["composite_score"] = v.get("lead_priority_score", 0.0)
-            
-            abstention_verdict = FalsificationAndAbstentionEngine.evaluate_decision_theoretic_abstention(ranked_vessels)
-            for v in ranked_vessels:
-                v["abstention_verdict"] = abstention_verdict
-                # Run adversarial stress testing on candidate leads
-                stress_res = FalsificationAndAbstentionEngine.run_adversarial_stress_test(
+                v["composite_score"] = v.get("lead_priority_score")
+                v["adversarial_stress_test"] = FalsificationAndAbstentionEngine.run_adversarial_stress_test(
                     v, origin_lat, origin_lon, current_speed_knots=1.5, wind_speed_knots=12.0
                 )
-                v["adversarial_stress_test"] = stress_res
-                if "AIS_INTEGRITY_COMPROMISED" in stress_res.get("verdict", ""):
-                    v["lead_integrity_warning"] = "AIS transponder blackout or kinematic discontinuity detected under stress testing."
-        except Exception as e:
-            logger.warning(f"AISEngine: Forensic falsification or stress evaluation exception: {e}")
+            group_verdict = FalsificationAndAbstentionEngine.evaluate_decision_theoretic_abstention(
+                ranked_vessels, coverage_validated=coverage_validated, unknown_source_hypothesis=True
+            )
+            for index, v in enumerate(ranked_vessels):
+                verdict = deepcopy(group_verdict)
+                integrity = FalsificationAndAbstentionEngine.assess_ais_integrity(v.get("spoofing_audit"))
+                verdict["candidate_mmsi"] = v.get("mmsi")
+                verdict["candidate_is_leading"] = index == group_verdict.get("leading_candidate_index")
+                verdict["candidate_priority_weight"] = v.get("lead_priority_weight")
+                verdict["integrity_status"] = integrity["status"]
+                verdict["stress_status"] = v["adversarial_stress_test"]["status"]
+                if not integrity["passed"]:
+                    v["lead_integrity_warning"] = integrity["reason"]
+                    verdict.update(is_abstention=True, decision="INSUFFICIENT_EVIDENCE",
+                                   reason=f"Candidate integrity hold: {integrity['reason']} {group_verdict['reason']}")
+                    if integrity["status"] in ("NOT_ASSESSED", "UNAVAILABLE"):
+                        verdict["status"] = integrity["status"]
+                elif not v["adversarial_stress_test"].get("stress_passed"):
+                    verdict.update(is_abstention=True, decision="INSUFFICIENT_EVIDENCE",
+                                   reason="Candidate sensitivity checks failed. " + group_verdict["reason"])
+                elif not verdict["candidate_is_leading"]:
+                    verdict.update(is_abstention=True, decision="LOWER_PRIORITY_SCREENING_CANDIDATE",
+                                   reason="Candidate is not the leading hypothesis. " + group_verdict["reason"])
+                v["abstention_verdict"] = verdict
+                v["assessment_status"] = verdict["status"]
+        except Exception as exc:
+            logger.warning("AIS evidence gate unavailable: %s", exc)
+            for v in ranked_vessels:
+                verdict = FalsificationAndAbstentionEngine.unavailable_verdict(
+                    f"Evidence gate or sensitivity evaluation failed ({type(exc).__name__}).", ranked_vessels)
+                verdict["candidate_mmsi"] = v.get("mmsi")
+                v["lead_priority_weight"] = None
+                v["abstention_verdict"] = verdict
+                v["assessment_status"] = "UNAVAILABLE"
+                v.setdefault("adversarial_stress_test", {
+                    "status": "UNAVAILABLE", "stress_passed": False,
+                    "verdict": "SENSITIVITY_CHECK_UNAVAILABLE", "challenges": [],
+                    "adversarial_robustness_score": None,
+                })
 
-        return ranked_vessels
+        return _json_safe(ranked_vessels)
 
     def correlate_radar_targets_with_ais(
         self,
@@ -671,7 +742,9 @@ class AISEngine:
         spatial_radius_nm: float = 30.0,
         temporal_window_h: float = 5.0,
         hindcast_trajectory: Optional[List[Dict[str, Any]]] = None,
-        radar_targets: Optional[List[Dict[str, Any]]] = None
+        radar_targets: Optional[List[Dict[str, Any]]] = None,
+        *,
+        coverage_validated: bool = False,
     ) -> Dict[str, Any]:
         """
         Complete end-to-end attribution workflow:
@@ -688,10 +761,21 @@ class AISEngine:
         )
 
         ranked = self.score_and_rank_suspects(
-            filtered, origin_lat, origin_lon, origin_time_relative_h
+            filtered, origin_lat, origin_lon, origin_time_relative_h,
+            coverage_validated=coverage_validated,
         )
 
         primary_suspect = ranked[0] if ranked else None
+        if primary_suspect:
+            screening_gate = deepcopy(primary_suspect["abstention_verdict"])
+        else:
+            try:
+                screening_gate = FalsificationAndAbstentionEngine.evaluate_decision_theoretic_abstention(
+                    [], coverage_validated=coverage_validated)
+            except Exception as exc:
+                logger.warning("Empty-corridor evidence gate unavailable: %s", exc)
+                screening_gate = FalsificationAndAbstentionEngine.unavailable_verdict(
+                    f"Evidence gate failed ({type(exc).__name__}).")
 
         # Dark ship detection
         dark_vessels = []
@@ -702,14 +786,19 @@ class AISEngine:
             )
 
         return {
+            "status": screening_gate["status"],
+            "is_abstention": screening_gate["is_abstention"],
             "total_vessels_in_region": len(raw_vessels),
             "vessels_evaluated_in_corridor": len(ranked),
             "primary_review_lead": primary_suspect,
+            "evidentiary_lead": primary_suspect if screening_gate["is_abstention"] is False else None,
             "primary_culprit": None,
             "ranked_suspects": ranked,
             "dark_vessels_detected": dark_vessels,
             "dark_vessels_count": len(dark_vessels),
-            "bayesian_legal_gate": primary_suspect.get("abstention_verdict") if primary_suspect else None,
+            "screening_gate": screening_gate,
+            "bayesian_legal_gate": deepcopy(screening_gate),  # Legacy UI alias, not a Bayesian/legal claim
+            "compatibility_keys": {"bayesian_legal_gate": "legacy alias of screening_gate; uncalibrated screening only"},
             "adversarial_stress_test": primary_suspect.get("adversarial_stress_test") if primary_suspect else None,
             "origin_query": {
                 "origin_lat": origin_lat,

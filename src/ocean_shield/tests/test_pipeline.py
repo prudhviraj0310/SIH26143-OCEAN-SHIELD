@@ -4,6 +4,7 @@ Smart India Hackathon 2026 - Problem Statement SIH26143
 """
 
 import os
+import tempfile
 import unittest
 import cv2
 import numpy as np
@@ -22,7 +23,9 @@ class TestOceanShieldPipeline(unittest.TestCase):
         self.sar_engine = SAREngine()
         self.drift_engine = DriftEngine()
         self.ais_engine = AISEngine()
-        self.report_gen = DossierReportGenerator(output_dir="reports")
+        pdfs = tempfile.TemporaryDirectory(prefix="ocean-pipeline-pdfs-")
+        self.addCleanup(pdfs.cleanup)
+        self.report_gen = DossierReportGenerator(output_dir=pdfs.name)
 
     def test_sar_engine_segmentation_and_super_resolution(self):
         """Validates radar speckle filtering, CFAR segmentation, and Super-Resolution."""
@@ -52,10 +55,15 @@ class TestOceanShieldPipeline(unittest.TestCase):
         self.assertIsNone(slick["estimated_mass_tonnes"])
         self.assertIsNone(slick["estimated_age_hours"])
         self.assertIn("polygon_geojson", slick)
-        self.assertIsNotNone(slick["confidence_score"])
-        self.assertGreaterEqual(slick["confidence_score"], 50.0)
+        self.assertIsNone(slick["confidence_score"], "Morphology is not calibrated oil confidence")
+        self.assertEqual(slick["confidence_status"], "UNCALIBRATED_SCREENING_SCORE")
         self.assertIn("screening_score", slick)
+        self.assertTrue(0 <= slick["screening_score"] <= 100)
         self.assertIn("limitations", slick)
+        self.assertEqual(slick["fay_spreading_age"]["status"], "NOT_ASSESSED")
+        self.assertIsNone(slick["fay_spreading_age"]["estimated_age_hours"])
+        if "lookalike_screening" in slick:
+            self.assertNotIn("oil_probability", slick["lookalike_screening"])
 
     def test_drift_engine_hindcast_and_forecast(self):
         """Validates reverse Lagrangian particle hindcasting and forward forecasting."""
@@ -75,9 +83,9 @@ class TestOceanShieldPipeline(unittest.TestCase):
         )
         origin = hindcast["origin_release_point"]
         self.assertEqual(origin["assumed_slick_age_hours"], 10.5)
-        self.assertIsNotNone(origin["confidence_percent"])
-        self.assertGreaterEqual(origin["confidence_percent"], 50.0)
-        self.assertEqual(origin["inference_status"], "conditional transport scenario; not an inferred spill origin")
+        self.assertIsNone(origin["confidence_percent"])
+        self.assertIn("not an inferred spill origin", origin["inference_status"])
+        self.assertEqual(hindcast["hindcast_trajectory"][-1]["relative_time_hours"], -10.5)
         self.assertGreater(hindcast["total_drift_distance_km"], 0.0)
         self.assertGreater(len(hindcast["hindcast_trajectory"]), 10)
 
@@ -91,7 +99,7 @@ class TestOceanShieldPipeline(unittest.TestCase):
         # A real met-ocean field may route the slick offshore; verify the model
         # reports the condition rather than asserting a scenario-specific outcome.
         self.assertIsNone(forecast["beaching_warning"]["will_beach"])
-        self.assertEqual(forecast["beaching_warning"]["status"], "not_assessed")
+        self.assertEqual(forecast["beaching_warning"]["status"], "NOT_ASSESSED")
         self.assertIsNone(forecast["weathering_summary"])
 
     def test_ais_correlation_produces_review_lead_not_culprit(self):
@@ -169,7 +177,10 @@ class TestOceanShieldPipeline(unittest.TestCase):
         self.assertGreater(diagnostics["total_pixels"], 0)
         self.assertGreater(diagnostics["area_km2"], 0.0)
         self.assertIn("mean_ndoi", diagnostics)
-        self.assertGreater(diagnostics["confidence"], 0.75)
+        self.assertIsNone(diagnostics["confidence"])
+        self.assertEqual(diagnostics["confidence_status"], "NOT_CALIBRATED")
+        self.assertNotIn("Bonn", diagnostics["classification"])
+        self.assertFalse(diagnostics["has_calibrated_nir"])
 
     def test_pytorch_unet_deep_learning_pipeline(self):
         """Validates real PyTorch U-Net neural network architecture, weights, and inference."""
@@ -232,8 +243,8 @@ class TestOceanShieldPipeline(unittest.TestCase):
         self.assertEqual(len(dark), 1)
         self.assertEqual(dark[0]["status"], "RADAR_AIS_SPATIAL_MISMATCH_REVIEW")
 
-    def test_adios_physical_oil_weathering_model(self):
-        """Validates Mackay's ADIOS analytical weathering equations (evaporation, emulsification, viscosity)."""
+    def test_generic_weathering_sensitivity(self):
+        """Checks generic weathering trends, not ADIOS equivalence or field accuracy."""
         w1 = self.drift_engine.compute_oil_weathering(elapsed_hours=4.0, wind_speed_ms=5.0, water_temp_c=28.0)
         w2 = self.drift_engine.compute_oil_weathering(elapsed_hours=18.0, wind_speed_ms=5.0, water_temp_c=28.0)
 
@@ -310,7 +321,9 @@ class TestOceanShieldPipeline(unittest.TestCase):
 
     def test_forward_counterfactual_verification(self):
         """Validates Stage 4 Forward Counterfactual Verification (Physical Re-Simulation)."""
-        _, current_field, scenario_data = get_scenario_sar_and_currents("mumbai_high")
+        _, _, scenario_data = get_scenario_sar_and_currents("mumbai_high")
+        current_field = OceanCurrentField(base_current_u=0.25, base_current_v=0.15,
+                                         base_wind_u=4.5, base_wind_v=3.0, constant_vectors=True)
         slick_center = scenario_data["center"]
         obs_lat = slick_center["lat"]
         obs_lon = slick_center["lon"]
@@ -322,7 +335,7 @@ class TestOceanShieldPipeline(unittest.TestCase):
         )
         origin = hindcast["origin_release_point"]
 
-        # 1. Forward re-simulation from candidate origin coordinates (Physical Hypothesis Match)
+        # A manufactured constant-field round trip, not real-origin validation.
         cf_match = self.drift_engine.run_forward_counterfactual(
             release_lat=origin["lat"],
             release_lon=origin["lon"],
@@ -338,8 +351,15 @@ class TestOceanShieldPipeline(unittest.TestCase):
         metrics = cf_match["verification_metrics"]
         self.assertLess(metrics["centroid_distance_km"], 2.5, "Centroid error should be small for true release point")
         self.assertGreaterEqual(metrics["predicted_containment_percent"], 40.0)
-        self.assertGreater(metrics["jaccard_index"], 0.25)
-        self.assertEqual(cf_match["verdict"], "CONFIRMED_PHYSICAL_MATCH")
+        # The old >0.25 assertion tested a fabricated containment/IoU blend.
+        # Circle-proxy IoU is now tested against its actual geometric formula.
+        predicted_radius = cf_match["predicted_at_t0"]["spread_radius_km"]
+        observed_radius = cf_match["observed_slick"]["effective_radius_km"]
+        self.assertLess(predicted_radius + metrics["centroid_distance_km"], observed_radius)
+        self.assertAlmostEqual(metrics["jaccard_index"], (predicted_radius / observed_radius) ** 2, delta=0.002)
+        self.assertEqual(metrics["jaccard_status"], "CIRCLE_PROXY_IOU_ONLY")
+        self.assertIsNone(metrics["physical_causality_score"])
+        self.assertEqual(cf_match["verdict"], "CONDITIONAL_SPATIAL_AGREEMENT")
         self.assertIn("forward_trajectory", cf_match)
         self.assertGreater(len(cf_match["forward_trajectory"]), 5)
 
@@ -354,13 +374,15 @@ class TestOceanShieldPipeline(unittest.TestCase):
             observed_slick_area_km2=18.5,
             vessel_info={"mmsi": 999999999, "vessel_name": "INNOCENT VESSEL"}
         )
-        self.assertEqual(cf_refute["verdict"], "PHYSICALLY_REFUTED")
+        self.assertEqual(cf_refute["verdict"], "CONDITIONAL_SPATIAL_MISMATCH")
         self.assertGreater(cf_refute["verification_metrics"]["centroid_distance_km"], 10.0)
         self.assertEqual(cf_refute["verification_metrics"]["predicted_containment_percent"], 0.0)
 
     def test_kde_highest_density_region_contours(self):
         """Validates Gaussian KDE 95%/75%/50% Highest Density Region (HDR) contour extraction."""
-        _, current_field, scenario_data = get_scenario_sar_and_currents("mumbai_high")
+        _, _, scenario_data = get_scenario_sar_and_currents("mumbai_high")
+        current_field = OceanCurrentField(base_current_u=0.25, base_current_v=0.15,
+                                         base_wind_u=4.5, base_wind_v=3.0, constant_vectors=True)
         slick_center = scenario_data["center"]
         obs_lat = slick_center["lat"]
         obs_lon = slick_center["lon"]
@@ -406,7 +428,12 @@ class TestOceanShieldPipeline(unittest.TestCase):
             {"relative_time_hours": -1.6, "sog_knots": 13.5, "draught_m": 12.0},
             {"relative_time_hours": -1.4, "sog_knots": 13.2, "draught_m": 12.0},
         ]
-        audit_clean = self.ais_engine.detect_ais_spoofing_and_gaps(clean_track, mmsi=419001234)
+        # Speed-only messages cannot validate positional continuity.
+        incomplete = self.ais_engine.detect_ais_spoofing_and_gaps(clean_track, mmsi=419001234, cpa_time_relative_h=-1.6)
+        self.assertEqual(incomplete["integrity_rating"], "NOT_ASSESSED")
+        for i, point in enumerate(clean_track):
+            point.update(lat=22.0 + i * 0.001, lon=69.0)
+        audit_clean = self.ais_engine.detect_ais_spoofing_and_gaps(clean_track, mmsi=419001234, cpa_time_relative_h=-1.6)
         self.assertFalse(audit_clean["has_anomalies"])
         self.assertEqual(audit_clean["integrity_rating"], "VERIFIED_CONTINUOUS")
         self.assertTrue(audit_clean["mmsi_valid"])
@@ -508,5 +535,3 @@ class TestOceanShieldPipeline(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-

@@ -218,7 +218,7 @@ class ICG_VTMS_Adapter:
         self.sector = sector if sector in self.VTMS_SECTORS else "GULF_OF_KUTCH"
         self.metadata = self.VTMS_SECTORS[self.sector]
         self.protocol = "NMEA_0183_AIVDM_IVTMS_TCP"
-        self.status = "ONLINE_ICG_INTEGRATED"
+        self.status = "ADAPTER_NOT_CONNECTED"
 
     def parse_nmea_sentence(self, sentence: str) -> Optional[Dict[str, Any]]:
         """Parses raw AIVDM sentence payload."""
@@ -240,12 +240,14 @@ class ICG_VTMS_Adapter:
         """Returns coastal radar chain active status for the sector."""
         return {
             "sector": self.sector,
-            "chain_operational": True,
-            "active_radar_stations": self.metadata["radar_stations"],
+            "chain_operational": None,
+            "active_radar_stations": None,
             "bounds": [
                 self.metadata["lon_range"][0], self.metadata["lat_range"][0],
                 self.metadata["lon_range"][1], self.metadata["lat_range"][1]
             ],
-            "feed_source": "Indian Coast Guard Coastal Surveillance Network (CSN) / DGLL VTMS",
-            "format": self.protocol
+            "feed_source": "Configured VTMS adapter metadata only",
+            "format": self.protocol,
+            "status": self.status,
+            "notice": "No VTMS socket or receiver feed is connected; station activity is not assessed.",
         }

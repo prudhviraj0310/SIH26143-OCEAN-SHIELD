@@ -1,7 +1,7 @@
 """
-FastAPI Server: OCEAN-SHIELD API & Operational Command Center
+FastAPI Server: OCEAN-SHIELD Screening API
 Serves REST endpoints for SAR image analysis, Lagrangian hydrodynamic drift simulations,
-AIS vessel correlation & anomaly scoring, and automated Coast Guard PDF violation dossier generation.
+AIS corridor lead ranking, and analyst-review case-summary generation.
 """
 
 import os
@@ -14,6 +14,7 @@ import math
 import asyncio
 import urllib.request
 import logging
+from copy import deepcopy
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
 import numpy as np
@@ -31,9 +32,10 @@ if __package__ is None or __package__ == "":
     if _pkg_root not in sys.path:
         sys.path.insert(0, _pkg_root)
     from src.ocean_shield.sar_engine import SAREngine
-    from src.ocean_shield.drift_engine import DriftEngine, OceanCurrentField
+    from src.ocean_shield.drift_engine import DriftEngine, OceanCurrentField, OceanSourceError
     from src.ocean_shield.ocean_data import DataCoverageError
     from src.ocean_shield.ais_engine import AISEngine
+    from src.ocean_shield.falsification import FalsificationAndAbstentionEngine
     from src.ocean_shield.eo_engine import EOEngine
     from src.ocean_shield.scenarios import (
         get_all_scenarios, get_scenario_sar_and_currents, get_scenario_eo_data,
@@ -47,9 +49,10 @@ if __package__ is None or __package__ == "":
     )
 else:
     from .sar_engine import SAREngine
-    from .drift_engine import DriftEngine, OceanCurrentField
+    from .drift_engine import DriftEngine, OceanCurrentField, OceanSourceError
     from .ocean_data import DataCoverageError
     from .ais_engine import AISEngine
+    from .falsification import FalsificationAndAbstentionEngine
     from .eo_engine import EOEngine
     from .scenarios import (
         get_all_scenarios, get_scenario_sar_and_currents, get_scenario_eo_data,
@@ -66,7 +69,7 @@ logger = logging.getLogger("ocean_shield.keep_alive")
 
 app = FastAPI(
     title="OCEAN-SHIELD Maritime Intelligence API",
-    description="Satellite SAR & Optical EO Oil Spill Detection, Hydrodynamic Hindcast & AIS Rogue Vessel Attribution",
+    description="SAR dark-feature screening, conditional transport scenarios, and uncalibrated AIS review leads",
     version="1.0.0"
 )
 
@@ -81,6 +84,27 @@ app.add_middleware(
 # GZip compress responses > 500 bytes (app.js 122KB → ~25KB, HTML 70KB → ~15KB)
 from starlette.middleware.gzip import GZipMiddleware
 app.add_middleware(GZipMiddleware, minimum_size=500)
+
+
+@app.middleware("http")
+async def add_no_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/") or request.url.path in {"/", "/index.html", "/techstack"}:
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
+@app.exception_handler(DataCoverageError)
+@app.exception_handler(OceanSourceError)
+async def unavailable_transport_handler(request: Request, exc: ValueError):
+    """Provider failures propagated by the transport engine are explicit holds."""
+    return JSONResponse(status_code=503, content={
+        "status": "UNAVAILABLE", "is_abstention": True,
+        "transport_status": "UNAVAILABLE", "detail": str(exc),
+        "screening_notice": "Transport inputs are unavailable; no trajectory or evidentiary lead is produced.",
+    })
 
 # Base directories
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -151,23 +175,55 @@ def _decode_uploaded_sar(content: bytes) -> np.ndarray:
     return image
 
 
-def _apply_sar_quality_gate(results: Dict[str, Any], quality: Dict[str, Any]) -> Dict[str, Any]:
+def _apply_sar_quality_gate(
+    results: Dict[str, Any], quality: Dict[str, Any], *, demo_mode: bool = False
+) -> Dict[str, Any]:
     """Prevent a visual dark-feature mask becoming false metric evidence."""
-    results = dict(results)
+    results = deepcopy(results)
     results["observability"] = quality
-    if not quality["operational_eligible"]:
-        for feature in [results.get("primary_slick"), *results.get("all_slicks", [])]:
-            if not feature:
-                continue
+    seen = set()
+    for feature in [results.get("primary_slick"), *results.get("all_slicks", [])]:
+        if not isinstance(feature, dict) or id(feature) in seen:
+            continue
+        seen.add(id(feature))
+        feature["confidence_score"] = None
+        feature["confidence_status"] = "UNCALIBRATED_SCREENING_SCORE"
+        if demo_mode:
+            feature["geometry_status"] = "SIMULATED_BENCHMARK_GEOMETRY"
+            feature["classification"] = "BENCHMARK dark-feature candidate — simulated geometry only"
+        elif quality.get("operational_eligible") is not True:
             feature["area_km2_unverified"] = feature.get("area_km2")
             feature["area_km2"] = None
             feature["centroid"] = None
             feature["polygon_geojson"] = None
             feature["classification"] = "SAR dark-feature candidate — operational interpretation withheld"
-            feature["confidence_score"] = None
+    if quality.get("operational_eligible") is not True and not demo_mode:
         results["radar_detected_ships"] = []
         results["active_engine"] = f"{results.get('active_engine', 'candidate extractor')} — quality-gated"
+    if demo_mode:
+        results["demo_mode"] = True
+        results["demo_notice"] = "Synthetic benchmark geometry is shown for playback only; it is not operational evidence."
     return results
+
+
+def _hold_ais_results(results: Dict[str, Any], reason: str, status: str = "NOT_ASSESSED") -> None:
+    """Revoke a downstream lead in every public/legacy evidence-state location."""
+    verdict = deepcopy(results.get("screening_gate") or
+                       FalsificationAndAbstentionEngine.unavailable_verdict(reason))
+    verdict.update(status=status, is_abstention=True, reason=reason,
+                   decision="EVIDENCE_GATE_UNAVAILABLE" if status == "UNAVAILABLE" else "INSUFFICIENT_EVIDENCE",
+                   confidence_score=None)
+    results.update(status=status, is_abstention=True, evidentiary_lead=None,
+                   screening_gate=deepcopy(verdict), bayesian_legal_gate=deepcopy(verdict))
+    for candidate in results.get("ranked_suspects", []):
+        candidate_verdict = deepcopy(verdict)
+        candidate_verdict["candidate_mmsi"] = candidate.get("mmsi")
+        candidate["abstention_verdict"] = candidate_verdict
+        candidate["assessment_status"] = status
+    primary = results.get("primary_review_lead")
+    if primary:
+        primary["abstention_verdict"] = deepcopy(verdict)
+        primary["assessment_status"] = status
 
 
 # --- Request Models ---
@@ -180,6 +236,7 @@ class LiveMissionRequest(BaseModel):
 
 class AnalyzeSARRequest(BaseModel):
     scenario_id: str = "gulf_of_kachchh"
+    demo_mode: bool = False
     use_super_resolution: bool = True
     model_type: str = "unet"  # "unet" (PyTorch Deep Learning) or "cfar_edge" (Fast Tactical)
     threshold_offset: float = Field(default=22.0, ge=1.0, le=100.0)
@@ -243,6 +300,7 @@ class CounterfactualRequest(BaseModel):
     observed_slick_polygon: Optional[List[Any]] = None
     observed_slick_area_km2: Optional[float] = None
     demo_mode: bool = True
+    scene_acquired_at_utc: Optional[str] = None
 
 
 # --- Endpoints ---
@@ -278,15 +336,18 @@ async def health_check():
     if platform.system() == "Linux":
         rss_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
     return {
-        "status": "operational",
-        "system": "OCEAN-SHIELD NTRO / Indian Coast Guard Pipeline",
+        "status": "reachable",
+        "system": "OCEAN-SHIELD independent research screening service",
+        "status_scope": "HTTP service reachability only; scientific/operational readiness is not assessed",
+        "certification_status": "NOT_CERTIFIED",
+        "agency_affiliation": "NONE_CLAIMED",
         "version": "1.0.0",
         "sar_engine": "online",
         "drift_engine": "online",
         "ais_engine": "online",
         "memory_mb": round(rss_mb, 1),
         "models_loaded": {
-            "unet": sar_engine.model_loaded,
+            "unet": sar_engine._model_loaded,
             "super_resolution": sar_engine._sr_loaded,
         },
         "scenario_cache_entries": len(_scenario_cache),
@@ -487,15 +548,20 @@ async def get_sr_preview(scenario_id: str):
     """Serve super-resolution SAR preview as a PNG image (computed on demand)."""
     from fastapi.responses import Response
     sar_img, _, _ = resolve_scenario_sar_and_currents(scenario_id)
-    sr_img = sar_engine.enhance_sar_super_resolution(sar_img, scale_factor=2)
+    sr_img, sr_metadata = sar_engine.enhance_sar_super_resolution(sar_img, scale_factor=2, return_metadata=True)
     _, buf = cv2.imencode('.png', sr_img)
     return Response(content=buf.tobytes(), media_type="image/png",
-                    headers={"Cache-Control": "public, max-age=3600"})
+                    headers={"Cache-Control": "public, max-age=3600",
+                             "X-Image-Processing": sr_metadata["status"],
+                             "X-Image-Interpolation": sr_metadata["interpolation"],
+                             "X-Native-Radiometry-Preserved": "false"})
 
 
 @app.post("/api/analyze-sar")
 async def analyze_sar(req: AnalyzeSARRequest):
     """Executes SAR radar speckle suppression, PyTorch U-Net or CFAR segmentation, and geometric extraction."""
+    if req.model_type not in {"unet", "cfar_edge"}:
+        raise HTTPException(status_code=422, detail="model_type must be 'unet' or 'cfar_edge'.")
     sar_img, current_field, scenario_data = resolve_scenario_sar_and_currents(req.scenario_id)
 
     pixel_size = float(scenario_data.get("satellite_metadata", {}).get("pixel_spacing_m", 10.0))
@@ -516,21 +582,22 @@ async def analyze_sar(req: AnalyzeSARRequest):
 
     # Process SAR scene as a visual candidate screen; the gate below prevents
     # unproven pixels from becoming map, area, radar, or legal evidence.
-    results = sar_engine.process_sar_scene(
-        sar_img, center_lat, center_lon, pixel_size_m=pixel_size, model_type=req.model_type
+    results, clean_mask = sar_engine.process_sar_scene(
+        sar_img, center_lat, center_lon, pixel_size_m=pixel_size, model_type=req.model_type,
+        threshold_offset=req.threshold_offset, return_mask=True,
     )
-    results = _apply_sar_quality_gate(results, quality)
+    results = _apply_sar_quality_gate(results, quality, demo_mode=req.demo_mode)
 
     # Super-resolution enhanced image for inspection
-    sr_img = sar_engine.enhance_sar_super_resolution(sar_img, scale_factor=2)
-    sr_b64 = image_to_base64_png(sr_img)
-
-    # Segmentation overlay visualization
-    if req.model_type == "unet" and sar_engine.model_loaded:
-        clean_mask, _ = sar_engine.predict_unet(sar_img)
+    if req.use_super_resolution:
+        sr_img, sr_metadata = sar_engine.enhance_sar_super_resolution(sar_img, scale_factor=2, return_metadata=True)
+        sr_b64 = image_to_base64_png(sr_img)
     else:
-        clean_mask, _ = sar_engine.segment_oil_slick(sar_img, threshold_offset=req.threshold_offset)
+        sr_b64 = None
+        sr_metadata = {"status": "NOT_REQUESTED", "trained_weights_used": False}
+    results["super_resolution_metadata"] = sr_metadata
 
+    # Overlay reuses the exact segmentation used for metrics (including tiled inference).
     colored_mask = cv2.applyColorMap(clean_mask, cv2.COLORMAP_JET)
     overlay = cv2.addWeighted(
         cv2.cvtColor(sar_img, cv2.COLOR_GRAY2BGR), 0.65,
@@ -545,10 +612,15 @@ async def analyze_sar(req: AnalyzeSARRequest):
         "sar_results": results,
         "segmentation_overlay_base64": overlay_b64,
         "super_resolution_base64": sr_b64,
+        "super_resolution_metadata": sr_metadata,
         "radar_detected_ships": results.get("radar_detected_ships", []),
         "active_engine": results.get("active_engine", "PyTorch U-Net"),
         "metadata": metadata,
-        "screening_notice": "Candidate dark-feature screening only. No oil identity, quantity, source, legal finding, or operational map is produced without an eligible observability record.",
+        "screening_notice": (
+            "BENCHMARK DEMONSTRATION: synthetic geometry is rendered for playback only; no live or operational evidence is produced."
+            if req.demo_mode else
+            "Candidate dark-feature screening only. No oil identity, quantity, source, legal finding, or operational map is produced without an eligible observability record."
+        ),
     }
 
 
@@ -575,6 +647,8 @@ async def analyze_sar_upload(request: Request):
         wind_speed_ms = float(wind_raw) if wind_raw else None
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="X-Wind-Speed-M-S must be numeric when supplied.") from exc
+    if wind_speed_ms is not None and not math.isfinite(wind_speed_ms):
+        raise HTTPException(status_code=422, detail="X-Wind-Speed-M-S must be finite when supplied.")
     radiometrically_calibrated = request.headers.get("X-Radiometrically-Calibrated", "false").lower() == "true"
     has_geotransform = request.headers.get("X-Has-Geotransform", "false").lower() == "true"
     has_incidence_angle = request.headers.get("X-Incidence-Angle-Normalized", "false").lower() == "true"
@@ -595,8 +669,9 @@ async def analyze_sar_upload(request: Request):
 
     content = await request.body()
     sar_image = _decode_uploaded_sar(content)
-    results = sar_engine.process_sar_scene(
-        sar_image, center_lat, center_lon, pixel_size_m=pixel_size_m, model_type=model_type
+    results, mask = sar_engine.process_sar_scene(
+        sar_image, center_lat, center_lon, pixel_size_m=pixel_size_m, model_type=model_type,
+        threshold_offset=threshold_offset, return_mask=True,
     )
     quality = sar_engine.assess_observability(
         wind_speed_ms,
@@ -605,17 +680,16 @@ async def analyze_sar_upload(request: Request):
         has_incidence_angle=has_incidence_angle,
     )
     results = _apply_sar_quality_gate(results, quality)
-    if model_type == "unet" and sar_engine.model_loaded:
-        mask, _ = sar_engine.predict_unet(sar_image)
-    else:
-        mask, _ = sar_engine.segment_oil_slick(sar_image, threshold_offset=threshold_offset)
     colored_mask = cv2.applyColorMap(mask, cv2.COLORMAP_JET)
     overlay = cv2.addWeighted(cv2.cvtColor(sar_image, cv2.COLOR_GRAY2BGR), 0.65, colored_mask, 0.35, 0)
 
+    sr_img, sr_metadata = sar_engine.enhance_sar_super_resolution(sar_image, scale_factor=2, return_metadata=True)
+    results["super_resolution_metadata"] = sr_metadata
     response = {
         "sar_results": results,
         "segmentation_overlay_base64": image_to_base64_png(overlay),
-        "super_resolution_base64": image_to_base64_png(sar_engine.enhance_sar_super_resolution(sar_image, scale_factor=2)),
+        "super_resolution_base64": image_to_base64_png(sr_img),
+        "super_resolution_metadata": sr_metadata,
         "radar_detected_ships": results.get("radar_detected_ships", []),
         "active_engine": results.get("active_engine", "CFAR"),
         "provenance": {
@@ -627,13 +701,14 @@ async def analyze_sar_upload(request: Request):
             "scene_center": {"lat": center_lat, "lon": center_lon},
             "pixel_size_m": pixel_size_m,
             "acquisition_time_utc": acquisition_time_utc or None,
+            "freshness_status": "UNVERIFIED",
             "wind_speed_ms": wind_speed_ms,
             "radiometrically_calibrated": radiometrically_calibrated,
             "has_geotransform": has_geotransform,
             "incidence_angle_normalized": has_incidence_angle,
             "georeferencing": "operator declaration; original GeoTIFF transform is not parsed by this endpoint",
         },
-        "screening_notice": "Candidate dark-feature screening only. Analyst review and a complete observability record are required before operational or legal use.",
+        "screening_notice": "Uploaded SAR freshness is unverified. Candidate dark-feature screening only; analyst review and a complete observability record are required before operational or legal use.",
     }
 
     # --- Render Free-Tier: reclaim upload inference memory ---
@@ -647,7 +722,7 @@ async def analyze_eo(req: AnalyzeEORequest):
     """
     Processes Sentinel-2 MSI Multi-Spectral Optical (EO) Imagery:
     Computes Normalized Difference Oil Index (NDOI) and Floating Algae Index (FAI)
-    to detect sunglint oil anomalies and reject natural lookalike algal blooms.
+    as heuristic spectral screening cues. It does not identify oil or reject algae.
     """
     rgb_img, nir_band, swir_band, scenario_data = get_scenario_eo_data(req.scenario_id)
     if "raw_multispectral_bands" in scenario_data:
@@ -680,7 +755,7 @@ async def analyze_eo(req: AnalyzeEORequest):
             "mission": "Sentinel-2B MSI Multi-Spectral Optical",
             "spectral_bands": "B4 (Red 665nm), B8 (NIR 842nm), B11 (SWIR 1610nm)",
             "ground_sampling_distance_m": 10.0,
-            "lookalike_discrimination": "NDOI > 0.05 & FAI < 45 (Algal Bloom Discarded)",
+            "lookalike_discrimination": "NDOI/FAI heuristic screen only; algae and oil identity are not determined",
             "data_origin": scenario_data.get("eo_data_origin", "Authentic Sentinel-2 MSI Level-2A BOA Reflectance (Copernicus)")
         }
     }
@@ -693,6 +768,8 @@ async def simulate_drift(req: SimulateDriftRequest):
     unaligned source inputs rather than returning a polished but invalid forecast.
     """
     _, current_field, scenario_data = resolve_scenario_sar_and_currents(req.scenario_id)
+    _validated_coordinate(req.slick_lat, -90, 90, "slick_lat")
+    _validated_coordinate(req.slick_lon, -180, 180, "slick_lon")
 
     if req.slick_age_hours is None:
         raise HTTPException(status_code=422, detail="An analyst-supported slick_age_hours hypothesis is required; a single SAR scene cannot supply it.")
@@ -751,31 +828,39 @@ async def simulate_drift(req: SimulateDriftRequest):
                 req.scene_acquired_at_utc, req.max_lookback_hours, req.forecast_hours
             )
             # Fail before integration if either currents or wind is unavailable at T0.
-            current_field.get_velocity_at(req.slick_lat, req.slick_lon, 0.0)
-        except (DataCoverageError, ValueError) as exc:
-            raise HTTPException(status_code=422, detail=f"Met-ocean validation failed: {exc}") from exc
+            drift_engine._safe_get_velocity(current_field, req.slick_lat, req.slick_lon, 0.0)
+        except (DataCoverageError, OceanSourceError):
+            raise  # The shared 503 handler returns an explicit unavailable state.
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail={"status": "NOT_ASSESSED", "reason": f"Met-ocean validation failed: {exc}"}) from exc
 
     target_age = float(req.slick_age_hours)
+    initial_vectors = drift_engine._safe_get_velocity(current_field, req.slick_lat, req.slick_lon, 0.0)
+    coverage_validated = not req.demo_mode and not all(value is not None for value in overrides)
 
-    # Backward Hindcast
-    hindcast_res = drift_engine.run_hindcast(
-        req.slick_lat, req.slick_lon, current_field,
-        max_lookback_hours=req.max_lookback_hours,
-        target_slick_age_hours=target_age
-    )
-
-    # Forward Forecast + ADIOS Weathering
-    coastline_threshold = scenario_data.get("coastline_hazard", {}).get("coastline_lat_threshold") if scenario_data else None
-    init_mass = req.initial_mass_tonnes if req.initial_mass_tonnes is not None else (100.0 if req.demo_mode else None)
-    forecast_res = drift_engine.run_forecast(
-        req.slick_lat, req.slick_lon, current_field,
-        forecast_hours=req.forecast_hours,
-        initial_mass_tonnes=init_mass,
-        oil_profile=req.oil_profile,
-        coastline_lat_threshold=coastline_threshold,
-    )
+    try:
+        hindcast_res = drift_engine.run_hindcast(
+            req.slick_lat, req.slick_lon, current_field,
+            max_lookback_hours=req.max_lookback_hours,
+            target_slick_age_hours=target_age
+        )
+        coastline_threshold = scenario_data.get("coastline_hazard", {}).get("coastline_lat_threshold") if scenario_data else None
+        init_mass = req.initial_mass_tonnes if req.initial_mass_tonnes is not None else (100.0 if req.demo_mode else None)
+        forecast_res = drift_engine.run_forecast(
+            req.slick_lat, req.slick_lon, current_field,
+            forecast_hours=req.forecast_hours,
+            initial_mass_tonnes=init_mass,
+            oil_profile=req.oil_profile,
+            coastline_lat_threshold=coastline_threshold,
+        )
+    except (DataCoverageError, OceanSourceError):
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"status": "NOT_ASSESSED", "reason": str(exc)}) from exc
 
     return {
+        "status": "CONDITIONAL_DEMO_SCENARIO" if req.demo_mode else "CONDITIONAL_TRANSPORT_SCENARIO",
+        "evidentiary_origin_inferred": False,
         "origin_release_point": hindcast_res["origin_release_point"],
         "hindcast_trajectory": hindcast_res["hindcast_trajectory"],
         "total_drift_distance_km": hindcast_res["total_drift_distance_km"],
@@ -785,13 +870,14 @@ async def simulate_drift(req: SimulateDriftRequest):
         "beaching_warning": forecast_res["beaching_warning"],
         "provenance": {
             "met_ocean_source": met_ocean_source,
-            "current_u_ms": current_field.base_current_u,
-            "current_v_ms": current_field.base_current_v,
-            "wind_u_ms": current_field.base_wind_u,
-            "wind_v_ms": current_field.base_wind_v,
+            "current_u_ms": initial_vectors[0],
+            "current_v_ms": initial_vectors[1],
+            "wind_u_ms": initial_vectors[2],
+            "wind_v_ms": initial_vectors[3],
             "scene_acquired_at_utc": req.scene_acquired_at_utc,
-            "coverage_validated": not req.demo_mode,
-            "mode": "benchmark_demo" if req.demo_mode else "source_input",
+            "coverage_validated": coverage_validated,
+            "coverage_status": "VALIDATED" if coverage_validated else "NOT_ASSESSED",
+            "mode": "benchmark_demo" if req.demo_mode else "operator_supplied_vectors" if all(value is not None for value in overrides) else "source_input",
         },
         "screening_notice": (
             "BENCHMARK DEMONSTRATION: simulated inputs and outputs; not live data or an operational forecast."
@@ -805,10 +891,20 @@ async def simulate_drift(req: SimulateDriftRequest):
 async def correlate_ais(req: CorrelateAISRequest):
     """Ranks time-aligned AIS leads and emits radar/AIS review cues."""
     _, current_field, scenario_data = resolve_scenario_sar_and_currents(req.scenario_id)
+    _validated_coordinate(req.origin_lat, -90, 90, "origin_lat")
+    _validated_coordinate(req.origin_lon, -180, 180, "origin_lon")
+    if not math.isfinite(req.origin_time_rel_h):
+        raise HTTPException(status_code=422, detail="origin_time_rel_h must be finite.")
     if req.demo_mode:
         vessels = scenario_data.get("ais_vessels", [])
         if not vessels:
             raise HTTPException(status_code=422, detail="This benchmark has no fixture AIS trajectories.")
+        conditions = scenario_data["ocean_conditions"]
+        current_field = OceanCurrentField(
+            base_current_u=conditions["base_current_u"], base_current_v=conditions["base_current_v"],
+            base_wind_u=conditions["base_wind_u"], base_wind_v=conditions["base_wind_v"],
+            constant_vectors=True,
+        )
     elif not req.vessels or not req.ais_provenance:
         raise HTTPException(status_code=422, detail="Time-aligned AIS source records and provenance are required; benchmark trajectories are not eligible for attribution.")
     else:
@@ -827,14 +923,19 @@ async def correlate_ais(req: CorrelateAISRequest):
         spatial_radius_nm=req.spatial_radius_nm,
         temporal_window_h=req.temporal_window_h,
         hindcast_trajectory=hindcast_traj,
-        radar_targets=radar_tgts
+        radar_targets=radar_tgts,
+        coverage_validated=False,  # No independent receiver-coverage evaluator is implemented.
     )
 
     # Stage 4: Forward Counterfactual Verification (Physical Re-Simulation)
+    results["counterfactual_ready"] = False
+    results["counterfactual_status"] = "NOT_ASSESSED"
     primary_lead = results.get("primary_review_lead")
     if primary_lead and primary_lead.get("candidate_release_point"):
         crp = primary_lead["candidate_release_point"]
         try:
+            if not req.demo_mode and (current_field.data_provider is None or not current_field.data_provider.is_loaded):
+                raise DataCoverageError("No source-backed field supports this counterfactual; analytical fields require explicit demo mode.")
             cf_res = drift_engine.run_forward_counterfactual(
                 release_lat=float(crp["lat"]),
                 release_lon=float(crp["lon"]),
@@ -848,11 +949,20 @@ async def correlate_ais(req: CorrelateAISRequest):
                 }
             )
             primary_lead["counterfactual_verification"] = cf_res
+            cf_res["demo_mode"] = req.demo_mode
+            cf_res["input_status"] = "SIMULATED_DEMO" if req.demo_mode else "SOURCE_BACKED_CONDITIONAL_SCENARIO"
             results["counterfactual_verification"] = cf_res
             results["counterfactual_ready"] = True
-        except Exception as e:
-            logger.warning(f"Counterfactual verification calculation notice: {e}")
-            results["counterfactual_ready"] = False
+            results["counterfactual_status"] = "ASSESSED_CONDITIONAL_SCENARIO"
+        except Exception as exc:
+            logger.warning("Conditional counterfactual unavailable (%s).", type(exc).__name__)
+            results["counterfactual_status"] = "UNAVAILABLE"
+            unavailable = {"status": "UNAVAILABLE", "verdict": "NOT_ASSESSED",
+                           "reason": f"Conditional transport check failed ({type(exc).__name__}).",
+                           "verification_metrics": None}
+            results["counterfactual_verification"] = unavailable
+            primary_lead["counterfactual_verification"] = deepcopy(unavailable)
+            _hold_ais_results(results, unavailable["reason"], "UNAVAILABLE")
 
     results["ais_provenance"] = req.ais_provenance or {
         "source_kind": "benchmark AIS trajectories (simulated; not live AIS)",
@@ -862,7 +972,7 @@ async def correlate_ais(req: CorrelateAISRequest):
     results["demo_mode"] = req.demo_mode
     results["screening_notice"] = (
         ("BENCHMARK DEMONSTRATION: simulated AIS lead ranking; not live data. " if req.demo_mode else "") +
-        "AIS ranking is an investigative lead, not a finding of responsibility. "
+        "AIS ranking uses uncalibrated lead weights. Receiver coverage is NOT_ASSESSED; evidentiary attribution remains withheld. "
         "Corroborate with calibrated imagery, chain-of-custody records, and human review."
     )
     return results
@@ -877,10 +987,36 @@ async def verify_counterfactual(req: CounterfactualRequest):
     and computes Centroid Error (km), Containment (%), Jaccard Index (IoU), and Physics Verdict.
     """
     _, current_field, scenario_data = resolve_scenario_sar_and_currents(req.scenario_id)
+    for value, low, high, name in (
+        (req.release_lat, -90, 90, "release_lat"), (req.release_lon, -180, 180, "release_lon"),
+        (req.observed_slick_lat, -90, 90, "observed_slick_lat"),
+        (req.observed_slick_lon, -180, 180, "observed_slick_lon"),
+    ):
+        _validated_coordinate(value, low, high, name)
+    if not math.isfinite(req.release_time_rel_h) or req.release_time_rel_h >= 0:
+        raise HTTPException(status_code=422, detail="release_time_rel_h must be a finite negative hypothesis.")
+    if req.demo_mode:
+        conditions = scenario_data["ocean_conditions"]
+        current_field = OceanCurrentField(
+            base_current_u=conditions["base_current_u"], base_current_v=conditions["base_current_v"],
+            base_wind_u=conditions["base_wind_u"], base_wind_v=conditions["base_wind_v"],
+            constant_vectors=True,
+        )
+    else:
+        if not req.scene_acquired_at_utc:
+            raise HTTPException(status_code=422, detail={"status": "NOT_ASSESSED", "reason": "Scene acquisition time is required for a source-backed conditional simulation."})
+        if current_field.data_provider is None or not current_field.data_provider.is_loaded:
+            raise DataCoverageError("No source-backed met-ocean field is available for this conditional simulation.")
+        try:
+            current_field.data_provider.bind_detection_time(req.scene_acquired_at_utc, abs(req.release_time_rel_h), 0.0)
+        except (DataCoverageError, OceanSourceError):
+            raise
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail={"status": "NOT_ASSESSED", "reason": str(exc)}) from exc
 
     slick_area = req.observed_slick_area_km2
     slick_polygon = req.observed_slick_polygon
-    if slick_area is None:
+    if slick_area is None and req.demo_mode:
         slick_area = scenario_data.get("primary_slick", {}).get("area_km2", 12.0)
 
     try:
@@ -898,10 +1034,19 @@ async def verify_counterfactual(req: CounterfactualRequest):
                 "vessel_name": req.vessel_name
             }
         )
+        cf_res["demo_mode"] = req.demo_mode
+        cf_res["input_status"] = "SIMULATED_DEMO" if req.demo_mode else "SOURCE_BACKED_CONDITIONAL_SCENARIO"
         return cf_res
-    except Exception as e:
-        logger.error(f"Failed to run forward counterfactual: {e}")
-        raise HTTPException(status_code=500, detail=f"Forward counterfactual verification failed: {e}")
+    except (DataCoverageError, OceanSourceError):
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"status": "NOT_ASSESSED", "reason": str(exc)}) from exc
+    except Exception as exc:
+        logger.error("Conditional counterfactual unavailable (%s).", type(exc).__name__)
+        return JSONResponse(status_code=503, content={
+            "status": "UNAVAILABLE", "is_abstention": True,
+            "reason": f"Conditional transport calculation failed ({type(exc).__name__}).",
+        })
 
 
 @app.get("/api/export-dossier/{scenario_id}")
@@ -936,13 +1081,17 @@ async def export_case_summary(req: CaseSummaryRequest):
     drift_results = dict(req.drift_results)
     if "forecast_warning" not in drift_results:
         drift_results["forecast_warning"] = drift_results.get("beaching_warning", {})
-    pdf_path = report_gen.generate_pdf_dossier(
-        scenario_data,
-        req.sar_results,
-        drift_results,
-        req.ais_results,
-        evidence_provenance=provenance,
-    )
+    try:
+        pdf_path = report_gen.generate_pdf_dossier(
+            scenario_data, req.sar_results, drift_results, req.ais_results,
+            evidence_provenance=provenance,
+        )
+    except Exception as exc:
+        logger.warning("Screening case-summary rendering unavailable (%s).", type(exc).__name__)
+        return JSONResponse(status_code=503, content={
+            "status": "UNAVAILABLE", "is_abstention": True,
+            "reason": "Case-summary rendering failed; no completed PDF is available.",
+        })
     if not os.path.exists(pdf_path):
         raise HTTPException(status_code=500, detail="Failed to generate case summary PDF")
     filename = os.path.basename(pdf_path)
@@ -950,7 +1099,8 @@ async def export_case_summary(req: CaseSummaryRequest):
         pdf_path,
         media_type="application/pdf",
         filename=filename,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                 "X-Document-Kind": "analyst-review-screening-summary"},
     )
 
 
@@ -975,8 +1125,8 @@ async def upload_ais_csv(request: Request):
         "status": "success",
         "vessels_parsed_count": len(parsed["vessels"]),
         "vessels": parsed["vessels"],
-        "provenance": parsed["provenance"],
-        "screening_notice": "AIS is used only for this browser session. Time alignment is recorded in provenance and must be checked before ranking.",
+        "provenance": {**parsed["provenance"], "freshness_status": "UNVERIFIED"},
+        "screening_notice": "Uploaded AIS freshness is unverified. Time alignment is recorded in provenance and must be checked before ranking; upload success does not establish live receiver coverage.",
     }
 
 

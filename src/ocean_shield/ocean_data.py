@@ -3,13 +3,14 @@ Oceanographic & Meteorological Data Ingestion and Spatiotemporal Interpolation E
 Smart India Hackathon 2026 (SIH26143 / NTRO)
 
 Provides physical hydrodynamic ocean currents (HYCOM, INCOIS, CMEMS) and atmospheric
-wind vectors (NOAA GFS, ECMWF) in CF-compliant NetCDF format or via live Open-Meteo APIs.
+wind vectors (NOAA GFS, ECMWF) in CF-compliant NetCDF format or archived Open-Meteo records.
 Supplies continuous 4D vector interpolation for Lagrangian oil spill trajectory simulation.
 """
 
 import os
 import math
 import datetime
+from bisect import bisect_left
 from typing import Dict, List, Tuple, Any, Optional
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
@@ -53,15 +54,13 @@ class OceanDataProvider:
         self._grid_center_time_utc: Optional[datetime.datetime] = None
 
         if not HAS_NETCDF4:
-            self._setup_analytical_fallback(center_lat, center_lon)
-            return
+            raise DataCoverageError("netCDF4 is unavailable; no requested hydrodynamic grid can be loaded.")
 
         if netcdf_path:
             if os.path.exists(netcdf_path):
                 self.load_netcdf(netcdf_path)
             else:
-                self.create_standard_ocean_grid(netcdf_path, center_lat, center_lon)
-                self.load_netcdf(netcdf_path)
+                raise DataCoverageError("Requested hydrodynamic source file is unavailable; no synthetic replacement was generated.")
         else:
             # Prefer real downloaded HYCOM data if available
             real_nc = os.path.abspath(
@@ -79,8 +78,7 @@ class OceanDataProvider:
             elif os.path.exists(default_nc):
                 self.load_netcdf(default_nc)
             else:
-                self.create_standard_ocean_grid(default_nc, center_lat, center_lon)
-                self.load_netcdf(default_nc)
+                raise DataCoverageError("No hydrodynamic source grid is available; demo grid generation must be requested explicitly.")
 
         # Bind real observed Open-Meteo atmospheric wind data if available
         self.load_openmeteo_wind()
@@ -100,15 +98,30 @@ class OceanDataProvider:
         NOTE: This is SYNTHETIC data generated from analytical models, not downloaded
         from HYCOM/INCOIS/CMEMS. File is clearly labeled as such in global attributes.
         """
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        time_span_hours = self._window_hours(time_span_hours, "time_span_hours")
+        if time_span_hours == 0.0:
+            raise ValueError("Demo grid duration must be positive.")
+        if isinstance(grid_points, (bool, np.bool_)) or not isinstance(grid_points, (int, np.integer)) or not 2 <= grid_points <= 101:
+            raise ValueError("Demo grid_points must be an integer between 2 and 101.")
+        try:
+            center_lat, center_lon = float(center_lat), float(center_lon)
+            if not math.isfinite(center_lat) or not math.isfinite(center_lon) or abs(center_lat) > 89.4 or abs(center_lon) > 179.4:
+                raise ValueError
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("Demo grid centre must leave its 0.6-degree extent inside geographic bounds.") from exc
+        time_steps = int(math.ceil(time_span_hours)) + 1
+        if time_steps * grid_points ** 2 > 1000000:
+            raise ValueError("Demo grid exceeds the one-million-cell resource limit.")
+        if not HAS_NETCDF4:
+            raise DataCoverageError("netCDF4 is unavailable; no demo grid can be written.")
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
         # Spatial bounds (~1.0 degree box centered at spill location, ~100km x 100km)
         lat_range = np.linspace(center_lat - 0.6, center_lat + 0.6, grid_points, dtype=np.float32)
         lon_range = np.linspace(center_lon - 0.6, center_lon + 0.6, grid_points, dtype=np.float32)
 
-        # Time range: -36h to +12h relative to T0 (hourly resolution)
-        time_steps = int(time_span_hours) + 1
-        time_range = np.linspace(-36.0, 12.0, time_steps, dtype=np.float32)
+        # Default span is -36h to +12h; an explicitly requested span scales both bounds.
+        time_range = np.linspace(-0.75 * time_span_hours, 0.25 * time_span_hours, time_steps, dtype=np.float32)
 
         # Meshgrid (time, lat, lon)
         T, LAT, LON = np.meshgrid(time_range, lat_range, lon_range, indexing="ij")
@@ -195,12 +208,32 @@ class OceanDataProvider:
         return output_path
 
     def load_netcdf(self, file_path: str):
+        """Load one source or expose its failure explicitly, never substitute a demo grid."""
+        try:
+            self._load_netcdf(file_path)
+        except DataCoverageError:
+            raise
+        except Exception as exc:
+            self.is_loaded = False
+            self._detection_time_utc = None
+            self._grid_center_time_utc = None
+            raise DataCoverageError(f"Cannot load hydrodynamic source grid: {exc}") from exc
+
+    def _load_netcdf(self, file_path: str):
         """
         Loads and binds RegularGridInterpolators from a CF-compliant NetCDF dataset.
         Handles both synthetic (3D: time,lat,lon) and real HYCOM (4D: time,depth,lat,lon) files.
-        Handles absolute time coordinates (converts to relative hours centered on the middle timestep).
-        Handles missing wind variables (uses Open-Meteo or analytical fallback).
+        Converts absolute time coordinates to relative hours independently of
+        their original units. Missing wind remains missing unless a separately
+        time-aligned archive supplies it; there is no analytical replacement.
         """
+        self.is_loaded = False
+        self._detection_time_utc = None
+        self._grid_center_time_utc = None
+        self.interpolators = {}
+        self.metadata = {}
+        if not HAS_NETCDF4:
+            raise DataCoverageError("netCDF4 is unavailable; no source grid was loaded.")
         with nc.Dataset(file_path, "r") as ds:
             time_var = ds.variables["time"]
             time_arr = np.array(time_var[:], dtype=np.float64)
@@ -212,6 +245,8 @@ class OceanDataProvider:
             # must bind a SAR acquisition time before using them operationally.
             time_units = getattr(time_var, "units", "")
             is_absolute_time = "since" in time_units.lower()
+            if not is_absolute_time and "hour" not in time_units.lower():
+                raise DataCoverageError("Relative source time must declare hour units; unknown time units cannot be used as incident hours.")
             source_start_utc = None
             source_end_utc = None
             if is_absolute_time:
@@ -222,16 +257,28 @@ class OceanDataProvider:
                 )
                 source_start_utc = source_dates[0].replace(tzinfo=datetime.timezone.utc)
                 source_end_utc = source_dates[-1].replace(tzinfo=datetime.timezone.utc)
-                t_center = time_arr[len(time_arr) // 2]
                 self._grid_center_time_utc = source_dates[len(source_dates) // 2].replace(tzinfo=datetime.timezone.utc)
-                time_arr = time_arr - t_center
+                time_arr = np.asarray([(date.replace(tzinfo=datetime.timezone.utc) - self._grid_center_time_utc).total_seconds() / 3600.0
+                                       for date in source_dates], dtype=np.float64)
+
+            for name, axis in (("time", time_arr), ("latitude", lat_arr), ("longitude", lon_arr)):
+                if axis.ndim != 1 or axis.size < 2 or not np.all(np.isfinite(axis)) or not np.all(np.diff(axis) > 0):
+                    raise DataCoverageError(f"Source {name} axis must be finite and strictly increasing with at least two values.")
+            if np.any(np.abs(lat_arr) > 90.0) or np.any(np.abs(lon_arr) > 180.0):
+                raise DataCoverageError("Source grid requires supported geographic latitude/longitude coordinates.")
 
             # Preserve invalid cells. Replacing land/missing values with zero turns
             # unknown ocean state into a false calm current.
+            for key in ("water_u", "water_v", "wind_u", "wind_v"):
+                if key not in ds.variables:
+                    continue
+                units = str(getattr(ds.variables[key], "units", "")).lower().replace(" ", "")
+                if units not in ("m/s", "ms-1", "ms^-1", "ms**-1", "m.s-1"):
+                    raise DataCoverageError(f"Source {key} must declare supported m/s velocity units.")
             u_raw = ds.variables["water_u"][:]
             v_raw = ds.variables["water_v"][:]
-            u_curr_raw = np.ma.filled(u_raw, np.nan).astype(np.float32)
-            v_curr_raw = np.ma.filled(v_raw, np.nan).astype(np.float32)
+            u_curr_raw = np.ma.filled(np.ma.asarray(u_raw, dtype=np.float32), np.nan)
+            v_curr_raw = np.ma.filled(np.ma.asarray(v_raw, dtype=np.float32), np.nan)
 
             # Squeeze depth dimension if present: (time, depth, lat, lon) → (time, lat, lon)
             if u_curr_raw.ndim == 4:
@@ -241,11 +288,11 @@ class OceanDataProvider:
             u_curr_raw[~np.isfinite(u_curr_raw)] = np.nan
             v_curr_raw[~np.isfinite(v_curr_raw)] = np.nan
 
-            # Load wind variables if available; otherwise use analytical fallback
+            # Retain masked/missing wind cells instead of inventing wind values.
             has_wind = "wind_u" in ds.variables and "wind_v" in ds.variables
             if has_wind:
-                u_wind = np.array(ds.variables["wind_u"][:], dtype=np.float32)
-                v_wind = np.array(ds.variables["wind_v"][:], dtype=np.float32)
+                u_wind = np.ma.filled(np.ma.asarray(ds.variables["wind_u"][:], dtype=np.float32), np.nan)
+                v_wind = np.ma.filled(np.ma.asarray(ds.variables["wind_v"][:], dtype=np.float32), np.nan)
                 if u_wind.ndim == 4:
                     u_wind = u_wind[:, 0, :, :]
                     v_wind = v_wind[:, 0, :, :]
@@ -256,18 +303,20 @@ class OceanDataProvider:
                 u_wind = np.full_like(u_curr_raw, np.nan, dtype=np.float32)
                 v_wind = np.full_like(v_curr_raw, np.nan, dtype=np.float32)
 
-            is_synthetic = "SYNTHETIC" in getattr(ds, "data_origin", "").upper()
+            provenance_text = " ".join(str(getattr(ds, key, "")) for key in ("data_origin", "source", "title")).upper()
+            is_synthetic = any(cue in provenance_text for cue in ("SYNTHETIC", "ANALYTICAL", "DEMONSTRATION"))
             data_origin = getattr(ds, "data_origin", getattr(ds, "source", "Unknown"))
 
             # Store bounds and provenance
             self.metadata = {
                 "title": getattr(ds, "title", "Ocean Hydrodynamic Dataset"),
-                "institution": getattr(ds, "institution", "HYCOM/NOAA/INCOIS"),
-                "source": getattr(ds, "source", "HYCOM GOFS 3.1"),
+                "institution": getattr(ds, "institution", "Unspecified institution"),
+                "source": getattr(ds, "source", "Unspecified hydrodynamic source"),
                 "data_origin": data_origin,
                 "is_synthetic": is_synthetic,
                 "is_model_or_reanalysis": not is_synthetic,
-                "has_real_wind": has_wind,
+                "has_grid_wind": has_wind,
+                "has_real_wind": has_wind and not is_synthetic,
                 "time_units_original": time_units,
                 "time_min": float(time_arr.min()),
                 "time_max": float(time_arr.max()),
@@ -282,24 +331,49 @@ class OceanDataProvider:
 
         # Build 3D RegularGridInterpolators (time, lat, lon)
         grid_points = (time_arr, lat_arr, lon_arr)
-        self.interpolators["water_u"] = RegularGridInterpolator(grid_points, u_curr_raw, bounds_error=False, fill_value=None)
-        self.interpolators["water_v"] = RegularGridInterpolator(grid_points, v_curr_raw, bounds_error=False, fill_value=None)
-        self.interpolators["wind_u"] = RegularGridInterpolator(grid_points, u_wind, bounds_error=False, fill_value=None)
-        self.interpolators["wind_v"] = RegularGridInterpolator(grid_points, v_wind, bounds_error=False, fill_value=None)
+        self.interpolators["water_u"] = RegularGridInterpolator(grid_points, u_curr_raw, bounds_error=True)
+        self.interpolators["water_v"] = RegularGridInterpolator(grid_points, v_curr_raw, bounds_error=True)
+        self.interpolators["wind_u"] = RegularGridInterpolator(grid_points, u_wind, bounds_error=True)
+        self.interpolators["wind_v"] = RegularGridInterpolator(grid_points, v_wind, bounds_error=True)
         self.is_loaded = True
 
     @staticmethod
     def _parse_utc(value: str) -> datetime.datetime:
         parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=datetime.timezone.utc)
+        return parsed.astimezone(datetime.timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=datetime.timezone.utc)
+
+    @staticmethod
+    def _window_hours(value: float, name: str) -> float:
+        try:
+            if isinstance(value, (bool, np.bool_)):
+                raise ValueError
+            value = float(value)
+            if not math.isfinite(value) or not 0.0 <= value <= 744.0:
+                raise ValueError
+            return value
+        except (ValueError, TypeError, OverflowError) as exc:
+            raise DataCoverageError(f"{name} must be finite and between 0 and 744 hours.") from exc
 
     def bind_detection_time(self, detection_time_utc: str, lookback_hours: float, forecast_hours: float) -> None:
         """Bind source grid to a real acquisition time and reject uncovered windows."""
+        self._detection_time_utc = None
+        for key in ("detection_time_utc", "operational_relative_time_min", "operational_relative_time_max"):
+            self.metadata.pop(key, None)
         if not self.is_loaded:
             raise DataCoverageError("No hydrodynamic source is loaded.")
+        lookback_hours = self._window_hours(lookback_hours, "lookback_hours")
+        forecast_hours = self._window_hours(forecast_hours, "forecast_hours")
         if not self._grid_center_time_utc:
             raise DataCoverageError("Hydrodynamic source has no absolute timestamps.")
-        detection = self._parse_utc(detection_time_utc)
+        if self.metadata.get("is_synthetic"):
+            raise DataCoverageError("Synthetic demonstration grids are not operational met-ocean sources.")
+        try:
+            incident_time = datetime.datetime.fromisoformat(detection_time_utc.replace("Z", "+00:00"))
+            if incident_time.tzinfo is None:
+                raise ValueError("Detection timestamp must specify a timezone.")
+            detection = self._parse_utc(detection_time_utc)
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise DataCoverageError("A valid detection timestamp is required.") from exc
         start = detection - datetime.timedelta(hours=lookback_hours)
         end = detection + datetime.timedelta(hours=forecast_hours)
         source_start = self._parse_utc(self.metadata["source_start_utc"])
@@ -309,26 +383,32 @@ class OceanDataProvider:
                 f"Requested {start.isoformat()}–{end.isoformat()} is outside hydrodynamic coverage "
                 f"{source_start.isoformat()}–{source_end.isoformat()}."
             )
-        if not self.metadata.get("has_real_wind"):
-            wind_records = getattr(self, "_openmeteo_wind", [])
-            if not wind_records:
-                raise DataCoverageError("No time-aligned wind source is available for wind-forced transport.")
+        wind_records = getattr(self, "_openmeteo_wind", [])
+        if wind_records:
             wind_start, wind_end = wind_records[0][0], wind_records[-1][0]
             if start < wind_start or end > wind_end:
                 raise DataCoverageError(
                     f"Requested {start.isoformat()}–{end.isoformat()} is outside wind coverage "
                     f"{wind_start.isoformat()}–{wind_end.isoformat()}."
                 )
+        elif not self.metadata.get("has_real_wind"):
+            raise DataCoverageError("No time-aligned wind source is available for wind-forced transport.")
         self._detection_time_utc = detection
         self.metadata["detection_time_utc"] = detection.isoformat()
-        self.metadata["operational_relative_time_min"] = round((source_start - detection).total_seconds() / 3600.0, 3)
-        self.metadata["operational_relative_time_max"] = round((source_end - detection).total_seconds() / 3600.0, 3)
+        self.metadata["operational_relative_time_min"] = (source_start - detection).total_seconds() / 3600.0
+        self.metadata["operational_relative_time_max"] = (source_end - detection).total_seconds() / 3600.0
 
     def has_coverage(self, lookback_hours: float, forecast_hours: float) -> bool:
+        lookback_hours = self._window_hours(lookback_hours, "lookback_hours")
+        forecast_hours = self._window_hours(forecast_hours, "forecast_hours")
         if self._detection_time_utc is None:
             return False
-        return (-lookback_hours >= self.metadata.get("operational_relative_time_min", float("inf")) and
-                forecast_hours <= self.metadata.get("operational_relative_time_max", float("-inf")))
+        current_coverage = (-lookback_hours >= self.metadata.get("operational_relative_time_min", float("inf")) and
+                            forecast_hours <= self.metadata.get("operational_relative_time_max", float("-inf")))
+        wind = getattr(self, "_openmeteo_wind", [])
+        wind_coverage = (bool(wind) and self._detection_time_utc - datetime.timedelta(hours=lookback_hours) >= wind[0][0] and
+                         self._detection_time_utc + datetime.timedelta(hours=forecast_hours) <= wind[-1][0])
+        return bool(current_coverage and (wind_coverage if wind else self.metadata.get("has_real_wind")))
 
     def get_velocity_at(
         self,
@@ -340,35 +420,54 @@ class OceanDataProvider:
         Interpolates (u_curr, v_curr, u_wind, v_wind) at the given space-time coordinates.
         Never clamps: missing coverage is an explicit error, not a forecast result.
         """
+        values = self._interpolate_velocities(np.asarray([lat]), np.asarray([lon]), t_hours_relative)
+        return tuple(float(value[0]) for value in values)
+
+    def get_velocities_at(self, lat: np.ndarray, lon: np.ndarray,
+                          t_hours_relative: float = 0.0) -> Tuple[np.ndarray, ...]:
+        """Batch interpolation with the same fail-closed coverage contract as scalar reads."""
+        if type(self).get_velocity_at is not OceanDataProvider.get_velocity_at:
+            values = [self.get_velocity_at(float(a), float(b), t_hours_relative) for a, b in zip(lat, lon)]
+            return tuple(np.asarray(values, dtype=float).T)
+        return self._interpolate_velocities(lat, lon, t_hours_relative)
+
+    def _interpolate_velocities(self, lat: np.ndarray, lon: np.ndarray,
+                                t_hours_relative: float) -> Tuple[np.ndarray, ...]:
         if not self.is_loaded:
             raise DataCoverageError("Hydrodynamic data source is unavailable.")
-
-        if self._grid_center_time_utc and self._detection_time_utc is None:
-            raise DataCoverageError("A detection timestamp is required to align this hydrodynamic source.")
-        grid_offset_h = 0.0
-        if self._grid_center_time_utc and self._detection_time_utc:
-            grid_offset_h = (self._detection_time_utc - self._grid_center_time_utc).total_seconds() / 3600.0
-        t_eval = float(t_hours_relative + grid_offset_h)
-        if not self.metadata["time_min"] <= t_eval <= self.metadata["time_max"]:
-            raise DataCoverageError("Requested time is outside hydrodynamic coverage.")
-        if not self.metadata["lat_min"] <= lat <= self.metadata["lat_max"] or not self.metadata["lon_min"] <= lon <= self.metadata["lon_max"]:
-            raise DataCoverageError("Requested point is outside hydrodynamic grid coverage.")
-        lat_eval, lon_eval = float(lat), float(lon)
-        pt = np.array([[t_eval, lat_eval, lon_eval]])
-
-        u_c = float(self.interpolators["water_u"](pt)[0])
-        v_c = float(self.interpolators["water_v"](pt)[0])
-
-        real_wind = self.get_real_wind_at(t_hours_relative)
-        if real_wind is not None:
-            u_w, v_w = real_wind
-        else:
-            u_w = float(self.interpolators["wind_u"](pt)[0])
-            v_w = float(self.interpolators["wind_v"](pt)[0])
-
-        if not all(math.isfinite(value) for value in (u_c, v_c, u_w, v_w)):
-            raise DataCoverageError("Source grid contains missing current or wind data at this point.")
-        return u_c, v_c, u_w, v_w
+        try:
+            lat, lon = np.asarray(lat, dtype=float), np.asarray(lon, dtype=float)
+            if lat.ndim != 1 or lat.shape != lon.shape or not lat.size or not np.all(np.isfinite(lat)) or not np.all(np.isfinite(lon)):
+                raise DataCoverageError("Source query requires matching finite, nonempty latitude/longitude arrays.")
+            if np.any(np.abs(lat) > 90.0) or np.any(np.abs(lon) > 180.0):
+                raise DataCoverageError("Source query contains invalid geographic coordinates.")
+            if isinstance(t_hours_relative, (bool, np.bool_)) or not math.isfinite(float(t_hours_relative)):
+                raise DataCoverageError("Source query time must be finite.")
+            if self._grid_center_time_utc and self._detection_time_utc is None:
+                raise DataCoverageError("A detection timestamp is required to align this hydrodynamic source.")
+            grid_offset_h = ((self._detection_time_utc - self._grid_center_time_utc).total_seconds() / 3600.0
+                             if self._grid_center_time_utc and self._detection_time_utc else 0.0)
+            t_eval = float(t_hours_relative) + grid_offset_h
+            if not self.metadata["time_min"] <= t_eval <= self.metadata["time_max"]:
+                raise DataCoverageError("Requested time is outside hydrodynamic coverage.")
+            if (np.any(lat < self.metadata["lat_min"]) or np.any(lat > self.metadata["lat_max"]) or
+                    np.any(lon < self.metadata["lon_min"]) or np.any(lon > self.metadata["lon_max"])):
+                raise DataCoverageError("Requested particle/stage point is outside hydrodynamic grid coverage.")
+            points = np.column_stack([np.full(lat.shape, t_eval), lat, lon])
+            u_c, v_c = (np.asarray(self.interpolators[key](points), dtype=float) for key in ("water_u", "water_v"))
+            real_wind = self.get_real_wind_at(float(t_hours_relative))
+            if real_wind is not None:
+                u_w, v_w = (np.full(lat.shape, component) for component in real_wind)
+            else:
+                u_w, v_w = (np.asarray(self.interpolators[key](points), dtype=float) for key in ("wind_u", "wind_v"))
+            values = u_c, v_c, u_w, v_w
+            if any(value.shape != lat.shape or not np.all(np.isfinite(value)) for value in values):
+                raise DataCoverageError("Source grid contains missing current or wind data at a particle/stage point.")
+            return values
+        except DataCoverageError:
+            raise
+        except (KeyError, ValueError, TypeError, OverflowError) as exc:
+            raise DataCoverageError(f"Hydrodynamic source query failed: {exc}") from exc
 
     def get_telemetry_summary(self, lat: float, lon: float, t_h: float = 0.0) -> Dict[str, Any]:
         """Provides human-readable ocean and atmospheric diagnostic metrics."""
@@ -378,16 +477,19 @@ class OceanDataProvider:
         wind_speed = math.hypot(u_w, v_w)
         wind_dir_deg = (math.degrees(math.atan2(u_w, v_w)) + 360.0) % 360.0
 
-        wind_src = getattr(self, "_openmeteo_source", self.metadata.get("source", self.provider_name))
+        provider_name = getattr(self, "provider_name", "Unspecified provider")
+        archive_active = bool(getattr(self, "_openmeteo_wind", [])) and self._detection_time_utc is not None
+        wind_src = (getattr(self, "_openmeteo_source", "Time-aligned wind archive") if archive_active else
+                    self.metadata.get("source", provider_name))
 
         return {
-            "source": self.metadata.get("source", self.provider_name),
+            "source": self.metadata.get("source", provider_name),
             "institution": self.metadata.get("institution", "Unknown"),
             "data_origin": self.metadata.get("data_origin", "Unknown"),
             "is_real_observed_currents": False,
             "is_model_or_reanalysis_currents": self.metadata.get("is_model_or_reanalysis", False),
             "wind_source": wind_src,
-            "format": "CF-1.8 NetCDF-4" if not hasattr(self, "_openmeteo_wind") else "CF-1.8 NetCDF-4 + Real ECMWF/Open-Meteo Wind",
+            "format": "CF-1.8 NetCDF-4 + time-aligned archived wind" if archive_active else "CF-1.8 NetCDF-4",
             "evaluated_time_relative_h": round(t_h, 2),
             "surface_current": {
                 "speed_ms": round(curr_speed, 3),
@@ -400,9 +502,12 @@ class OceanDataProvider:
                 "speed_ms": round(wind_speed, 2),
                 "speed_knots": round(wind_speed * 1.94384, 1),
                 "direction_degrees": round(wind_dir_deg, 1),
+                "direction_convention": "velocity-to clockwise from true north; archive directions are meteorological-from",
                 "u_east_ms": round(u_w, 2),
                 "v_north_ms": round(v_w, 2),
-                "is_real_observed": hasattr(self, "_openmeteo_wind") and bool(self._openmeteo_wind)
+                "is_real_observed": False,
+                "is_model_or_reanalysis": archive_active or self.metadata.get("has_real_wind", False),
+                "archive_time_aligned": archive_active,
             }
         }
 
@@ -422,7 +527,9 @@ class OceanDataProvider:
                 )
             )
 
+        self._openmeteo_wind = []
         if not os.path.exists(json_path):
+            self.metadata["wind_archive_status"] = "NOT_AVAILABLE"
             return False
 
         try:
@@ -435,27 +542,39 @@ class OceanDataProvider:
             directions = hourly.get("wind_direction_10m", [])
 
             if not times or not speeds:
+                self.metadata["wind_archive_status"] = "INVALID_ARCHIVE"
                 return False
 
-            self._openmeteo_wind = []
+            records = []
             for i in range(len(times)):
                 if i >= len(speeds) or speeds[i] is None or i >= len(directions) or directions[i] is None:
                     continue
                 timestamp = self._parse_utc(str(times[i]))
+                if isinstance(speeds[i], bool) or isinstance(directions[i], bool):
+                    raise DataCoverageError("Wind archive speed/direction must be numeric, not boolean.")
                 spd_kmh = speeds[i] if i < len(speeds) and speeds[i] is not None else 0.0
                 spd_ms = float(spd_kmh) / 3.6  # Convert km/h to physical m/s
                 d = float(directions[i]) if i < len(directions) and directions[i] is not None else 0.0
+                if not math.isfinite(spd_ms) or not 0.0 <= spd_ms <= 300.0 or not math.isfinite(d) or not 0.0 <= d <= 360.0:
+                    raise DataCoverageError("Wind archive contains invalid speed/direction values.")
                 # Oceanographic wind vector pointing towards the advection direction:
                 d_rad = math.radians(d)
                 u_w = -spd_ms * math.sin(d_rad)
                 v_w = -spd_ms * math.cos(d_rad)
-                self._openmeteo_wind.append((timestamp, u_w, v_w, spd_ms))
+                records.append((timestamp, u_w, v_w, spd_ms))
 
-            self._openmeteo_source = "Open-Meteo Real Historical Archive (ECMWF/ERA5 Reanalysis)"
+            if not records or any(a[0] >= b[0] for a, b in zip(records, records[1:])):
+                raise DataCoverageError("Wind archive must have finite records at strictly increasing UTC timestamps.")
+            self._openmeteo_wind = records
+
+            self._openmeteo_source = "Open-Meteo historical archive (model/reanalysis; not direct wind observations)"
             self.metadata["wind_start_utc"] = self._openmeteo_wind[0][0].isoformat()
             self.metadata["wind_end_utc"] = self._openmeteo_wind[-1][0].isoformat()
+            self.metadata["wind_archive_status"] = "LOADED_TIME_ALIGNMENT_REQUIRED"
             return True
         except Exception:
+            self._openmeteo_wind = []
+            self.metadata["wind_archive_status"] = "INVALID_ARCHIVE"
             return False
 
     def get_real_wind_at(self, t_hours_relative: float = 0.0) -> Optional[Tuple[float, float]]:
@@ -465,13 +584,26 @@ class OceanDataProvider:
         """
         if not hasattr(self, "_openmeteo_wind") or not self._openmeteo_wind or not self._detection_time_utc:
             return None
+        try:
+            if isinstance(t_hours_relative, (bool, np.bool_)):
+                raise ValueError
+            t_hours_relative = float(t_hours_relative)
+            if not math.isfinite(t_hours_relative) or abs(t_hours_relative) > 744.0:
+                raise ValueError
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise DataCoverageError("Requested wind time must be finite and within ±744 hours.") from exc
         target = self._detection_time_utc + datetime.timedelta(hours=t_hours_relative)
         timestamps = [row[0] for row in self._openmeteo_wind]
         if target < timestamps[0] or target > timestamps[-1]:
-            return None
-        idx = min(range(len(timestamps)), key=lambda i: abs((timestamps[i] - target).total_seconds()))
-        _, u_w, v_w, _ = self._openmeteo_wind[idx]
-        return u_w, v_w
+            raise DataCoverageError("Requested time is outside the bound wind archive coverage.")
+        idx = bisect_left(timestamps, target)
+        if timestamps[idx] == target:
+            _, u_w, v_w, _ = self._openmeteo_wind[idx]
+            return u_w, v_w
+        previous, following = self._openmeteo_wind[idx - 1], self._openmeteo_wind[idx]
+        fraction = (target - previous[0]).total_seconds() / (following[0] - previous[0]).total_seconds()
+        return (previous[1] + fraction * (following[1] - previous[1]),
+                previous[2] + fraction * (following[2] - previous[2]))
 
     def _setup_analytical_fallback(self, center_lat: float, center_lon: float):
         """Pure-Python / NumPy fallback when netCDF4 C-library is not installed."""
@@ -492,15 +624,21 @@ class OceanDataProvider:
         v_wind = ((3.2 + 0.4 * np.cos(LON * 5.0)) * diurnal_factor).astype(np.float32)
 
         grid = (time_range, lat_range, lon_range)
-        self.interpolators["water_u"] = RegularGridInterpolator(grid, u_curr, bounds_error=False, fill_value=None)
-        self.interpolators["water_v"] = RegularGridInterpolator(grid, v_curr, bounds_error=False, fill_value=None)
-        self.interpolators["wind_u"] = RegularGridInterpolator(grid, u_wind, bounds_error=False, fill_value=None)
-        self.interpolators["wind_v"] = RegularGridInterpolator(grid, v_wind, bounds_error=False, fill_value=None)
+        self.interpolators["water_u"] = RegularGridInterpolator(grid, u_curr, bounds_error=True)
+        self.interpolators["water_v"] = RegularGridInterpolator(grid, v_curr, bounds_error=True)
+        self.interpolators["wind_u"] = RegularGridInterpolator(grid, u_wind, bounds_error=True)
+        self.interpolators["wind_v"] = RegularGridInterpolator(grid, v_wind, bounds_error=True)
         self.metadata = {
             "title": "Analytical M2 Hydrodynamic Grid (netCDF4 fallback)",
             "is_synthetic": True,
             "is_model_or_reanalysis": False,
             "fallback_mode": True,
+            "source": "Explicit demonstration analytical M2 grid (synthetic)",
+            "data_origin": "SYNTHETIC demonstration; not observations or downloaded model data",
+            "has_real_wind": False,
+            "time_min": float(time_range.min()), "time_max": float(time_range.max()),
+            "lat_min": float(lat_range.min()), "lat_max": float(lat_range.max()),
+            "lon_min": float(lon_range.min()), "lon_max": float(lon_range.max()),
             "institution": "OCEAN-SHIELD Synthetic Engine"
         }
         self.is_loaded = True
@@ -580,17 +718,22 @@ class Oceansat3_OCM_Adapter:
         self, slick_lat: float, slick_lon: float, observation_time: Optional[datetime.datetime] = None
     ) -> Dict[str, Any]:
         """
-        Cross-validates SAR oil slick detection with Oceansat-3 OCM-3 optical sun-glint reflectance.
-        Oil films dampen capillary waves, altering the sea-surface specular reflection in Band 8.
+        Describe the unconnected OCM-3 adapter state.
+
+        The repository does not download or authenticate an OCM-3 scene here, so
+        this method must not manufacture a sun-glint observation or an optical
+        confirmation from coordinates alone.
         """
         return {
             "satellite": self.satellite,
             "sensor": self.sensor,
             "resolution_m": 360.0,
-            "sun_glint_detected": True,
-            "slick_reflectance_anomaly": -0.042,
-            "optical_confirmation": "CONFIRMED_BY_OCM3",
+            "sun_glint_detected": None,
+            "slick_reflectance_anomaly": None,
+            "optical_confirmation": "NOT_ASSESSED_NO_OCM3_SCENE",
             "swath_width_km": 1400.0,
             "revisit_days": 2,
-            "status": "OPERATIONAL_INDIAN_EEZ"
+            "status": "ADAPTER_NOT_CONNECTED",
+            "assessment_scope": "METADATA_ONLY",
+            "reason": "No authenticated OCM-3 raster or calibrated reflectance was supplied.",
         }

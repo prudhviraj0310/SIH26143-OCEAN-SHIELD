@@ -7,7 +7,8 @@ to detect oil slicks in visible and near-infrared (VNIR/SWIR) bands using:
 1. Normalized Difference Oil Index (NDOI)
 2. Optical Contrast Index (OCI) / Sunglint Refractive Index ratio
 3. Chlorophyll-a / Algae Bloom discrimination (Floating Algae Index - FAI)
-4. Multi-spectral slick thickness and emulsive state estimation
+Index screens do not determine oil identity, thickness, calibrated confidence,
+algae identity or source radiometric authenticity.
 """
 
 from typing import Dict, List, Tuple, Any, Optional
@@ -23,7 +24,18 @@ class EOEngine:
     """
 
     def __init__(self, ground_resolution_m: float = 10.0):
+        if isinstance(ground_resolution_m, bool) or not np.isfinite(ground_resolution_m) or not 0 < ground_resolution_m <= 10000:
+            raise ValueError("Ground sampling distance must be finite, positive and bounded.")
         self.ground_resolution_m = ground_resolution_m
+
+    @staticmethod
+    def _validated_band(value):
+        array = np.ma.asarray(value, dtype=np.float32)
+        if (array.ndim != 2 or min(array.shape, default=0) < 2 or array.size > 25_000_000
+                or np.any(np.ma.getmaskarray(array)) or not np.all(np.isfinite(array))
+                or np.any(array < 0) or np.any(array > 65535)):
+            raise ValueError("Spectral inputs require finite, nonnegative, unmasked, bounded 2D samples.")
+        return np.asarray(array)
 
     def compute_ndoi(self, red_band: np.ndarray, nir_band: np.ndarray) -> np.ndarray:
         """
@@ -74,13 +86,13 @@ class EOEngine:
         sunglint_present: bool = True
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """
-        Processes authentic multi-spectral bands (Sentinel-2 MSI Level-2A):
+        Screens supplied bands; naming wavelengths does not authenticate a sensor:
         - B02 (Blue, 490 nm)
         - B03 (Green, 560 nm)
         - B04 (Red, 665 nm)
         - B08 (NIR, 842 nm)
         - B11 (SWIR, 1610 nm)
-        Returns high-confidence segmented mask and comprehensive chemical/spectral characterization.
+        Returns heuristic index contrasts with confidence and calibration unassessed.
         """
         b04_red = bands.get("B04", bands.get("red"))
         b08_nir = bands.get("B08", bands.get("nir"))
@@ -90,6 +102,11 @@ class EOEngine:
 
         if b04_red is None or b08_nir is None:
             raise ValueError("Multi-spectral processing requires at least Red (B04) and NIR (B08) bands.")
+        b04_red, b08_nir = self._validated_band(b04_red), self._validated_band(b08_nir)
+        if b11_swir is not None:
+            b11_swir = self._validated_band(b11_swir)
+        if b04_red.shape != b08_nir.shape or (b11_swir is not None and b11_swir.shape != b04_red.shape):
+            raise ValueError("Spectral bands must be supplied on the same aligned grid.")
 
         # 1. Normalized Difference Oil Index (NDOI)
         ndoi = self.compute_ndoi(b04_red, b08_nir)
@@ -133,33 +150,38 @@ class EOEngine:
         total_pixels = int(np.sum(clean_mask > 0))
         area_km2 = (total_pixels * (self.ground_resolution_m ** 2)) / 1e6
 
-        # Classification based on multispectral optical depth
+        # Index-contrast categories, not optical thickness or Bonn oil codes.
         mean_ndoi = float(np.mean(ndoi[clean_mask > 0])) if total_pixels > 0 else 0.0
         mean_hi = float(np.mean(hi[clean_mask > 0])) if (total_pixels > 0 and has_swir) else 0.0
 
         if mean_ndoi > 0.22 and mean_hi > 0.12:
-            classification = "Heavy Crude Emulsion / Continuous Oil (Bonn Code 4/5)"
-            confidence = 0.94
+            classification = "Higher spectral-index contrast candidate (identity unverified)"
         elif mean_ndoi > 0.08:
-            classification = "Rainbow Sheen / Metallic Oil Film (Bonn Code 2/3)"
-            confidence = 0.89
+            classification = "Moderate spectral-index contrast candidate (identity unverified)"
         else:
-            classification = "Trace Hydrocarbon Film (Bonn Code 1)"
-            confidence = 0.78
+            classification = "Low spectral-index contrast candidate (identity unverified)"
 
         return clean_mask, {
-            "sensor_type": "Sentinel-2 MSI Multi-Spectral (Calibrated Reflectance)",
-            "sensor_mode": "AUTHENTIC_MULTISPECTRAL_B04_B08_B11" if has_swir else "AUTHENTIC_VNIR_B04_B08",
-            "has_calibrated_nir": True,
-            "has_calibrated_swir": has_swir,
+            "sensor_type": "Supplied optical spectral bands; source/calibration unverified",
+            "sensor_mode": "SUPPLIED_RED_NIR_SWIR" if has_swir else "SUPPLIED_RED_NIR",
+            "has_nir_band": True, "has_swir_band": has_swir,
+            "has_calibrated_nir": False,
+            "has_calibrated_swir": False,
+            "calibration_status": "NOT_ASSESSED",
             "total_pixels": total_pixels,
             "area_km2": round(area_km2, 3),
             "mean_ndoi": round(mean_ndoi, 4),
             "mean_hydrocarbon_index": round(mean_hi, 4) if has_swir else None,
             "classification": classification,
-            "confidence": confidence,
-            "lookalike_algae_rejected": bool(np.sum(fai >= fai_algae_thresh) > 50),
-            "biogenic_lookalike_algae_rejected": bool(np.sum(fai >= fai_algae_thresh) > 50),
+            "confidence": None,
+            "confidence_status": "NOT_CALIBRATED",
+            "assessment_scope": "SPECTRAL_INDEX_SCREEN_ONLY",
+            "limitations": ["Supplied bands do not authenticate mission, radiometric calibration or oil identity.",
+                            "Index thresholds are heuristic; no Bonn thickness class or oil confidence is determined.",
+                            "Area assumes the configured ground sampling distance."],
+            "algae_screen_flagged": bool(np.sum(fai >= fai_algae_thresh) > 50),
+            "lookalike_algae_rejected": None,  # Legacy keys: biological identity is not assessed.
+            "biogenic_lookalike_algae_rejected": None,
             "num_slick_patches": len(contours)
         }
 
@@ -215,7 +237,12 @@ class EOEngine:
             "area_km2": round(area_km2, 3),
             "mean_ndoi": round(mean_ndoi, 4),
             "classification": "Optical Slick Anomaly (Unverified Multispectral)",
-            "confidence": 0.72,
-            "lookalike_algae_rejected": bool(np.sum(fai >= 45.0) > 100),
+            "confidence": None,
+            "confidence_status": "NOT_CALIBRATED",
+            "assessment_scope": "RGB_APPEARANCE_SCREEN_ONLY",
+            "algae_screen_flagged": bool(np.sum(fai >= 45.0) > 100),
+            "limitations": ["Pseudo-NIR is derived from RGB, not an observed infrared band.",
+                            "No algae identity, hydrocarbon identity, thickness or oil confidence is determined."],
+            "lookalike_algae_rejected": None,
             "num_slick_patches": len(contours)
         }

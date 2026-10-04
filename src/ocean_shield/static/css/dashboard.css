@@ -4,7 +4,7 @@
  * Typography: Inter (UI Hierarchy) & JetBrains Mono (Telemetry / Coordinates)
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+/* Use installed/system font fallbacks: no remote font load is needed for recording. */
 
 :root {
   /* Surface & Glass Tokens */

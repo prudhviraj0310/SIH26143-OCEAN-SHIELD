@@ -1,67 +1,155 @@
-"""
-Ocean Shield — Adversarial Self-Falsification & Decision-Theoretic Abstention Engine
-SIH26143 (NTRO) / Maritime Domain Awareness
+"""Heuristic screening weights, sensitivity checks, and evidence-state holds.
 
-Implements Bayesian hypothesis testing, Shannon information entropy quantification,
-adversarial stress-testing (hydrodynamic current variance, GPS jitter, AIS spoofing),
-and decision-theoretic abstention to prevent reckless false vessel attribution in court.
-
-Theoretical Foundations:
-1. Shannon Information Entropy: H(p) = -sum(p_i * log2(p_i))
-2. Normalized Entropy: H_norm = H(p) / log2(K)
-3. Principled Abstention Gate: If H_norm > 0.82 or Margin(Top1, Top2) < 0.15 => ABSTAIN
-4. Adversarial Sensitivity: Challenges attribution stability against +/-20% current perturbations
+Softmax weights, entropy, and project thresholds are uncalibrated triage signals.
+They do not establish source identity, responsibility, or a false-accusation rate.
+Eligibility requires entropy <= 0.82 and margin >= 0.15, plus assessed inputs.
 """
 
 import math
+from numbers import Real
 from typing import Dict, List, Any, Optional, Tuple
 
 
 class FalsificationAndAbstentionEngine:
-    """
-    Executes adversarial counterfactual challenges and information-theoretic
-    uncertainty quantification to establish legal defensibility.
-    """
+    """Keeps incomplete or unstable evidence on an analyst-review hold."""
 
     MAX_NORMALIZED_ENTROPY_THRESHOLD = 0.82  # Uncertainty too high if entropy > 82% of uniform
     MIN_SEPARATION_MARGIN = 0.15            # Top candidate must lead second candidate by >= 15%
     CURRENT_VARIATION_STRESS = 0.20         # +/- 20% hydrodynamic current sensitivity challenge
     GPS_JITTER_STRESS_NM = 1.0              # 1.0 nautical mile GPS corridor uncertainty challenge
-    TEMPERATURE = 12.0                      # Softmax scaling temperature for calibrated probabilities
+    TEMPERATURE = 12.0                      # Heuristic scaling, not calibration
+    UNKNOWN_SOURCE_SCORE = 45.0             # Project baseline, not a measured prior
+
+    @staticmethod
+    def finite_number(value: Any, minimum: Optional[float] = None,
+                      maximum: Optional[float] = None) -> Optional[float]:
+        """Canonicalize a scalar once; absent/invalid evidence stays absent."""
+        if isinstance(value, bool) or not isinstance(value, (Real, str)):
+            return None
+        try:
+            number = float(value)
+        except (ValueError, TypeError, OverflowError):
+            return None
+        if not math.isfinite(number):
+            return None
+        if minimum is not None and number < minimum:
+            return None
+        if maximum is not None and number > maximum:
+            return None
+        return number
 
     @classmethod
-    def calculate_shannon_entropy(cls, probabilities: List[float]) -> Dict[str, float]:
+    def unavailable_verdict(cls, reason: str, candidates: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        distribution = [
+            {"hypothesis": "VESSEL_CANDIDATE", "candidate_index": index,
+             "mmsi": candidate.get("mmsi"), "score": candidate.get("composite_score"),
+             "lead_priority_weight": None}
+            for index, candidate in enumerate(candidates or [])
+        ]
+        distribution.append({"hypothesis": "UNKNOWN_SOURCE", "score": cls.UNKNOWN_SOURCE_SCORE,
+                             "lead_priority_weight": None})
+        return {
+            "status": "UNAVAILABLE", "decision": "EVIDENCE_GATE_UNAVAILABLE",
+            "is_abstention": True, "reason": reason,
+            "actionable_recommendation": "Restore and rerun the evidence checks before reviewing a lead.",
+            "confidence_score": None, "confidence_status": "UNCALIBRATED",
+            "weight_kind": "uncalibrated_lead_priority",
+            "hypothesis_distribution": distribution, "unknown_source_weight": None,
+            "coverage_status": "NOT_ASSESSED", "integrity_status": "NOT_ASSESSED",
+            "stress_status": "UNAVAILABLE", "entropy_metrics": {
+                "status": "NOT_ASSESSED", "entropy_bits": None,
+                "max_possible_entropy": None, "normalized_entropy": None,
+                "uncertainty_level": "NOT_ASSESSED",
+            },
+        }
+
+    @classmethod
+    def assess_ais_integrity(cls, audit: Any) -> Dict[str, Any]:
+        """Validate the complete v1 audit; no permissive telemetry defaults."""
+        def hold(reason: str, status: str = "NOT_ASSESSED") -> Dict[str, Any]:
+            return {"status": status, "passed": False, "reason": reason}
+
+        if isinstance(audit, dict) and audit.get("status") == "UNAVAILABLE":
+            return hold("AIS integrity audit is unavailable.", "UNAVAILABLE")
+        if not isinstance(audit, dict) or type(audit.get("schema_version")) is not int or audit["schema_version"] != 1:
+            return hold("AIS audit missing or unsupported schema.")
+        bool_fields = ("has_anomalies", "corridor_blackout", "impossible_speed_jump",
+                       "identity_conflict", "position_jump", "telemetry_validated", "cpa_time_covered")
+        count_fields = ("anomaly_count", "total_fixes", "valid_time_fixes", "valid_position_fixes",
+                        "valid_speed_fixes", "rejected_fixes")
+        numeric_fields = ("max_gap_minutes", "max_acceleration_kts_min", "time_span_hours")
+        if any(type(audit.get(key)) is not bool for key in bool_fields):
+            return hold("AIS audit boolean fields are incomplete or malformed.")
+        if any(type(audit.get(key)) is not int or audit[key] < 0 for key in count_fields):
+            return hold("AIS audit telemetry counts are incomplete or malformed.")
+        if any(cls.finite_number(audit.get(key), 0) is None for key in numeric_fields):
+            return hold("AIS audit metrics are incomplete or nonfinite.")
+        anomalies = audit.get("anomalies_detected")
+        reasons = audit.get("assessment_reasons")
+        if (not isinstance(anomalies, list) or any(not isinstance(a, str) for a in anomalies)
+                or audit["anomaly_count"] != len(anomalies)
+                or not isinstance(reasons, list) or any(not isinstance(r, str) for r in reasons)
+                or audit.get("status") not in ("ASSESSED", "NOT_ASSESSED")
+                or audit.get("integrity_rating") not in ("VERIFIED_CONTINUOUS", "COMPROMISED / ANOMALOUS", "NOT_ASSESSED")
+                or (audit.get("mmsi_valid") is not None and type(audit.get("mmsi_valid")) is not bool)):
+            return hold("AIS audit state or anomaly schema is malformed.")
+        if any(audit[key] > audit["total_fixes"] for key in count_fields[2:]):
+            return hold("AIS audit counts contradict the number of fixes.")
+        if audit["valid_position_fixes"] > audit["valid_time_fixes"] or audit["valid_speed_fixes"] > audit["valid_time_fixes"]:
+            return hold("AIS audit position/speed counts contradict valid timestamp counts.")
+
+        # These flags independently block integrity, even if has_anomalies is false.
+        compromised = (audit["has_anomalies"] or audit["anomaly_count"] > 0
+                       or audit["corridor_blackout"] or audit["impossible_speed_jump"]
+                       or audit["identity_conflict"] or audit["position_jump"]
+                       or audit.get("mmsi_valid") is False
+                       or audit["max_acceleration_kts_min"] > 3.0)
+        if compromised:
+            return hold("; ".join(anomalies) or "Severe AIS identity, blackout, or kinematic integrity flag.", "COMPROMISED")
+        if (audit["status"] != "ASSESSED" or not audit["telemetry_validated"]
+                or audit["valid_time_fixes"] < 2 or audit["valid_position_fixes"] < 2
+                or audit["time_span_hours"] <= 0 or not audit["cpa_time_covered"]
+                or audit["rejected_fixes"] > 0 or audit.get("mmsi_valid") is not True
+                or audit["integrity_rating"] != "VERIFIED_CONTINUOUS"):
+            return hold("; ".join(reasons) or "Insufficient valid time/position coverage or identity support.")
+        return {"status": "ASSESSED", "passed": True,
+                "reason": "Supplied telemetry passed continuity checks; receiver coverage is separate."}
+
+    @classmethod
+    def calculate_shannon_entropy(cls, probabilities: List[float]) -> Dict[str, Any]:
         """
         Computes Shannon Information Entropy H(p) and Normalized Entropy H_norm.
         """
-        p_clean = [p for p in probabilities if p > 1e-9]
+        values = [cls.finite_number(p, 0, 1) for p in probabilities]
         k = len(probabilities)
-
-        if not p_clean or k <= 1:
+        if not values or any(p is None for p in values) or sum(values) <= 0:
+            return {"status": "NOT_ASSESSED", "entropy_bits": None,
+                    "max_possible_entropy": None, "normalized_entropy": None,
+                    "uncertainty_level": "NOT_ASSESSED"}
+        if k <= 1:
             return {
+                "status": "ASSESSED",
                 "entropy_bits": 0.0,
                 "max_possible_entropy": 0.0,
                 "normalized_entropy": 0.0,
-                "uncertainty_level": "LOW (DETERMINISTIC)"
+                "uncertainty_level": "SINGLE HYPOTHESIS (NO COMPARISON)"
             }
-
-        total = sum(p_clean)
-        p_norm = [p / total for p in p_clean]
-
-        h_bits = -sum(p * math.log2(p) for p in p_norm)
-        h_max = math.log2(k) if k > 1 else 1.0
-        h_normalized = round(h_bits / h_max, 4) if h_max > 0 else 0.0
-
-        if h_normalized >= cls.MAX_NORMALIZED_ENTROPY_THRESHOLD:
+        total = math.fsum(values)
+        p_norm = [p / total for p in values]
+        h_bits = -math.fsum(p * math.log2(p) for p in p_norm if p > 0)
+        h_max = math.log2(k)
+        h_normalized = h_bits / h_max
+        if h_normalized > cls.MAX_NORMALIZED_ENTROPY_THRESHOLD:
             level = "CRITICAL (UNIFORM / HIGH CONFUSION)"
         elif h_normalized >= 0.50:
-            level = "MODERATE (AMBIGUOUS ATTRIBUTION)"
+            level = "MODERATE (AMBIGUOUS SCREENING)"
         else:
             level = "LOW (HIGH CONVERGENCE)"
 
         return {
-            "entropy_bits": round(h_bits, 4),
-            "max_possible_entropy": round(h_max, 4),
+            "status": "ASSESSED",
+            "entropy_bits": h_bits,
+            "max_possible_entropy": h_max,
             "normalized_entropy": h_normalized,
             "uncertainty_level": level
         }
@@ -74,153 +162,115 @@ class FalsificationAndAbstentionEngine:
         coverage_validated: bool = False,
         unknown_source_hypothesis: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Enforces decision-theoretic boundaries to prevent wrongful legal accusations.
-        Scores are uncalibrated lead-priority values, never guilt probabilities.
-        """
-        if not ranked_candidates:
-            return {
-                "decision": "INSUFFICIENT_EVIDENCE",
-                "is_abstention": True,
-                "reason": "Zero vessel trajectories intersected the spatial-temporal hindcast corridor.",
-                "actionable_recommendation": "Maintain persistent satellite surveillance; inspect local port berths.",
-                "confidence_score": 0.0,
-                "entropy_metrics": {
-                    "entropy_bits": 0.0,
-                    "max_possible_entropy": 0.0,
-                    "normalized_entropy": 1.0,
-                    "uncertainty_level": "MAXIMAL (NO CANDIDATES)"
-                }
-            }
+        """Evaluate the leading screening candidate after its integrity/stress checks.
 
+        The legacy unknown_source_hypothesis argument cannot remove the mandatory
+        unknown-source baseline. A coverage declaration is accepted only as strict
+        True; callers must perform the independent receiver-coverage assessment.
+        """
+        if not isinstance(ranked_candidates, list) or any(not isinstance(c, dict) for c in ranked_candidates):
+            result = cls.unavailable_verdict("Candidate list is malformed.")
+            result["status"] = "INVALID_INPUT"
+            return result
 
-        # Softmax calibration with explicit unobserved/unknown-source prior hypothesis
         scores = []
-        for c in ranked_candidates:
-            s_raw = c.get("composite_score", 0.0)
-            try:
-                s_val = float(s_raw) if s_raw is not None else 0.0
-                if math.isnan(s_val) or math.isinf(s_val) or s_val < 0:
-                    s_val = 0.0
-            except (ValueError, TypeError):
-                s_val = 0.0
-            scores.append(s_val)
-
-        # Baseline score representing an unobserved, dark, or non-vessel hypothesis
-        s_unobserved = 45.0 if unknown_source_hypothesis else 0.0
-        all_eval_scores = list(scores)
-        if len(scores) == 1 and unknown_source_hypothesis:
-            all_eval_scores.append(s_unobserved)
-
-        max_s = max(all_eval_scores) if all_eval_scores else 0.0
-        exp_scores = [math.exp((s - max_s) / cls.TEMPERATURE) for s in all_eval_scores]
-        sum_exp = sum(exp_scores)
-        posteriors = [e / sum_exp for e in exp_scores[:len(scores)]]
-
-        for i, c in enumerate(ranked_candidates):
-            c["lead_priority_weight"] = round(posteriors[i], 4)
-
-        entropy_metrics = cls.calculate_shannon_entropy(posteriors)
-        h_norm = entropy_metrics["normalized_entropy"]
-
-        top_cand = ranked_candidates[0]
-        top_posterior = posteriors[0]
-        if len(posteriors) > 1:
-            runner_up_posterior = posteriors[1]
-        elif len(all_eval_scores) > 1:
-            runner_up_posterior = exp_scores[1] / sum_exp
-        else:
-            runner_up_posterior = 0.0
-        margin = top_posterior - runner_up_posterior
-
-        # 1. Check for High Information Entropy (Uniform Distribution / Ambiguity)
-        if len(ranked_candidates) > 1 and h_norm > cls.MAX_NORMALIZED_ENTROPY_THRESHOLD:
-            return {
-                "decision": "INSUFFICIENT_EVIDENCE",
-                "is_abstention": True,
-                "reason": (
-                    f"Shannon Information Entropy H_norm={h_norm:.2f} exceeds scientific threshold "
-                    f"({cls.MAX_NORMALIZED_ENTROPY_THRESHOLD}). Multiple vessels share statistically indistinguishable "
-                    f"proximity to the spill origin. Defensible legal attribution cannot be established."
-                ),
-                "actionable_recommendation": (
-                    "Deploy Indian Coast Guard aerial reconnaissance / Request high-resolution optical satellite tasking; "
-                    "Board and inspect bilges/slop logs of candidate vessels upon port arrival."
-                ),
-                "leading_candidate_mmsi": top_cand.get("mmsi"),
-                "confidence_score": round(top_posterior * 100, 1),
-                "separation_margin": round(margin, 4),
-                "entropy_metrics": entropy_metrics
-            }
-
-        top_name = top_cand.get("vessel_name") or top_cand.get("name") or str(top_cand.get("mmsi"))
-        # 2. Check for Insufficient Separation Margin
-        if len(ranked_candidates) > 1 and margin < cls.MIN_SEPARATION_MARGIN:
-            runner_up = ranked_candidates[1]
-            runner_name = runner_up.get("vessel_name") or runner_up.get("name") or str(runner_up.get("mmsi"))
-            return {
-                "decision": "INSUFFICIENT_EVIDENCE",
-                "is_abstention": True,
-                "reason": (
-                    f"Separation margin between top candidate ({top_name}) "
-                    f"and runner-up ({runner_name}) is "
-                    f"{margin:.2%}, below minimum defensible margin ({cls.MIN_SEPARATION_MARGIN:.0%})."
-                ),
-                "actionable_recommendation": (
-                    "Audit voyage data recorder (VDR) and fuel oil transfer records for both candidate vessels."
-                ),
-                "leading_candidate_mmsi": top_cand.get("mmsi"),
-                "confidence_score": round(top_posterior * 100, 1),
-                "separation_margin": round(margin, 4),
-                "entropy_metrics": entropy_metrics
-            }
-
-        # 3. Check for absolute score viability
-        if top_cand.get("composite_score", 0.0) < 55.0:
-            return {
-                "decision": "INSUFFICIENT_EVIDENCE",
-                "is_abstention": True,
-                "reason": (
-                    f"Leading candidate composite score ({top_cand.get('composite_score')}%) is below investigative "
-                    "plausibility threshold (55%). Closest vessel was too far in space or time from estimated origin."
-                ),
-                "actionable_recommendation": (
-                    "Perform extended 48h backward hindcast; investigate dark non-transponding vessels or offshore rig seepage."
-                ),
-                "leading_candidate_mmsi": top_cand.get("mmsi"),
-                "confidence_score": round(top_posterior * 100, 1),
-                "separation_margin": round(margin, 4),
-                "entropy_metrics": entropy_metrics
-            }
-
-        # 4. Lead attribution conditioned on AIS receiver / satellite coverage validation
-        if not coverage_validated:
-            decision_label = "PROVISIONAL_SCREENING_LEAD"
-            conf_score = min(68.0, round(top_posterior * 100, 1))
-            action_rec = (
-                "Maintain advisory screening hold: AIS satellite/terrestrial receiver coverage is unvalidated. "
-                "Definitive legal attribution withheld pending dark-vessel radar cross-correlation and port bilge audit."
-            )
-        else:
-            decision_label = "DEFINITIVE_LEAD" if (top_cand.get("composite_score", 0) >= 80 and margin >= 0.25) else "PROBABLE_LEAD"
-            conf_score = round(top_posterior * 100, 1)
-            action_rec = (
-                "Issue Maritime Law Enforcement Advisory Notice. Request bunker fuel sampling and ORB audit through competent authority."
-            )
-
-        return {
-            "decision": decision_label,
-            "is_abstention": False,
-            "reason": (
-                f"Candidate {top_name} satisfies spatio-temporal screening corridor "
-                f"with priority weight {top_posterior:.1%} and separation margin {margin:.1%}."
-            ),
-            "actionable_recommendation": action_rec,
-            "leading_candidate_mmsi": top_cand.get("mmsi"),
-            "confidence_score": conf_score,
-            "separation_margin": round(margin, 4),
-            "entropy_metrics": entropy_metrics
+        distribution = []
+        for index, candidate in enumerate(ranked_candidates):
+            score = cls.finite_number(candidate.get("composite_score"), 0.0, 100.0)
+            candidate["composite_score"] = score
+            candidate["score_status"] = "VALID" if score is not None else "INVALID_INPUT"
+            candidate["lead_priority_weight"] = None
+            scores.append(score)
+            distribution.append({"hypothesis": "VESSEL_CANDIDATE", "candidate_index": index,
+                                 "mmsi": candidate.get("mmsi"), "score": score,
+                                 "lead_priority_weight": None})
+        distribution.append({"hypothesis": "UNKNOWN_SOURCE", "score": cls.UNKNOWN_SOURCE_SCORE,
+                             "lead_priority_weight": None})
+        result = {
+            "status": "ASSESSED", "decision": "INSUFFICIENT_EVIDENCE", "is_abstention": True,
+            "confidence_score": None, "confidence_status": "UNCALIBRATED",
+            "weight_kind": "uncalibrated_lead_priority", "leading_candidate_mmsi": None,
+            "hypothesis_distribution": distribution, "unknown_source_weight": None,
+            "unknown_source_baseline": "Heuristic score 45/100; not a measured prior or likelihood.",
+            "coverage_status": "VALIDATED" if coverage_validated is True else "NOT_ASSESSED",
+            "integrity_status": "NOT_ASSESSED", "stress_status": "NOT_ASSESSED",
+            "separation_margin": None,
+            "entropy_metrics": cls.calculate_shannon_entropy([]),
+            "thresholds": {"maximum_normalized_entropy_inclusive": cls.MAX_NORMALIZED_ENTROPY_THRESHOLD,
+                           "minimum_separation_margin_inclusive": cls.MIN_SEPARATION_MARGIN,
+                           "minimum_score_inclusive": 55.0},
+            "actionable_recommendation": "Validate source coverage and telemetry; review independent corroboration.",
         }
+        if any(score is None for score in scores):
+            result.update(status="INVALID_INPUT", reason="Candidate scores must be finite scalars in [0, 100]; ranking withheld.")
+            return result
+
+        all_scores = scores + [cls.UNKNOWN_SOURCE_SCORE]
+        maximum = max(all_scores)
+        exp_scores = [math.exp((score - maximum) / cls.TEMPERATURE) for score in all_scores]
+        total = math.fsum(exp_scores)
+        weights = [value / total for value in exp_scores]
+        for row, weight in zip(distribution, weights):
+            row["lead_priority_weight"] = weight
+        for candidate, weight in zip(ranked_candidates, weights):
+            candidate["lead_priority_weight"] = weight
+        result["unknown_source_weight"] = weights[-1]
+        result["entropy_metrics"] = cls.calculate_shannon_entropy(weights)
+        if not scores:
+            result.update(status="NOT_ASSESSED", reason="No vessel candidates; only the unknown-source hypothesis remains.")
+            return result
+
+        top_index = max(range(len(scores)), key=lambda index: scores[index])
+        top = ranked_candidates[top_index]
+        top_weight = weights[top_index]
+        runner_weight = max(weight for index, weight in enumerate(weights) if index != top_index)
+        margin = top_weight - runner_weight
+        result.update(leading_candidate_mmsi=top.get("mmsi"), leading_candidate_index=top_index,
+                      lead_priority_weight=top_weight, separation_margin=margin)
+        integrity = cls.assess_ais_integrity(top.get("spoofing_audit"))
+        stress = top.get("adversarial_stress_test")
+        challenges = stress.get("challenges") if isinstance(stress, dict) else None
+        stress_passed = (isinstance(stress, dict) and stress.get("status") == "ASSESSED"
+                         and stress.get("stress_passed") is True and isinstance(challenges, list)
+                         and len(challenges) == 4
+                         and all(isinstance(c, dict) and c.get("status") == "ASSESSED"
+                                 and c.get("survived") is True for c in challenges))
+        result["integrity_status"] = integrity["status"]
+        result["stress_status"] = stress.get("status", "NOT_ASSESSED") if isinstance(stress, dict) else "NOT_ASSESSED"
+
+        blockers = []
+        if weights[-1] >= top_weight:
+            blockers.append("Unknown-source weight equals or exceeds the leading vessel weight.")
+        entropy = result["entropy_metrics"]["normalized_entropy"]
+        if entropy is None or entropy > cls.MAX_NORMALIZED_ENTROPY_THRESHOLD:
+            blockers.append("Full-hypothesis entropy exceeds the project <=0.82 screening rule or is unassessed.")
+        if margin < cls.MIN_SEPARATION_MARGIN:
+            blockers.append("Separation from all other hypotheses, including unknown, is below 0.15.")
+        if scores[top_index] < 55.0:
+            blockers.append("Leading score is below the project 55/100 screening rule.")
+        if coverage_validated is not True:
+            blockers.append("AIS satellite/receiver coverage has not been independently validated.")
+            result["status"] = "NOT_ASSESSED"
+        if not integrity["passed"]:
+            blockers.append(integrity["reason"])
+            if integrity["status"] in ("NOT_ASSESSED", "UNAVAILABLE"):
+                result["status"] = integrity["status"]
+        if not stress_passed:
+            blockers.append("Candidate sensitivity checks are missing, unavailable, or failed.")
+            if result["stress_status"] in ("NOT_ASSESSED", "UNAVAILABLE"):
+                result["status"] = result["stress_status"]
+        if blockers:
+            result["reason"] = " ".join(blockers)
+            # Retain an advisory label for UI compatibility, but evidentiary hold is true.
+            if result["status"] == "NOT_ASSESSED" and coverage_validated is not True:
+                result["decision"] = "PROVISIONAL_SCREENING_LEAD"
+            if result["status"] == "UNAVAILABLE":
+                result["decision"] = "EVIDENCE_GATE_UNAVAILABLE"
+            return result
+
+        result.update(decision="SCREENING_LEAD", is_abstention=False,
+                      reason="Leading candidate passes the project screening checks; responsibility is not determined.")
+        return result
 
     @classmethod
     def run_adversarial_stress_test(
@@ -238,41 +288,42 @@ class FalsificationAndAbstentionEngine:
         3. GPS Position Jitter (+/- 1.0 nm AIS uncertainty)
         4. AIS Integrity / Spoofing Challenge
         """
-        cpa = candidate.get("closest_approach") or {}
-        raw_dist = cpa.get("distance_nm")
-        raw_time = cpa.get("time_diff_h")
-        try:
-            dist_nm = float(raw_dist) if raw_dist is not None and math.isfinite(float(raw_dist)) else 99.0
-        except (ValueError, TypeError):
-            dist_nm = 99.0
-        try:
-            time_diff_h = float(raw_time) if raw_time is not None and math.isfinite(float(raw_time)) else 99.0
-        except (ValueError, TypeError):
-            time_diff_h = 99.0
+        cpa = candidate.get("closest_approach")
+        cpa = cpa if isinstance(cpa, dict) else {}
+        dist_nm = cls.finite_number(cpa.get("distance_nm"), 0.0, 10810.0)
+        time_diff_h = cls.finite_number(cpa.get("time_diff_h"), 0.0, 744.0)
+        current_speed = cls.finite_number(current_speed_knots, 0.0, 200.0)
+        wind_speed = cls.finite_number(wind_speed_knots, 0.0, 400.0)
+        physics_valid = (dist_nm is not None and time_diff_h is not None
+                         and current_speed is not None and wind_speed is not None
+                         and cls.finite_number(origin_lat, -90, 90) is not None
+                         and cls.finite_number(origin_lon, -180, 180) is not None)
 
         challenges = []
         passed_challenges = 0
 
         # Attack 1: Hydrodynamic Current Perturbation (+/- 20%)
-        current_displacement_nm = current_speed_knots * cls.CURRENT_VARIATION_STRESS * max(1.0, time_diff_h)
-        c1_survived = (dist_nm + current_displacement_nm) <= 4.0
+        current_displacement_nm = current_speed * cls.CURRENT_VARIATION_STRESS * max(1.0, time_diff_h) if physics_valid else None
+        c1_survived = physics_valid and (dist_nm + current_displacement_nm) <= 4.0
         challenges.append({
             "challenge_name": "Hydrodynamic Current Perturbation (+/- 20%)",
-            "stress_parameter": f"+/-{cls.CURRENT_VARIATION_STRESS*100:.0f}% surface current ({current_speed_knots:.1f} kts)",
-            "estimated_origin_shift_nm": round(current_displacement_nm, 2),
+            "stress_parameter": "+/-20% supplied surface-current speed",
+            "status": "ASSESSED" if physics_valid else "NOT_ASSESSED",
+            "estimated_origin_shift_nm": round(current_displacement_nm, 2) if physics_valid else None,
             "survived": c1_survived,
-            "rationale": "Candidate remains within origin probability boundary even if INCOIS/CMEMS currents deviate by 20%." if c1_survived else "Attribution vulnerable to ocean current forecast error."
+            "rationale": "Candidate remains within the project corridor under this scalar perturbation." if c1_survived else "Current-sensitivity check failed or its inputs are unavailable."
         })
         if c1_survived:
             passed_challenges += 1
 
         # Attack 2: Wind Leeway Deflection (+/- 1% leeway)
-        wind_displacement_nm = wind_speed_knots * 0.01 * max(1.0, time_diff_h)
-        c2_survived = (dist_nm + wind_displacement_nm) <= 4.5
+        wind_displacement_nm = wind_speed * 0.01 * max(1.0, time_diff_h) if physics_valid else None
+        c2_survived = physics_valid and (dist_nm + wind_displacement_nm) <= 4.5
         challenges.append({
             "challenge_name": "Atmospheric Leeway Perturbation (+/- 1% wind drag)",
-            "stress_parameter": f"+/-1.0% wind factor on {wind_speed_knots:.1f} kts wind",
-            "estimated_origin_shift_nm": round(wind_displacement_nm, 2),
+            "stress_parameter": "+/-1.0% supplied wind-speed factor",
+            "status": "ASSESSED" if physics_valid else "NOT_ASSESSED",
+            "estimated_origin_shift_nm": round(wind_displacement_nm, 2) if physics_valid else None,
             "survived": c2_survived,
             "rationale": "Candidate track robust to atmospheric wind drag variability." if c2_survived else "Wind variation exceeds spatial correlation window."
         })
@@ -280,38 +331,29 @@ class FalsificationAndAbstentionEngine:
             passed_challenges += 1
 
         # Attack 3: GPS Sensor Jitter & Spatial Sensor Uncertainty (+/- 1 nm)
-        jittered_dist = dist_nm + cls.GPS_JITTER_STRESS_NM
-        c3_survived = jittered_dist < 4.0
+        jittered_dist = dist_nm + cls.GPS_JITTER_STRESS_NM if physics_valid else None
+        c3_survived = physics_valid and jittered_dist < 4.0
         challenges.append({
             "challenge_name": "GPS Sensor Jitter & Interpolation Error (+/- 1.0 nm)",
             "stress_parameter": f"+/-{cls.GPS_JITTER_STRESS_NM:.1f} nm transponder noise",
-            "effective_cpa_nm": round(jittered_dist, 2),
+            "status": "ASSESSED" if physics_valid else "NOT_ASSESSED",
+            "effective_cpa_nm": round(jittered_dist, 2) if physics_valid else None,
             "survived": c3_survived,
-            "rationale": "Candidate maintains geometric proximity despite maximum maritime GPS drift." if c3_survived else "Sensor jitter moves vessel outside origin threshold."
+            "rationale": "Candidate retains proximity under the project 1 nm position perturbation." if c3_survived else "Position-sensitivity check failed or its inputs are unavailable."
         })
         if c3_survived:
             passed_challenges += 1
 
         # Attack 4: AIS Spoofing & Continuity Audit (Hard gate: Telemetry must be present and verified)
-        spoof_audit = candidate.get("spoofing_audit")
-        if not spoof_audit:
-            c4_survived = False
-            flaw_msg = "NOT_ASSESSED: AIS trajectory audit telemetry unavailable for transponder verification."
-        else:
-            has_anomalies = bool(spoof_audit.get("has_anomalies", False))
-            corridor_blackout = bool(spoof_audit.get("corridor_blackout", False))
-            mmsi_invalid = not bool(spoof_audit.get("mmsi_valid", True))
-            anomaly_cnt = spoof_audit.get("anomaly_count", 0)
-            is_compromised = has_anomalies and (corridor_blackout or mmsi_invalid or anomaly_cnt > 1)
-            c4_survived = not is_compromised
-            anomalies_list = spoof_audit.get("anomalies_detected") or []
-            flaw_msg = "; ".join(anomalies_list) if anomalies_list else "AIS transponder gaps / speed anomalies present."
+        integrity = cls.assess_ais_integrity(candidate.get("spoofing_audit"))
+        c4_survived = integrity["passed"]
 
         challenges.append({
             "challenge_name": "AIS Continuity & Anti-Spoofing Challenge",
             "stress_parameter": "Speed anomalies, teleportation jumps, MMSI duplication",
+            "status": integrity["status"],
             "survived": c4_survived,
-            "rationale": "Vessel trajectory shows verified kinematic continuity." if c4_survived else f"FLAW DETECTED: {flaw_msg}"
+            "rationale": integrity["reason"]
         })
         if c4_survived:
             passed_challenges += 1
@@ -319,17 +361,21 @@ class FalsificationAndAbstentionEngine:
         robustness_score = round((passed_challenges / 4.0) * 100.0, 1)
         v_name = candidate.get("vessel_name") or candidate.get("name") or "Suspect Vessel"
 
-        # Hard Gate: If AIS integrity was breached/unassessed, vessel cannot be certified robust
+        # All checks must pass. A percentage of checks is not calibrated robustness.
         if not c4_survived:
-            final_verdict = "FALSIFICATION_VULNERABLE (AIS_INTEGRITY_COMPROMISED)"
+            final_verdict = f"FALSIFICATION_VULNERABLE (AIS_INTEGRITY_{integrity['status']})"
         elif passed_challenges == 4:
             final_verdict = "ADVERSARIAL_PHYSICS_ROBUST (SCREENING_GRADE)"
-        elif passed_challenges >= 3:
-            final_verdict = "CIRCUMSTANTIAL_PHYSICS_TOLERANT (SCREENING_GRADE)"
         else:
             final_verdict = "FALSIFICATION_VULNERABLE (CIRCUMSTANTIAL)"
 
         return {
+            "status": ("UNAVAILABLE" if integrity["status"] == "UNAVAILABLE" else
+                       "NOT_ASSESSED" if not physics_valid or integrity["status"] == "NOT_ASSESSED" else "ASSESSED"),
+            "stress_passed": passed_challenges == 4,
+            "integrity_status": integrity["status"],
+            "metric_kind": "fraction_of_project_checks_passed_not_calibrated_robustness",
+            "forcing_status": "illustrative_scalar_perturbations_not_provider_error_bounds",
             "mmsi": candidate.get("mmsi"),
             "name": v_name,
             "challenges_tested": 4,

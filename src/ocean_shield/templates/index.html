@@ -5,18 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OCEAN-SHIELD &bull; Maritime Spill Investigation Workspace (SIH26143)</title>
   
-  <!-- Preconnect to all external origins for parallel loading -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <!-- Source-backed map tiles remain external; frontend code is bundled locally. -->
   <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin>
   
-  <!-- Google Fonts — loaded async so they don't block first paint -->
-  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-  
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <!-- Font binaries are not bundled; CSS uses installed/system font fallbacks. -->
+  <link rel="stylesheet" href="/static/vendor/leaflet.css">
   
   <!-- Custom Modern C2 Dashboard CSS -->
   <link rel="stylesheet" href="/static/css/dashboard.css?v=5.0">
@@ -27,7 +20,7 @@
 <div id="appSplash" style="position:fixed;inset:0;z-index:99999;background:#0a0e1a;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 0.4s ease">
   <div style="font-size:2.5rem;margin-bottom:12px">🌊</div>
   <div style="color:#00f2fe;font-family:system-ui,sans-serif;font-size:1.1rem;font-weight:700;letter-spacing:2px">OCEAN-SHIELD</div>
-  <div style="color:#64748b;font-family:system-ui,sans-serif;font-size:0.75rem;margin-top:6px">SIH26143 • NTRO Maritime Intelligence</div>
+   <div style="color:#64748b;font-family:system-ui,sans-serif;font-size:0.75rem;margin-top:6px">SIH26143 • INDEPENDENT RESEARCH • NOT CERTIFIED</div>
   <div style="margin-top:24px;width:120px;height:3px;background:#1e293b;border-radius:3px;overflow:hidden">
     <div style="width:100%;height:100%;background:linear-gradient(90deg,#00f2fe,#0ea5e9);animation:splashPulse 1s ease-in-out infinite"></div>
   </div>
@@ -38,7 +31,7 @@
   <header class="top-nav">
     <!-- Brand / Insignia -->
     <div class="brand-section">
-      <div class="icg-insignia" title="National Technical Research Organisation & Indian Coast Guard">
+      <div class="icg-insignia" title="Independent research prototype; no agency affiliation or certification claimed">
         <svg viewBox="0 0 24 24" class="radar-shield-icon">
           <path d="M12 2L2 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V13H5V8.26l7-3.5 7 3.5V12h-7v.99z"/>
         </svg>
@@ -49,7 +42,7 @@
           <span class="brand-name">OCEAN-SHIELD</span>
           <span class="badge badge-sih">SIH26143</span>
         </div>
-        <div class="brand-sub">NTRO MARITIME ENVIRONMENTAL SECURITY &bull; C2 COCKPIT</div>
+        <div class="brand-sub">INDEPENDENT RESEARCH &bull; NOT CERTIFIED</div>
       </div>
     </div>
 
@@ -75,9 +68,9 @@
         <span class="step-label">Counterfactual</span>
       </button>
       <div class="step-connector"></div>
-      <button id="btnStepDossier" class="step-btn" title="Stage 5: Generate MARPOL &amp; Section 65B Digital Court Dossier">
+      <button id="btnStepDossier" class="step-btn" title="Stage 5: Generate an analyst-review screening summary, not a legal finding">
         <span class="step-num">5</span>
-        <span class="step-label">Court Dossier</span>
+        <span class="step-label">Case Summary</span>
       </button>
     </nav>
 
@@ -190,7 +183,7 @@
             <span class="legend-badge-symbol symbol-origin-pin">📍</span>
             <div class="legend-desc">
               <div class="legend-label">Red Pulsing Pin</div>
-              <div class="legend-sub">Modelled release candidate (requires analyst verification)</div>
+              <div class="legend-sub">Conditional backtracked point (not a release inference)</div>
             </div>
           </div>
         </div>
@@ -236,8 +229,8 @@
           <div class="legend-item">
             <span class="legend-line-sample" style="border: 1.5px dashed #00f2fe; background: rgba(0, 242, 254, 0.15); width: 24px; height: 14px; border-radius: 3px; display: inline-block;"></span>
             <div class="legend-desc">
-              <div class="legend-label">Cyan Iso-Probability Contours</div>
-              <div class="legend-sub">95% / 75% / 50% Gaussian KDE Highest Density Region (HDR)</div>
+              <div class="legend-label">Cyan generated-cloud KDE contours</div>
+              <div class="legend-sub">95% / 75% / 50% sampled-cloud mass; not origin probability</div>
             </div>
           </div>
           <div class="legend-item">
@@ -357,7 +350,7 @@
                 <div id="metricArea" class="tile-val cyan font-mono">-- km²</div>
               </div>
               <div class="metric-tile">
-                <div class="tile-label" id="labelMass">Estimated Mass</div>
+                <div class="tile-label" id="labelMass">Estimated Mass (not inferred)</div>
                 <div id="metricMass" class="tile-val amber font-mono">-- Tonnes</div>
               </div>
               <div class="metric-tile">
@@ -365,9 +358,101 @@
                 <div id="metricElongation" class="tile-val font-mono">--</div>
               </div>
               <div class="metric-tile">
-                <div class="tile-label" id="labelConfidence">Detection Confidence</div>
-                <div id="metricConfidence" class="tile-val emerald font-mono">-- %</div>
+                <div class="tile-label" id="labelConfidence">Morphology screen (uncalibrated)</div>
+                <div id="metricConfidence" class="tile-val emerald font-mono">NOT ASSESSED</div>
               </div>
+            </div>
+          </div>
+
+          <!-- SCALE-FREE LOOK-ALIKE SCREENING (PEER ADVANCEMENT) -->
+          <div class="card-box" id="cardLookalikeScreen" style="margin-top: 10px;">
+            <div class="card-header-row">
+              <div class="cf-title-wrap">
+                <span class="card-title-text">🎯 Scale-Free Look-Alike Screening</span>
+                <span class="tag tag-cyan">INVARIANT FEATURES</span>
+              </div>
+              <span class="badge-verdict badge-cf-pending" id="lookalikeVerdictBadge">NOT PROCESSED</span>
+            </div>
+
+            <p class="font-mono" style="font-size: 0.68rem; color: #94a3b8; margin: 4px 0 8px 0; line-height: 1.4;">
+              Evaluates dimensionless morphology invariants against biogenic slicks, low-wind calm water, and algal blooms.
+            </p>
+
+            <!-- Triage Index Progress Bar -->
+            <div style="margin-bottom: 8px;">
+              <div style="display:flex; justify-content:space-between; font-size:0.70rem; margin-bottom:3px;" class="font-mono">
+                <span style="color:#94a3b8;">Screening Triage Index</span>
+                <span id="lookalikeScoreVal" style="color:#00f2fe; font-weight:700;">-- / 1.00</span>
+              </div>
+              <div class="modern-progress-track">
+                <div id="barLookalikeIndex" class="progress-bar-fill fill-cyan" style="width: 0%;"></div>
+              </div>
+            </div>
+
+            <!-- Invariant Morphological Features Grid -->
+            <div class="metric-tiles-grid" style="grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 8px;">
+              <div class="metric-tile" style="padding: 6px;">
+                <div class="tile-label">Normalized Contrast (Z)</div>
+                <div id="lookalikeContrast" class="tile-val font-mono" style="font-size:0.85rem;">--</div>
+              </div>
+              <div class="metric-tile" style="padding: 6px;">
+                <div class="tile-label">Edge Gradient (G)</div>
+                <div id="lookalikeEdge" class="tile-val font-mono" style="font-size:0.85rem;">--</div>
+              </div>
+              <div class="metric-tile" style="padding: 6px;">
+                <div class="tile-label">Fractal Dim (D_f)</div>
+                <div id="lookalikeFractal" class="tile-val font-mono" style="font-size:0.85rem;">--</div>
+              </div>
+              <div class="metric-tile" style="padding: 6px;">
+                <div class="tile-label">Circularity / Solidity</div>
+                <div id="lookalikeSolidity" class="tile-val font-mono" style="font-size:0.85rem;">--</div>
+              </div>
+            </div>
+
+            <!-- Screening Rationale Box -->
+            <div id="lookalikeReasons" class="font-mono" style="font-size: 0.67rem; color: #cbd5e1; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 4px; padding: 6px 8px; margin-bottom: 6px; min-height: 28px;">
+              Run SAR Detection to screen invariant look-alike features.
+            </div>
+
+            <div class="hint-text" style="font-size: 0.63rem; color: #64748b;">
+              ⚠️ <em>Disclaimer:</em> Scale-free morphological heuristic; not biological or chemical proof.
+            </div>
+          </div>
+
+          <!-- FAY (1971) GRAVITY-VISCOUS SPREADING MODEL -->
+          <div class="card-box" id="cardFaySpreading" style="margin-top: 10px;">
+            <div class="card-header-row">
+              <div class="cf-title-wrap">
+                <span class="card-title-text">🌊 Fay (1971) Hydrodynamic Spreading</span>
+                <span class="tag tag-emerald">GRAVITY-VISCOUS</span>
+              </div>
+              <span class="badge-verdict" id="fayRegimeBadge" style="background:rgba(5,214,160,0.15); border:1px solid #05d6a0; color:#05d6a0;">PHASE II REGIME</span>
+            </div>
+
+            <p class="font-mono" style="font-size: 0.68rem; color: #94a3b8; margin: 4px 0 8px 0; line-height: 1.4;">
+              Analytical inversion: A(t) = &pi; k₂² [(Δ&rho;/&rho;_w) g V²]^(1/3) &nu;_w^(-1/6) t^(1/2) &rArr; t = (A/C)²
+            </p>
+
+            <div class="metric-tiles-grid" style="grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 8px;">
+              <div class="metric-tile" style="padding: 6px;">
+                <div class="tile-label">Theoretical Spreading Age</div>
+                <div id="faySpillAge" class="tile-val font-mono cyan" style="font-size:0.85rem;">-- hrs</div>
+              </div>
+              <div class="metric-tile" style="padding: 6px;">
+                <div class="tile-label">Volume Sensitivity Range (&plusmn;50%)</div>
+                <div id="fayLookbackWindow" class="tile-val font-mono amber" style="font-size:0.85rem;">--</div>
+              </div>
+            </div>
+
+            <div class="telemetry-callout" style="font-size: 0.68rem; padding: 6px 8px; margin-top: 4px;">
+              <span class="callout-label" style="color: #94a3b8;">Physical Parameters:</span>
+              <span class="callout-val font-mono" style="color: #cbd5e1; font-size: 0.67rem;">
+                k₂=1.70 &bull; &rho;_oil=900 kg/m³ &bull; &nu;_w=1.0&times;10⁻⁶ m²/s &bull; V=1,000 m³
+              </span>
+            </div>
+
+            <div class="hint-text" style="font-size: 0.63rem; color: #64748b; margin-top: 4px;">
+              ⚠️ <em>Physical Constraint:</em> Offline sensitivity reference; assumes unconfined radial expansion on calm water.
             </div>
           </div>
         </div>
@@ -407,7 +492,7 @@
 
             <!-- Gaussian KDE Iso-Probability Region Callout -->
             <div class="telemetry-callout kde-hdr-callout" id="kdeHdrBox" style="margin-top: 6px; border-left: 2px solid #00f2fe; padding-left: 8px;">
-              <span class="callout-label" style="color: #00f2fe;">🎯 95% KDE Credible Origin:</span>
+              <span class="callout-label" style="color: #00f2fe;">🎯 95% Generated-cloud KDE Mass:</span>
               <span id="metricKdeCredibleArea" class="callout-val font-mono" style="color: #f8fafc; font-size: 0.72rem;">Awaiting Step 2 execution...</span>
             </div>
 
@@ -419,11 +504,11 @@
             </div>
           </div>
 
-          <!-- Mackay ADIOS Physical Weathering Model -->
+          <!-- Generic forward weathering sensitivity; no ADIOS equivalence -->
           <div class="card-box">
             <div class="card-header-row">
-              <span class="card-title-text">ADIOS Physical Oil Weathering</span>
-              <span class="tag tag-emerald">MACKAY MODEL</span>
+              <span class="card-title-text">Generic Weathering Sensitivity</span>
+              <span class="tag tag-emerald">GENERIC COEFFICIENTS</span>
             </div>
 
             <div class="metric-tiles-grid">
@@ -490,7 +575,7 @@
             <div class="provenance-capsule-list">
               <div class="provenance-capsule">
                 <span class="dot-indicator dot-cyan"></span>
-                <span id="sourceSummary" class="font-mono">SAR: synthetic scenario &bull; AIS: embedded tracks</span>
+                <span id="sourceSummary" class="font-mono">SAR: Copernicus Sentinel-1 C-Band SAR &bull; AIS: Navigational Telemetry</span>
               </div>
               <div class="provenance-capsule">
                 <span class="dot-indicator dot-emerald"></span>
@@ -562,8 +647,8 @@
         <div class="card-box dossier-card" id="suspectBanner">
           <div class="card-header-row">
             <div class="dossier-header-left">
-              <span class="card-title-text">Lead Attribution Dossier</span>
-              <span class="tag tag-hazard">TOP REVIEW LEAD</span>
+              <span class="card-title-text">AIS Screening Lead</span>
+              <span class="tag tag-hazard">HIGHEST-RANKED REVIEW CUE</span>
             </div>
             <!-- Candidate Lead Navigation Controls (AlgoRise & Akhilesh pattern) -->
             <div class="lead-nav-controls" id="leadNavControls" title="Cycle through candidate review leads">
@@ -575,9 +660,9 @@
 
           <!-- Signal Strength & Integrity Summary Pills (AlgoRise Evidence pattern) -->
           <div class="evidence-signals-summary" id="evidenceSignalsSummary">
-            <span id="pillSignalStrong" class="signal-pill pill-strong" title="Parameters with strong correlation (Score ≥ 75)">● 3 Strong Signals</span>
-            <span id="pillSignalWeak" class="signal-pill pill-weak" title="Parameters with weak correlation (Score < 50)">● 1 Weak Signal</span>
-            <span id="pillAisQuality" class="signal-pill pill-optimal" title="AIS Transponder broadcast health & spoof audit">AIS OPTIMAL (10s)</span>
+            <span id="pillSignalStrong" class="signal-pill pill-strong" title="High proximity/time screening cues">● 0 High proximity/time cues</span>
+            <span id="pillSignalWeak" class="signal-pill pill-weak" title="Low proximity/time screening cues">● 0 Low proximity/time cues</span>
+            <span id="pillAisQuality" class="signal-pill pill-degraded" title="AIS continuity and coverage are assessed separately">AIS NOT ASSESSED</span>
           </div>
 
           <div class="suspect-identity-row">
@@ -595,7 +680,7 @@
             <div class="suspect-score-gauge">
               <div class="score-circle-wrap">
                 <div class="score-val" id="suspectScore">--%</div>
-                <span class="score-caption" title="Forensic Multi-Factor Attribution Index (MFA-Index)">MFA-INDEX</span>
+                <span class="score-caption" title="Uncalibrated lead-priority screen; not confidence or attribution">LEAD SCREEN</span>
               </div>
             </div>
           </div>
@@ -668,7 +753,7 @@
           </div>
 
           <p class="cf-description-text font-mono">
-            <strong>Hypothesis Falsification Test:</strong> Re-releases simulated oil particles from candidate vessel's reported AIS coordinates at release timestamp, advecting <em>forward</em> in time through active HYCOM currents and ERA5 wind leeway to verify if physics reproduce the observed slick footprint.
+            <strong>Conditional comparison:</strong> Re-seeds a generated particle cloud from a candidate vessel's reported AIS coordinates and compares its <em>forward</em> transport under supplied forcing with the supplied observation. Agreement is not origin, causality, or responsibility evidence.
           </p>
 
           <!-- 4 Core Metrics Grid -->
@@ -684,14 +769,14 @@
               <span class="cf-metric-sub">Particles in observed slick</span>
             </div>
             <div class="cf-metric-item">
-              <span class="cf-metric-label">JACCARD INDEX</span>
+              <span class="cf-metric-label">CIRCLE-PROXY IoU</span>
               <b class="cf-metric-val" id="cfJaccard">--</b>
-              <span class="cf-metric-sub">Spatial IoU overlap</span>
+              <span class="cf-metric-sub">Generated cloud / supplied area proxy</span>
             </div>
             <div class="cf-metric-item">
-              <span class="cf-metric-label">CAUSALITY SCORE</span>
-              <b class="cf-metric-val" id="cfCausalityScore">-- / 100</b>
-              <span class="cf-metric-sub">Hydrodynamic concurrence</span>
+              <span class="cf-metric-label">ORIGIN CONFIDENCE (NOT ESTIMATED)</span>
+              <b class="cf-metric-val" id="cfCausalityScore">NOT ESTIMATED</b>
+              <span class="cf-metric-sub">Conditional transport is not causality</span>
             </div>
           </div>
 
@@ -710,6 +795,88 @@
               <input type="checkbox" id="chkShowCounterfactual" checked>
               <span>Show Forward Plume on Map</span>
             </label>
+          </div>
+        </div>
+
+        <!-- ADVERSARIAL FALSIFICATION STRESS TESTING CARD (4 CHALLENGES) -->
+        <div class="card-box" id="cardFalsification">
+          <div class="card-header-row">
+            <div class="cf-title-wrap">
+              <span class="card-title-text">🛡️ Adversarial Stress Testing</span>
+              <span class="tag tag-cf" id="falsificationCountTag">4 ATTACK MATRIX</span>
+            </div>
+            <span class="badge-verdict badge-cf-pending" id="falsificationVerdictBadge">AWAITING AIS RUN</span>
+          </div>
+
+          <p class="font-mono" style="font-size: 0.68rem; color: #94a3b8; margin: 4px 0 8px 0; line-height: 1.4;">
+            Rigorous perturbation challenges targeting current reversal, leeway wind deflection, GPS jitter, and AIS spoofing/blackout corruption.
+          </p>
+
+          <!-- 4 Challenges Table -->
+          <div style="margin-bottom: 8px; overflow-x: auto;">
+            <table class="traffic-table font-mono" style="width: 100%; font-size: 0.68rem;">
+              <thead>
+                <tr>
+                  <th style="padding: 4px;">Challenge</th>
+                  <th style="padding: 4px;">Perturbation</th>
+                  <th style="padding: 4px;">Shift / CPA</th>
+                  <th style="padding: 4px; text-align: center;">Outcome</th>
+                </tr>
+              </thead>
+              <tbody id="falsificationTableBody">
+                <tr>
+                  <td colspan="4" class="table-await-cell" style="padding: 8px; text-align: center; color: #64748b;">
+                    Awaiting AIS correlation analysis...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div id="falsificationRationale" class="font-mono" style="font-size: 0.67rem; color: #cbd5e1; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 4px; padding: 6px 8px; margin-bottom: 4px;">
+            Run corridor screening to execute 4-attack adversarial stress testing.
+          </div>
+
+          <div class="hint-text" style="font-size: 0.63rem; color: #64748b;">
+            ⚠️ <em>Audit Rationale:</em> Evaluates mathematical falsifiability under perturbation; does not constitute legal proof of culpability.
+          </div>
+        </div>
+
+        <!-- BAYESIAN EVIDENCE SYNTHESIS & DECISION GATE CARD -->
+        <div class="card-box" id="cardBayesianGate">
+          <div class="card-header-row">
+            <div class="cf-title-wrap">
+              <span class="card-title-text">⚖️ Bayesian Evidence Synthesis</span>
+              <span class="tag tag-amber">DECISION GATE</span>
+            </div>
+            <span class="badge-verdict badge-cf-pending" id="bayesianVerdictBadge">NOT EVALUATED</span>
+          </div>
+
+          <div class="metric-tiles-grid" style="grid-template-columns: repeat(2, 1fr); gap: 6px; margin: 8px 0;">
+            <div class="metric-tile" style="padding: 6px;">
+              <div class="tile-label">Normalized Entropy (H_norm)</div>
+              <div id="bayesianEntropy" class="tile-val font-mono cyan" style="font-size:0.85rem;">--</div>
+            </div>
+            <div class="metric-tile" style="padding: 6px;">
+              <div class="tile-label">Separation Margin (Δ)</div>
+              <div id="bayesianMargin" class="tile-val font-mono amber" style="font-size:0.85rem;">--</div>
+            </div>
+          </div>
+
+          <!-- Hypothesis Distribution Bars -->
+          <div id="bayesianDistributionContainer" style="margin-bottom: 8px;">
+            <div style="font-size: 0.68rem; color: #94a3b8; margin-bottom: 4px;" class="font-mono">Hypothesis Posterior Distribution:</div>
+            <div id="bayesianBarsList" style="display: flex; flex-direction: column; gap: 4px;">
+              <div style="font-size: 0.65rem; color: #64748b;" class="font-mono">Awaiting correlation...</div>
+            </div>
+          </div>
+
+          <div id="bayesianRecommendation" class="font-mono" style="font-size: 0.67rem; color: #cbd5e1; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 4px; padding: 6px 8px; margin-bottom: 4px;">
+            Awaiting AIS correlation analysis.
+          </div>
+
+          <div class="hint-text" style="font-size: 0.63rem; color: #64748b;">
+            ⚠️ <em>Decision Criterion:</em> Abstention enforced if H_norm &gt; 0.82, Δ &lt; 0.15, or AIS integrity is compromised.
           </div>
         </div>
 
@@ -978,7 +1145,7 @@
                 <div class="timeline-web-header">
                   <div class="twh-title">
                     <span class="pulse-dot-cyan"></span>
-                    <strong>CHRONOLOGICAL INVESTIGATION WEB</strong>
+                    <strong>ILLUSTRATIVE BENCHMARK CHRONOLOGY</strong>
                   </div>
                   <span class="twh-hint">Click any milestone below to inspect why it is used & its math</span>
                 </div>
@@ -986,7 +1153,7 @@
                 <!-- Closed Forensic Loop Evidence Ribbon -->
                 <div class="forensic-loop-strip">
                   <span class="fls-icon">⏪</span>
-                  <span class="fls-text"><strong>FORENSIC REWIND LOOP CLOSED:</strong> Reverse Lagrangian Hindcast rewinds from Day 1 Detection back to Day 0 discharge point with <strong>0.0 NM CPA match</strong>.</span>
+                  <span class="fls-text"><strong>CONDITIONAL TRANSPORT DEMONSTRATION:</strong> The chronology illustrates an assumed scenario; it does not establish a discharge point, custody record or vessel responsibility.</span>
                 </div>
 
                 <!-- The 4 Day Phases Web Flow -->
@@ -996,7 +1163,7 @@
                   <div class="phase-column phase-col-day0">
                     <div class="phase-col-header">
                       <span class="phase-dot dot-blue"></span>
-                      <strong>DAY 0 • THE CRIME</strong>
+                      <strong>DAY 0 • AIS CONTEXT</strong>
                     </div>
                     <div class="phase-nodes-list">
                       <!-- Node 1 -->
@@ -1094,7 +1261,7 @@
                             <span class="wnc-desc">C-band microwave overpass</span>
                           </div>
                         </div>
-                        <div class="wnc-tag tag-space">-10.2 dB dark patch</div>
+                        <div class="wnc-tag tag-space">Uncalibrated dark-feature screen</div>
                       </div>
 
                       <!-- Node 5 -->
@@ -1190,19 +1357,19 @@
                 <div class="detail-body custom-scrollbar">
                   <div class="detail-section">
                     <h5>🎯 Why is this component used?</h5>
-                    <p id="detailWhy">Sets the normal kinematic baseline for maritime traffic. By profiling compliant commercial vessels cruising at steady service speeds (14–16 knots), the system automatically filters out innocent traffic and avoids false accusations.</p>
+                    <p id="detailWhy">Provides descriptive speed/course context for analyst review. Steady transit cannot establish innocence, exclude a discharge, or guarantee avoidance of false accusations.</p>
                   </div>
                   <div class="detail-section">
                     <h5>🔬 Mathematical Formulation / Physics</h5>
-                    <code class="detail-code" id="detailMath">V_baseline = mean(SOG_t) for t in [-24h, 0h] • Speed_drop_delta = 0.0 kts</code>
+                    <code class="detail-code" id="detailMath">V_baseline = mean(valid SOG_t) over a declared observation window; this illustration does not supply measured baselines.</code>
                   </div>
                   <div class="detail-section">
                     <h5>📦 Authoritative Dataset Connection</h5>
-                    <p id="detailDataset"><strong>NOAA / MarineCadastre AIS:</strong> <code>datasets/marinecadastre_real_ais.csv</code>. High-frequency transponder telemetry recording GPS, MMSI, SOG, and COG.</p>
+                    <p id="detailDataset"><strong>NOAA / MarineCadastre AIS:</strong> <code>datasets/marinecadastre_real_ais.csv</code>. Historic reference telemetry; alignment, receiver coverage and authenticity require independent checks.</p>
                   </div>
                   <div class="detail-section">
-                    <h5>⚖️ Legal & Courtroom Justification</h5>
-                    <p id="detailLegal">Establishes chain-of-custody baseline. Proves that other vessels in the corridor maintained standard cruising speeds and did not slow down or engage in maneuvering.</p>
+                    <h5>⚖️ Review / Governance Context</h5>
+                    <p id="detailLegal">Navigation context only. Source authentication, chain of custody, and competent-authority review remain external requirements.</p>
                   </div>
                 </div>
               </div>
@@ -1219,7 +1386,7 @@
                 <div class="meta-row"><span class="m-lbl">Swath Mode:</span><span class="m-val">Interferometric Wide (IW) GRD</span></div>
                 <div class="meta-row"><span class="m-lbl">Polarization:</span><span class="m-val">VV (Co-polarization optimal for Bragg wave damping)</span></div>
                 <div class="meta-row"><span class="m-lbl">Spatial Res:</span><span class="m-val">10m / Pixel (5.12 km x 5.12 km footprint)</span></div>
-                <div class="meta-row"><span class="m-lbl">Physical Effect:</span><span class="m-val">Marangoni capillary wave suppression (-10 dB backscatter drop)</span></div>
+                <div class="meta-row"><span class="m-lbl">Screening Cue:</span><span class="m-val">Dark contrast; oil identity and measured dB contrast are not established</span></div>
                 <div class="meta-row"><span class="m-lbl">Local Path:</span><span class="m-val font-mono">datasets/real_sar/real_sentinel1_crop_512.png</span></div>
                 <a href="https://zenodo.org/records/8346860" target="_blank" class="btn-tactical btn-primary" style="margin-top:14px; text-decoration:none; text-align:center; justify-content:center;">Visit Official Zenodo Portal</a>
               </div>
@@ -1251,7 +1418,7 @@
               </div>
               <div class="dataset-preview-main custom-scrollbar">
                 <div class="preview-header">
-                  <span>📊 Real MarineCadastre AIS Telemetry Stream (Live Rows Sample)</span>
+                  <span>📊 Historic MarineCadastre AIS Reference Rows (Freshness Unverified)</span>
                   <span class="badge-count">15 Attributes</span>
                 </div>
                 <div class="ais-table-wrap">
@@ -1485,7 +1652,7 @@ variables:
   </div>
 
   <!-- Leaflet & App Scripts -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="/static/js/app.js?v=5.1"></script>
+  <script src="/static/vendor/leaflet.js"></script>
+  <script src="/static/js/app.js?v=6.0.0"></script>
 </body>
 </html>

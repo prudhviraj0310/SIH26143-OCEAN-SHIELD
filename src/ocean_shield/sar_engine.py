@@ -6,14 +6,18 @@ true mineral oil spills from biogenic lookalikes.
 """
 
 import math
+import logging
 import os
-from typing import Dict, List, Tuple, Any, Optional
+from numbers import Real
+from typing import Dict, List, Tuple, Any, Optional, Union
 import numpy as np
 import cv2
 import torch
 
 from .models.unet import SAR_UNet
-from .models.super_resolution import load_sar_super_resolution_model, enhance_sar_deep_learning
+from .models.super_resolution import load_sar_super_resolution_model, enhance_sar_deep_learning, interpolate_sar_display
+
+logger = logging.getLogger(__name__)
 
 
 class SAREngine:
@@ -33,6 +37,7 @@ class SAREngine:
         # Models are NOT loaded here. They are loaded on first use.
         self._sr_model: Optional[Any] = None
         self._sr_loaded = False
+        self._sr_load_attempted = False
 
         # Resolve model path (but don't load yet)
         if model_path is None:
@@ -84,8 +89,9 @@ class SAREngine:
 
     def _ensure_sr_loaded(self):
         """Lazy-load Super-Resolution ESPCN model on first call (saves ~50 MB at startup)."""
-        if self._sr_loaded:
+        if self._sr_load_attempted:
             return
+        self._sr_load_attempted = True
         sr = load_sar_super_resolution_model(device=str(self.device))
         if getattr(sr, "weights_loaded", False):
             self._sr_model = sr
@@ -103,7 +109,8 @@ class SAREngine:
     @sr_model.setter
     def sr_model(self, value):
         self._sr_model = value
-        self._sr_loaded = value is not None
+        self._sr_loaded = value is not None and getattr(value, "weights_loaded", False) is True
+        self._sr_load_attempted = True
 
     def enhanced_lee_filter(self, img: np.ndarray, window_size: int = 5, k: float = 1.0) -> np.ndarray:
         """
@@ -187,11 +194,14 @@ class SAREngine:
         center_lat: float,
         center_lon: float,
         pixel_size_m: float = 10.0,
-        img_shape: Tuple[int, int] = (512, 512)
+        img_shape: Tuple[int, int] = (512, 512),
+        image: Optional[np.ndarray] = None
     ) -> Dict[str, Any]:
         """
         Calculates physical and geometric properties of an oil slick contour.
         Converts pixel space to real-world metric and geographic coordinates.
+        Optionally evaluates 7 scale-free morphological/backscatter invariant ratios
+        to screen out biogenic films and low-wind look-alikes.
         """
         area_pixels = cv2.contourArea(contour)
         perimeter_pixels = cv2.arcLength(contour, closed=True)
@@ -260,7 +270,39 @@ class SAREngine:
         # Geometry and lookalike screening classification
         is_oil, screening_score = self.classify_slick_vs_lookalike(elongation, complexity, area_km2)
 
-        return {
+        # Advanced Scale-Free Look-Alike Invariant Screening
+        try:
+            from .lookalike_screen import compute_scale_free_ratios, evaluate_lookalike_screening
+            ratios = None
+            if image is not None:
+                gray_img = image
+                if image.ndim == 3:
+                    gray_img = cv2.cvtColor(np.ma.getdata(image), cv2.COLOR_BGR2GRAY)
+                    if np.ma.isMaskedArray(image):
+                        gray_img = np.ma.array(gray_img, mask=np.any(np.ma.getmaskarray(image), axis=2))
+                ratios = compute_scale_free_ratios(gray_img, contour)
+            screen_res = evaluate_lookalike_screening(ratios)
+            lookalike_screening = {
+                "status": screen_res.status,
+                "reason": screen_res.reason,
+                "support": screen_res.support,
+                "verdict": screen_res.verdict,
+                "screening_index": screen_res.screening_index,
+                "calibration_status": screen_res.calibration_status,
+                "disclaimer": screen_res.disclaimer,
+                "rejection_reasons": screen_res.rejection_reasons,
+                "supporting_reasons": screen_res.supporting_reasons,
+                "scale_free_features": screen_res.features,
+            }
+        except Exception:
+            logger.warning("Look-alike screening unavailable; index withheld.")
+            lookalike_screening = {
+                "status": "UNAVAILABLE", "verdict": "NOT_ASSESSED", "screening_index": None,
+                "reason": "Feature extraction or evaluation failed; no triage tier is assigned.",
+                "rejection_reasons": [], "supporting_reasons": [],
+            }
+
+        res = {
             "centroid": {"lat": round(slick_lat, 6), "lon": round(slick_lon, 6)},
             "area_km2": round(area_km2, 3),
             "perimeter_km": round(perimeter_km, 3),
@@ -271,8 +313,8 @@ class SAREngine:
             "estimated_mass_tonnes": None,
             "classification": "SAR dark-feature candidate" if is_oil else "SAR dark-feature / lookalike candidate",
             "screening_score": screening_score,
-            "confidence_score": round(min(98.5, max(68.0, screening_score * 0.92 + 18.0)), 1),
-            "confidence_status": "morphological_screening_heuristic",
+            "confidence_score": None,
+            "confidence_status": "UNCALIBRATED_SCREENING_SCORE",
             "limitations": [
                 "Oil identity and lookalikes are not resolved from geometry alone.",
                 "Film thickness, mass, age, and source are not inferable from this single scene.",
@@ -283,6 +325,9 @@ class SAREngine:
                 "coordinates": [polygon_coords]
             }
         }
+        if lookalike_screening is not None:
+            res["lookalike_screening"] = lookalike_screening
+        return res
 
     def classify_slick_vs_lookalike(
         self,
@@ -319,7 +364,7 @@ class SAREngine:
         Runs real PyTorch U-Net inference on a SAR radar backscatter image.
         Returns:
             clean_mask: uint8 binary mask (255=oil, 0=clean water)
-            prob_map: float32 confidence probability heatmap [0.0, 1.0]
+            prob_map: float32 model-response heatmap [0.0, 1.0]; calibration is not established here
         """
         # Lazy-load model on first call (Render free-tier optimization)
         self._ensure_unet_loaded()
@@ -536,12 +581,24 @@ class SAREngine:
         center_lat: float,
         center_lon: float,
         pixel_size_m: float = 10.0,
-        model_type: str = "unet"
-    ) -> Dict[str, Any]:
+        model_type: str = "unet",
+        threshold_offset: float = 22.0,
+        *,
+        return_mask: bool = False,
+    ) -> Union[Dict[str, Any], Tuple[Dict[str, Any], np.ndarray]]:
         """
         Full end-to-end processing pipeline on a SAR image:
-        Speckle filter -> PyTorch U-Net or CFAR Segmentation -> Geometry -> Radar Ship Extraction.
+        Selected segmentation -> Geometry -> Radar Ship Extraction.
+        return_mask exposes the exact accepted segmentation for an overlay without
+        a second inference call. threshold_offset is in image DN, for CFAR/fallback
+        only; it is not a U-Net response threshold.
         """
+        if model_type not in {"unet", "cfar_edge"}:
+            raise ValueError("Unknown SAR segmentation model.")
+        if (isinstance(threshold_offset, (bool, np.bool_))
+                or not isinstance(threshold_offset, (Real, np.integer, np.floating))
+                or not math.isfinite(float(threshold_offset)) or not 1 <= threshold_offset <= 100):
+            raise ValueError("threshold_offset must be a finite real number between 1 and 100.")
         h, w = image.shape[:2]
 
         # 1. Segmentation via selected pipeline
@@ -550,13 +607,19 @@ class SAREngine:
         if model_type == "unet" and self.model_loaded:
             if h > 384 or w > 384:
                 clean_mask, prob_map = self.predict_unet_tiled(image)
+                inference_mode = "TILED"
             else:
                 clean_mask, prob_map = self.predict_unet(image)
-            active_engine = "PyTorch U-Net (Deep Learning Tiled)"
+                inference_mode = "SINGLE"
+            active_engine = f"PyTorch U-Net ({inference_mode.lower()} inference)"
+            segmentation = {"method": "UNET", "inference_mode": inference_mode,
+                            "threshold_offset": None, "threshold_offset_status": "NOT_APPLICABLE_UNET"}
             contours, _ = cv2.findContours(clean_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         else:
-            clean_mask, contours = self.segment_oil_slick(image)
-            active_engine = "Adaptive CFAR / Enhanced Lee Filter (Edge Tactical)"
+            clean_mask, contours = self.segment_oil_slick(image, threshold_offset=threshold_offset)
+            active_engine = "Adaptive dark-feature threshold (CFAR edge option)"
+            segmentation = {"method": "CFAR_EDGE", "inference_mode": "ADAPTIVE_THRESHOLD",
+                            "threshold_offset": float(threshold_offset), "threshold_offset_status": "APPLIED"}
 
         # 2. Extract geometric properties for each detected slick
         #    CRITICAL: Reject contours that hug the image frame boundary.
@@ -564,7 +627,8 @@ class SAREngine:
         #    is misclassified as oil. Any contour whose bounding box covers
         #    >60% of both image width AND height is a frame artifact, not oil.
         slicks = []
-        min_slick_area_px = 120  # Operational cutoff: ~0.012 km2 (rejects sub-hectare speckle noise)
+        accepted_mask = np.zeros_like(clean_mask)
+        min_slick_area_px = 120  # Candidate-size heuristic, not an operational cutoff
         for i, cnt in enumerate(contours):
             area_px = cv2.contourArea(cnt)
             if area_px < min_slick_area_px:
@@ -585,32 +649,47 @@ class SAREngine:
                 continue  # Frame-hugging artifact touching 3+ edges
 
             metrics = self.extract_geometric_metrics(
-                cnt, center_lat, center_lon, pixel_size_m, (h, w)
+                cnt, center_lat, center_lon, pixel_size_m, (h, w), image=image
             )
             metrics["slick_id"] = f"SLICK-SAR-{len(slicks)+1:02d}"
             slicks.append(metrics)
+            cv2.drawContours(accepted_mask, [cnt], -1, 255, -1)
+
+        # Display only the same accepted candidates used for metric extraction.
+        clean_mask = cv2.bitwise_and(clean_mask, accepted_mask)
 
         # Sort slicks by area descending (primary slick first)
         slicks.sort(key=lambda s: s["area_km2"], reverse=True)
 
-        # 3. A single scene does not provide a defensible slick age. Keep the
-        # field explicit so downstream code cannot manufacture a release time.
+        # 3. A single scene does not provide the release volume required by a
+        # Fay-style area-to-age inversion. Keep the output contract explicit
+        # instead of silently applying a hidden default volume.
         primary = slicks[0] if slicks else None
         if primary:
             primary["estimated_age_hours"] = None
+            primary["fay_spreading_age"] = {
+                "status": "NOT_ASSESSED",
+                "estimate_kind": "FAY_STYLE_AREA_TO_AGE_INVERSION",
+                "age_inference_status": "NOT_INFERRED_FROM_SINGLE_SAR_SCENE",
+                "estimated_age_hours": None,
+                "lookback_window_hours": None,
+                "reason": "Release volume, density, viscosity, and regime support are not supplied by a SAR scene.",
+            }
             primary["age_assessment"] = "Not inferable from a single SAR scene"
 
         # 4. Extract radar metallic ship targets for later radar/AIS review.
         radar_ships = self.detect_radar_ship_targets(image, center_lat, center_lon, pixel_size_m)
 
-        return {
+        results = {
             "total_slicks_detected": len(slicks),
             "primary_slick": primary,
             "all_slicks": slicks[:20],  # Cap detailed records to top 20 most significant slicks
             "radar_detected_ships": radar_ships,
             "active_engine": active_engine,
+            "segmentation": segmentation,
             "mask_dimensions": {"width": w, "height": h}
         }
+        return (results, clean_mask) if return_mask else results
 
     @staticmethod
     def assess_observability(
@@ -738,25 +817,24 @@ class SAREngine:
     def enhance_sar_super_resolution(
         self,
         image: np.ndarray,
-        scale_factor: int = 2
-    ) -> np.ndarray:
+        scale_factor: int = 2,
+        *,
+        return_metadata: bool = False,
+    ):
         """
-        Enhances satellite SAR imagery readability using PyTorch Deep Learning
-        Sub-Pixel Convolutional Neural Network (SAR_ESPCN).
-        (Addressing NTRO specification: 'Enhancing Satellite Imagery Readability with Super-Resolution').
-        Reconstructs sub-pixel high-frequency radar backscatter transitions with genuine neural inference.
+        Produce a display preview and optional processing metadata.
+        Interpolation and neural detail are not native radiometry or measured
+        sensor-resolution improvement. Analysis continues to use the source raster.
         """
         try:
-            return enhance_sar_deep_learning(image, model=self.sr_model, device=str(self.device))
-        except Exception:
-            # Fallback to high-frequency Laplacian detail enhancement if PyTorch inference fails
-            if len(image.shape) == 3:
-                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            model = self.sr_model
+            if model is None:
+                output, metadata = interpolate_sar_display(image, scale_factor)
             else:
-                gray = image.copy()
-            h, w = gray.shape[:2]
-            upscaled = cv2.resize(gray, (w * scale_factor, h * scale_factor), interpolation=cv2.INTER_LANCZOS4)
-            blurred = cv2.GaussianBlur(upscaled, (0, 0), sigmaX=1.2)
-            high_freq = cv2.subtract(upscaled, blurred)
-            enhanced = cv2.addWeighted(upscaled, 1.25, high_freq, 0.75, 0)
-            return cv2.bilateralFilter(enhanced, d=5, sigmaColor=35, sigmaSpace=35)
+                output, metadata = enhance_sar_deep_learning(
+                    image, model=model, device=str(self.device),
+                    scale_factor=scale_factor, return_metadata=True)
+        except Exception as exc:
+            logger.warning("SAR preview model unavailable (%s); using display interpolation.", type(exc).__name__)
+            output, metadata = interpolate_sar_display(image, scale_factor, "model_or_inference_unavailable")
+        return (output, metadata) if return_metadata else output

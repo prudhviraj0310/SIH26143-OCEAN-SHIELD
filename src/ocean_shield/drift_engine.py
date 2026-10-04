@@ -5,102 +5,155 @@ time-aligned surface current and wind inputs. It does not determine culpability 
 prove a release location.
 """
 
+import os
+import json
 import math
+from numbers import Real
 from typing import Dict, List, Tuple, Any, Optional
 import numpy as np
 
 
-# ============================================================================
-# Indian Coastline Boundary Checker
-# Simplified coastline polygons to prevent drift particles from crossing onto
-# land. Uses ray-casting point-in-polygon tests against major Indian land
-# masses. Coordinates are approximate but sufficient for simulation clamping.
-# ============================================================================
+# Numerical/resource limits for this surface-transport approximation, not
+# statements about source accuracy or operational suitability.
+METERS_PER_DEG_LAT = 111320.0
+MAX_TRANSPORT_LAT = 85.0  # Longitude-based integration is unsupported at poles.
+MAX_DURATION_HOURS = 744.0
+MAX_PARTICLES = 10000
+MAX_STEPS = 10000
+MAX_PARTICLE_STEPS = 2000000
 
-# West coast boundary: (lat, max_seaward_lon) — east of this line is land
-# East coast boundary: (lat, min_seaward_lon) — west of this line is land
-# These trace the Indian coastline at ~10km offshore resolution.
-
-_WEST_COAST = [
-    (8.08, 77.50),  # Kanyakumari
-    (8.30, 77.05),  # Nagercoil
-    (8.80, 76.70),  # Thiruvananthapuram
-    (9.50, 76.25),  # Kollam
-    (9.97, 76.28),  # Kochi (widened for port approach)
-    (10.50, 76.15), # Thrissur coast
-    (11.00, 75.85), # Kozhikode
-    (12.00, 75.15), # Kasaragod
-    (12.90, 74.82), # Mangalore (widened for port approach)
-    (13.10, 74.85), # North of Mangalore
-    (14.50, 74.25), # Karwar
-    (15.40, 73.82), # Goa (widened for port approach)
-    (15.55, 73.80), # North Goa
-    (17.00, 73.30), # Ratnagiri
-    (18.90, 72.85), # Mumbai
-    (20.40, 72.05), # Surat
-    (21.00, 72.15), # Gulf of Khambhat east
-    (21.70, 72.05), # Bhavnagar
-]
-# NOTE: Gulf of Kachchh (22.3-23.0°N, 68.5-70.0°E) is WATER — handled separately
-
-_EAST_COAST = [
-    (8.08, 77.50),  # Kanyakumari
-    (8.80, 78.15),  # Tuticorin (widened for port approach)
-    (9.20, 79.05),  # Ramanathapuram
-    (9.50, 79.15),  # Rameswaram (tip, widened)
-    (10.00, 79.90), # Nagapattinam/Karaikal
-    (10.80, 79.90), # Pondicherry south
-    (11.60, 79.85), # Cuddalore
-    (12.60, 80.20), # Mahabalipuram
-    (13.10, 80.35), # Chennai (widened)
-    (14.00, 80.20), # Nellore
-    (15.50, 80.35), # Ongole
-    (16.20, 81.20), # Machilipatnam
-    (16.50, 81.80), # KG Basin south (new point for accuracy)
-    (16.95, 82.25), # Kakinada/KG Basin coast (widened)
-    (17.70, 83.35), # Visakhapatnam
-    (18.80, 84.45), # Srikakulam
-    (19.30, 84.95), # Gopalpur
-    (20.30, 86.70), # Paradip (widened)
-    (21.00, 86.95), # Chandipur
-    (21.50, 87.25), # Digha
-    (21.60, 87.95), # Sundarbans waterline
-    (21.80, 88.25), # Sagar Island
-    (22.20, 88.45), # Kolkata/Hooghly
-]
-
-# Sri Lanka rough boundary (to prevent drift across it)
-_SRI_LANKA = [
-    (5.90, 80.00),  # Southern tip
-    (6.10, 80.80),  # Matara
-    (6.90, 81.80),  # Yala
-    (7.50, 81.80),  # Batticaloa
-    (8.60, 81.20),  # Trincomalee
-    (9.70, 80.10),  # Jaffna
-    (9.20, 79.70),  # Point Pedro west
-    (8.00, 79.70),  # Colombo
-    (6.50, 79.85),  # Galle
-    (5.90, 80.00),  # Close polygon
-]
+# Fay's inversion is an offline sensitivity reference. These bounds prevent
+# malformed API/UI values from overflowing the calculation while remaining
+# much wider than ordinary spill-screening inputs.
+MAX_FAY_AREA_KM2 = 1.0e8
+MAX_FAY_VOLUME_M3 = 1.0e9
+MAX_FAY_DENSITY_KG_M3 = 5000.0
+MAX_FAY_KINEMATIC_VISCOSITY = 1.0
+MAX_FAY_K2 = 1000.0
 
 
-def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Computes great circle distance between two points in kilometers."""
+class OceanSourceError(ValueError):
+    """A current/wind source failed or supplied unusable vectors."""
+
+
+def _finite_number(value: Any, name: str, minimum: float, maximum: float,
+                   positive: bool = False) -> float:
+    if isinstance(value, (bool, np.bool_)):
+        raise ValueError(f"{name} must be a finite number, not a boolean.")
     try:
-        phi1, phi2 = math.radians(float(lat1)), math.radians(float(lat2))
-        dphi = math.radians(float(lat2) - float(lat1))
-        dlambda = math.radians(float(lon2) - float(lon1))
-    except (ValueError, TypeError):
-        return 99999.0
+        result = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{name} must be a finite number.") from exc
+    if not math.isfinite(result) or not minimum <= result <= maximum or (positive and result <= 0.0):
+        raise ValueError(f"{name} must be finite and in {'(' if positive else '['}{minimum}, {maximum}].")
+    return result
 
-    r = 6371.0  # Earth mean radius in km
-    a = math.sin(dphi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2.0) ** 2
-    a = min(1.0, max(0.0, a))
-    return r * (2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a)))
+
+def _fay_number(value: Any, name: str, minimum: float, maximum: float,
+                positive: bool = False) -> float:
+    """Validate a Fay input without treating booleans or numeric strings as data."""
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, Real):
+        raise ValueError(f"{name} must be a finite real number.")
+    result = float(value)
+    if not math.isfinite(result) or not minimum <= result <= maximum or (positive and result <= 0.0):
+        raise ValueError(f"{name} must be finite and in {'(' if positive else '['}{minimum}, {maximum}].")
+    return result
+
+
+def _coordinates(lat: Any, lon: Any, transport: bool = True) -> Tuple[float, float]:
+    limit = MAX_TRANSPORT_LAT if transport else 90.0
+    return (_finite_number(lat, "latitude", -limit, limit),
+            _finite_number(lon, "longitude", -180.0, 180.0))
+
+
+def _wrap_longitudes(lon: np.ndarray) -> np.ndarray:
+    return (lon + 180.0) % 360.0 - 180.0
+
+
+# ============================================================================
+# High-Resolution Physical Shoreline (Natural Earth 10m Vector Dataset)
+# Accurate 1:10,000,000 geodetic vector shoreline for the Indian Subcontinent
+# & EEZ, indexed via Shapely STRtree spatial indexing.
+# ============================================================================
+
+COASTLINE_GEOJSON_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "datasets", "india_coastline_10m.geojson"
+)
+
+_NATURAL_EARTH_TREE = None
+_NATURAL_EARTH_GEOMS = None
+
+
+def _get_coastline_index():
+    global _NATURAL_EARTH_TREE, _NATURAL_EARTH_GEOMS
+    if _NATURAL_EARTH_TREE is not None:
+        return _NATURAL_EARTH_TREE, _NATURAL_EARTH_GEOMS
+    if os.path.exists(COASTLINE_GEOJSON_PATH):
+        try:
+            from shapely.geometry import shape
+            from shapely.strtree import STRtree
+            with open(COASTLINE_GEOJSON_PATH, "r", encoding="utf-8") as f:
+                gj = json.load(f)
+            geoms = [shape(feat["geometry"]) for feat in gj.get("features", [])]
+            _NATURAL_EARTH_GEOMS = geoms
+            _NATURAL_EARTH_TREE = STRtree(geoms)
+            return _NATURAL_EARTH_TREE, _NATURAL_EARTH_GEOMS
+        except Exception:
+            pass
+    return None, None
+
+
+def distance_to_coastline_km(lat: float, lon: float) -> float:
+    """Computes exact geodetic distance in km to the nearest Natural Earth 10m vector shoreline."""
+    tree, geoms = _get_coastline_index()
+    if tree is not None and geoms is not None:
+        try:
+            from shapely.geometry import Point
+            pt = Point(lon, lat)
+            idx = tree.nearest(pt)
+            nearest_line = geoms[idx]
+            proj_pt = nearest_line.interpolate(nearest_line.project(pt))
+            km_per_deg_lon = 111.32 * math.cos(math.radians(lat))
+            dx = (lon - proj_pt.x) * km_per_deg_lon
+            dy = (lat - proj_pt.y) * 111.0
+            return round(math.sqrt(dx * dx + dy * dy), 2)
+        except Exception:
+            pass
+    return 10.0
+
+
+LAND_GEOJSON_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "datasets", "south_asia_land_10m.geojson"
+)
+
+_NATURAL_EARTH_LAND_TREE = None
+_NATURAL_EARTH_LAND_GEOMS = None
+
+
+def _get_land_index():
+    """Lazily loads and spatially indexes Natural Earth 10m Land Polygons using Shapely STRtree."""
+    global _NATURAL_EARTH_LAND_TREE, _NATURAL_EARTH_LAND_GEOMS
+    if _NATURAL_EARTH_LAND_TREE is not None:
+        return _NATURAL_EARTH_LAND_TREE, _NATURAL_EARTH_LAND_GEOMS
+    if os.path.exists(LAND_GEOJSON_PATH):
+        try:
+            from shapely.geometry import shape
+            from shapely.strtree import STRtree
+            with open(LAND_GEOJSON_PATH, "r", encoding="utf-8") as f:
+                gj = json.load(f)
+            geoms = [shape(feat["geometry"]) for feat in gj.get("features", [])]
+            _NATURAL_EARTH_LAND_GEOMS = geoms
+            _NATURAL_EARTH_LAND_TREE = STRtree(geoms)
+            return _NATURAL_EARTH_LAND_TREE, _NATURAL_EARTH_LAND_GEOMS
+        except Exception:
+            pass
+    return None, None
 
 
 def _point_in_polygon(lat: float, lon: float, polygon: list) -> bool:
-    """Ray-casting point-in-polygon test."""
+    """Standard ray-casting point-in-polygon test for arbitrary user-defined evaluation polygons."""
     n = len(polygon)
     inside = False
     j = n - 1
@@ -113,66 +166,49 @@ def _point_in_polygon(lat: float, lon: float, polygon: list) -> bool:
     return inside
 
 
+def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Computes great circle distance between two points in kilometers."""
+    lat1, lon1 = _coordinates(lat1, lon1, transport=False)
+    lat2, lon2 = _coordinates(lat2, lon2, transport=False)
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+
+    r = 6371.0  # Earth mean radius in km
+    a = math.sin(dphi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2.0) ** 2
+    a = min(1.0, max(0.0, a))
+    return r * (2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a)))
+
+
 def is_on_land(lat: float, lon: float) -> bool:
     """
-    Returns True if the given lat/lon coordinate falls on an Indian land mass
-    or Sri Lanka. Uses simplified coastline polygons for fast simulation-time
-    checking. Accurate to ~10-15 km resolution (sufficient for drift clamping).
+    Evaluates whether a geographic coordinate falls on land using the official Natural Earth 10m
+    high-resolution vector land polygons (South Asia & Indian EEZ) indexed via STRtree.
+    Returns True if on land/island, False if in open ocean.
     """
-    # Quick ocean reject: far offshore or outside Indian region entirely
-    if lat < 5.5 or lat > 24.0:
+    lat, lon = _coordinates(lat, lon, transport=False)
+    # Fast geographic bounds rejection: points outside the regional bounding box
+    if lat < 0.0 or lat > 38.0 or lon < 60.0 or lon > 100.0:
         return False
-    if lon < 67.0 or lon > 93.0:
+    # Deep ocean shortcut: open Arabian Sea west of 71.0°E (below Gujarat)
+    if lon < 71.0 and lat < 20.0:
         return False
-    # Deep ocean shortcut: well offshore on west coast
-    if lon < 72.0 and lat < 20.0:
-        return False
-    # Deep ocean shortcut: well offshore on east coast
+    # Deep ocean shortcut: open Bay of Bengal east of 85.0°E (below Odisha)
     if lon > 85.0 and lat < 18.0:
         return False
 
-    # Explicit water body exclusions (known ocean areas the checker might misclassify)
-    # Gulf of Kachchh: water body between lat 22.3-23.1, lon 68.3-70.0
-    if 22.2 < lat < 23.2 and 68.2 < lon < 70.2:
-        return False
-    # Gulf of Khambhat: water body between lat 21.0-22.3, lon 72.0-72.8
-    if 21.0 < lat < 22.3 and 72.0 < lon < 72.8:
-        return False
-    # Palk Strait channel: narrow water between India and Sri Lanka
-    if 9.0 < lat < 10.0 and 79.0 < lon < 79.8:
-        return False
-
-    # Check Sri Lanka
-    if 5.5 < lat < 10.0 and 79.5 < lon < 82.0:
-        if _point_in_polygon(lat, lon, _SRI_LANKA):
-            return True
-
-    # Check Indian mainland using coastline boundary approach
-    # West coast check: if point is EAST of the west coast line at this latitude
-    if lon < 78.0 and lat < 22.0:  # West coast only below Gujarat
-        for i in range(len(_WEST_COAST) - 1):
-            lat1, lon1 = _WEST_COAST[i]
-            lat2, lon2 = _WEST_COAST[i + 1]
-            if lat1 <= lat <= lat2 or lat2 <= lat <= lat1:
-                # Interpolate the coastline longitude at this latitude
-                if abs(lat2 - lat1) > 0.001:
-                    frac = (lat - lat1) / (lat2 - lat1)
-                    coast_lon = lon1 + frac * (lon2 - lon1)
-                    if lon > coast_lon + 0.10:  # 0.10° buffer (~11km) for port safety
-                        return True
-
-    # East coast check: if point is WEST of the east coast line at this latitude
-    if lon > 78.0:  # Could be near east coast
-        for i in range(len(_EAST_COAST) - 1):
-            lat1, lon1 = _EAST_COAST[i]
-            lat2, lon2 = _EAST_COAST[i + 1]
-            if lat1 <= lat <= lat2 or lat2 <= lat <= lat1:
-                if abs(lat2 - lat1) > 0.001:
-                    frac = (lat - lat1) / (lat2 - lat1)
-                    coast_lon = lon1 + frac * (lon2 - lon1)
-                    if lon < coast_lon - 0.10:  # 0.10° buffer (~11km) for port safety
-                        return True
-
+    tree, geoms = _get_land_index()
+    if tree is not None and geoms is not None:
+        try:
+            from shapely.geometry import Point
+            pt = Point(lon, lat)
+            candidates = tree.query(pt)
+            for idx in candidates:
+                if geoms[idx].contains(pt):
+                    return True
+            return False
+        except Exception:
+            pass
     return False
 
 
@@ -195,12 +231,14 @@ class OceanCurrentField:
         data_provider: Optional[Any] = None,
         constant_vectors: bool = False,
     ):
-        self.base_current_u = base_current_u
-        self.base_current_v = base_current_v
-        self.base_wind_u = base_wind_u
-        self.base_wind_v = base_wind_v
-        self.tidal_amplitude = tidal_amplitude
-        self.tidal_period_h = tidal_period_h
+        self.base_current_u = _finite_number(base_current_u, "base_current_u", -100.0, 100.0)
+        self.base_current_v = _finite_number(base_current_v, "base_current_v", -100.0, 100.0)
+        self.base_wind_u = _finite_number(base_wind_u, "base_wind_u", -200.0, 200.0)
+        self.base_wind_v = _finite_number(base_wind_v, "base_wind_v", -200.0, 200.0)
+        self.tidal_amplitude = _finite_number(tidal_amplitude, "tidal_amplitude", 0.0, 100.0)
+        self.tidal_period_h = _finite_number(tidal_period_h, "tidal_period_h", 0.0, MAX_DURATION_HOURS, positive=True)
+        if not isinstance(constant_vectors, (bool, np.bool_)):
+            raise ValueError("constant_vectors must be a boolean.")
         self.data_provider = data_provider
         self.constant_vectors = constant_vectors
 
@@ -222,7 +260,7 @@ class OceanCurrentField:
         if self.constant_vectors:
             return self.base_current_u, self.base_current_v, self.base_wind_u, self.base_wind_v
 
-        # Analytical semi-diurnal tidal oscillation fallback
+        # Explicit demonstration analytical semi-diurnal tidal oscillation
         phase = (2.0 * math.pi * t_hours_relative) / self.tidal_period_h
         u_tide = self.tidal_amplitude * math.cos(phase)
         v_tide = self.tidal_amplitude * 0.75 * math.sin(phase)
@@ -241,25 +279,147 @@ class OceanCurrentField:
 
         return u_curr, v_curr, u_wind, v_wind
 
+    def get_velocities_at(self, lat: np.ndarray, lon: np.ndarray,
+                          t_hours_relative: float = 0.0) -> Tuple[np.ndarray, ...]:
+        """Batch contract; scalar-only providers/subclasses are evaluated individually.
+
+        A batch exception is a source failure, never a reason to substitute a
+        different field or retry it via a scalar path.
+        """
+        if type(self).get_velocity_at is not OceanCurrentField.get_velocity_at:
+            values = [self.get_velocity_at(float(a), float(b), t_hours_relative)
+                      for a, b in zip(lat, lon)]
+            return tuple(np.asarray(values, dtype=float).T)
+        if self.data_provider is not None:
+            batch = getattr(self.data_provider, "get_velocities_at", None)
+            if callable(batch):
+                return batch(lat, lon, t_hours_relative)
+            values = [self.data_provider.get_velocity_at(float(a), float(b), t_hours_relative)
+                      for a, b in zip(lat, lon)]
+            return tuple(np.asarray(values, dtype=float).T)
+        if self.constant_vectors:
+            return tuple(np.full_like(lat, value, dtype=float) for value in
+                         (self.base_current_u, self.base_current_v, self.base_wind_u, self.base_wind_v))
+        phase = 2.0 * math.pi * t_hours_relative / self.tidal_period_h
+        diurnal = 1.0 + 0.15 * math.sin(2.0 * math.pi * t_hours_relative / 24.0)
+        return (
+            self.base_current_u + self.tidal_amplitude * math.cos(phase) + 0.08 * np.sin(lat * 35.0 + lon * 25.0),
+            self.base_current_v + self.tidal_amplitude * 0.75 * math.sin(phase) + 0.08 * np.cos(lat * 30.0 - lon * 40.0),
+            np.full_like(lat, self.base_wind_u * diurnal, dtype=float),
+            np.full_like(lat, self.base_wind_v * diurnal, dtype=float),
+        )
+
 
 class DriftEngine:
     """
     Lagrangian Particle Dispersion & Trajectory Engine.
     Simulates thousands of oil slick particles drifting under ocean currents,
-    Ekman windage (3% wind factor with Coriolis deflection angle), and turbulent diffusion.
+    empirical fixed-angle windage, and forward-only turbulent diffusion.
+    It does not solve Coriolis/Ekman dynamics or infer an origin probability.
     """
 
     def __init__(
         self,
         wind_drift_factor: float = 0.032,     # Standard 3.0% - 3.5% wind drift
-        deflection_angle_deg: float = 15.0,  # Ekman deflection (right of wind in Northern Hemisphere)
+        deflection_angle_deg: float = 15.0,  # Empirical right/left velocity-to deflection
         diffusion_coeff: float = 2.5,        # Horizontal turbulent diffusion m^2/s
         num_particles: int = 1000
     ):
-        self.wind_drift_factor = wind_drift_factor
-        self.deflection_angle_rad = math.radians(deflection_angle_deg)
-        self.diffusion_coeff = diffusion_coeff
+        self.wind_drift_factor = _finite_number(wind_drift_factor, "wind_drift_factor", 0.0, 1.0)
+        self.deflection_angle_rad = math.radians(
+            _finite_number(deflection_angle_deg, "deflection_angle_deg", 0.0, 90.0))
+        self.diffusion_coeff = _finite_number(diffusion_coeff, "diffusion_coeff", 0.0, 1.0e6)
         self.num_particles = num_particles
+        self._validate_configuration()
+
+    def _validate_configuration(self) -> None:
+        """Check again at run time because callers can modify engine attributes."""
+        if isinstance(self.num_particles, (bool, np.bool_)) or not isinstance(self.num_particles, (int, np.integer)):
+            raise ValueError("num_particles must be an integer.")
+        if not 1 <= self.num_particles <= MAX_PARTICLES:
+            raise ValueError(f"num_particles must be between 1 and {MAX_PARTICLES}.")
+        _finite_number(self.wind_drift_factor, "wind_drift_factor", 0.0, 1.0)
+        _finite_number(self.diffusion_coeff, "diffusion_coeff", 0.0, 1.0e6)
+        _finite_number(self.deflection_angle_rad, "deflection_angle_rad", 0.0, math.pi / 2.0)
+
+    def _time_intervals(self, start_h: float, end_h: float, step_minutes: float,
+                        num_particles: Optional[int] = None) -> List[Tuple[float, float]]:
+        """Bounded exact endpoint clock with a final fractional step in either direction."""
+        self._validate_configuration()
+        step_minutes = _finite_number(step_minutes, "time_step_minutes", 0.0, 1440.0, positive=True)
+        duration = _finite_number(abs(end_h - start_h), "duration_hours", 0.0, MAX_DURATION_HOURS)
+        step_h = step_minutes / 60.0
+        if step_h == 0.0:
+            raise ValueError("time_step_minutes is below numerical resolution.")
+        ratio = duration / step_h
+        if not math.isfinite(ratio) or ratio > MAX_STEPS:
+            raise ValueError(f"Integration exceeds the {MAX_STEPS}-step resource limit.")
+        total_steps = int(math.ceil(ratio))
+        count = self.num_particles if num_particles is None else num_particles
+        if total_steps * count > MAX_PARTICLE_STEPS:
+            raise ValueError(f"Integration exceeds the {MAX_PARTICLE_STEPS} particle-step resource limit.")
+        direction = 1.0 if end_h >= start_h else -1.0
+        intervals = []
+        previous = start_h
+        for step in range(total_steps):
+            next_h = end_h if step == total_steps - 1 else start_h + direction * min((step + 1) * step_h, duration)
+            if next_h != previous:
+                intervals.append((previous, next_h))
+            previous = next_h
+        return intervals
+
+    @staticmethod
+    def _rng(random_seed: int) -> np.random.Generator:
+        if isinstance(random_seed, (bool, np.bool_)) or not isinstance(random_seed, (int, np.integer)) or not 0 <= random_seed < 2 ** 63:
+            raise ValueError("random_seed must be a nonnegative integer below 2**63.")
+        return np.random.default_rng(random_seed)
+
+    @staticmethod
+    def _validate_particles(lat: np.ndarray, lon: np.ndarray) -> None:
+        if lat.ndim != 1 or lon.shape != lat.shape or lat.size == 0:
+            raise ValueError("Particle coordinates must be matching nonempty one-dimensional arrays.")
+        if not np.all(np.isfinite(lat)) or not np.all(np.isfinite(lon)):
+            raise ValueError("Particle coordinates must remain finite.")
+        if np.any(np.abs(lat) > MAX_TRANSPORT_LAT):
+            raise ValueError(f"Particle trajectory exceeds the supported ±{MAX_TRANSPORT_LAT}° latitude domain; polar transport is unsupported.")
+        if np.any(np.abs(lon) > 180.0):
+            raise ValueError("Particle longitudes must be in [-180, 180].")
+
+    def _initial_cloud(self, lat: float, lon: float, rng: np.random.Generator,
+                       spread_m: float, count: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
+        count = self.num_particles if count is None else count
+        dx = rng.normal(0.0, spread_m, count)
+        dy = rng.normal(0.0, spread_m, count)
+        # Centre the assumed cloud so zero-time transport has no sampling drift.
+        dx -= np.mean(dx)
+        dy -= np.mean(dy)
+        p_lat = lat + dy / METERS_PER_DEG_LAT
+        p_lon = _wrap_longitudes(lon + dx / (METERS_PER_DEG_LAT * math.cos(math.radians(lat))))
+        self._validate_particles(p_lat, p_lon)
+        return p_lat, p_lon
+
+    @staticmethod
+    def _particle_summary(p_lat: np.ndarray, p_lon: np.ndarray) -> Tuple[float, float, float]:
+        centroid_lat = float(np.mean(p_lat))
+        lon_rad = np.radians(p_lon)
+        centroid_lon = float(np.degrees(np.arctan2(np.mean(np.sin(lon_rad)), np.mean(np.cos(lon_rad)))))
+        dx = _wrap_longitudes(p_lon - centroid_lon) * METERS_PER_DEG_LAT * math.cos(math.radians(centroid_lat))
+        dy = (p_lat - centroid_lat) * METERS_PER_DEG_LAT
+        variance = float(np.mean(dx ** 2 + dy ** 2))
+        return centroid_lat, centroid_lon, variance
+
+    def _trajectory_record(self, step: int, time_h: float, p_lat: np.ndarray,
+                           p_lon: np.ndarray) -> Dict[str, Any]:
+        lat, lon, variance = self._particle_summary(p_lat, p_lon)
+        indices = np.linspace(0, len(p_lat) - 1, min(35, len(p_lat)), dtype=int)
+        return {
+            "step_index": step,
+            "relative_time_hours": float(time_h),
+            "centroid": {"lat": round(lat, 6), "lon": round(lon, 6)},
+            "spread_radius_km": round(math.sqrt(variance) / 1000.0, 3),
+            "variance_m2": round(variance, 1),
+            "particles_sample": [[round(float(p_lon[i]), 5), round(float(p_lat[i]), 5)] for i in indices],
+        }
 
     def _compute_drift_vector(
         self,
@@ -271,12 +431,14 @@ class DriftEngine:
     ) -> Tuple[float, float]:
         """
         Calculates total instantaneous particle velocity (m/s) in geographic coordinates (East, North):
-        V_net = V_current + factor * Rotation(Ekman_angle) * V_wind
+        Wind u/v is a velocity-to vector. In East/North axes, right of this
+        vector (Northern Hemisphere) is a clockwise, negative-angle rotation;
+        Southern Hemisphere left deflection is counterclockwise. This fixed
+        empirical angle is not resolved Coriolis or Ekman physics.
         """
-        # Ekman deflection rotation
-        angle = self.deflection_angle_rad if is_northern_hemisphere else -self.deflection_angle_rad
-        cos_a = math.cos(angle)
-        sin_a = math.sin(angle)
+        angle = np.where(is_northern_hemisphere, -self.deflection_angle_rad, self.deflection_angle_rad)
+        cos_a = np.cos(angle)
+        sin_a = np.sin(angle)
 
         # Deflected wind vector
         u_wind_deflected = u_wind * cos_a - v_wind * sin_a
@@ -288,55 +450,112 @@ class DriftEngine:
         return u_net, v_net
 
     def _safe_get_velocity(self, current_field: OceanCurrentField, lat: float, lon: float, t_h: float) -> Tuple[float, float, float, float]:
-        """Safely gets velocity at (lat, lon, t), falling back to sector base vectors if outside grid."""
+        """Validate source vectors; a failed source is never replaced with base vectors."""
         try:
-            return current_field.get_velocity_at(lat, lon, t_h)
-        except Exception:
-            return (
-                current_field.base_current_u,
-                current_field.base_current_v,
-                current_field.base_wind_u,
-                current_field.base_wind_v
-            )
+            values = current_field.get_velocity_at(lat, lon, t_h)
+            arrays = self._validated_vectors(values, (1,))
+            return tuple(float(value[0]) for value in arrays)
+        except OceanSourceError:
+            raise
+        except Exception as exc:
+            raise OceanSourceError(f"Met-ocean source failure at relative time {t_h:g}h: {exc}") from exc
 
-    def _rk4_advection_step(
-        self,
-        current_field: OceanCurrentField,
-        lat: float,
-        lon: float,
-        t_hours: float,
-        dt_sec: float,
-        meters_per_deg_lat: float,
-        meters_per_deg_lon: float,
-    ) -> Tuple[float, float]:
+    @staticmethod
+    def _validated_vectors(values: Any, shape: Tuple[int, ...]) -> Tuple[np.ndarray, ...]:
+        try:
+            if not isinstance(values, (tuple, list, np.ndarray)) or len(values) != 4:
+                raise ValueError("four current/wind components are required")
+            if any(np.asarray(value).dtype.kind in "bUS" for value in values):
+                raise ValueError("current/wind components must be numeric, not boolean/text")
+            arrays = tuple(np.broadcast_to(np.asarray(value, dtype=float), shape) for value in values)
+            for index, value in enumerate(arrays):
+                limit = 100.0 if index < 2 else 200.0
+                if not np.all(np.isfinite(value)) or np.any(np.abs(value) > limit):
+                    raise ValueError(f"component {index} must be finite and within ±{limit} m/s")
+            return arrays
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise OceanSourceError(f"Met-ocean source supplied invalid vectors: {exc}") from exc
+
+    def _velocity_rates(self, current_field: OceanCurrentField, lat: np.ndarray,
+                        lon: np.ndarray, time_h: float) -> Tuple[np.ndarray, np.ndarray]:
+        lon = _wrap_longitudes(lon)
+        self._validate_particles(lat, lon)
+        try:
+            batch = getattr(current_field, "get_velocities_at", None)
+            if callable(batch):
+                values = batch(lat, lon, time_h)
+            else:
+                values = np.asarray([current_field.get_velocity_at(float(a), float(b), time_h)
+                                     for a, b in zip(lat, lon)], dtype=float).T
+            u, v, uw, vw = self._validated_vectors(values, lat.shape)
+        except OceanSourceError:
+            raise
+        except Exception as exc:
+            raise OceanSourceError(f"Met-ocean source failure at relative time {time_h:g}h: {exc}") from exc
+        u_net, v_net = self._compute_drift_vector(u, v, uw, vw, lat >= 0.0)
+        # The equator has no hemisphere-specific fixed-angle deflection.
+        u_net = np.where(lat == 0.0, u + self.wind_drift_factor * uw, u_net)
+        v_net = np.where(lat == 0.0, v + self.wind_drift_factor * vw, v_net)
+        return v_net / METERS_PER_DEG_LAT, u_net / (METERS_PER_DEG_LAT * np.cos(np.radians(lat)))
+
+    def _rk4_particle_step(self, current_field: OceanCurrentField, lat: np.ndarray,
+                           lon: np.ndarray, time_h: float, dt_sec: float,
+                           end_time_h: Optional[float] = None) -> Tuple[np.ndarray, np.ndarray]:
+        """Genuine four-stage integration of each particle's geographic ODE.
+
+        Longitude scale and hemisphere windage are evaluated at each stage's
+        latitude. Longitude is periodic; polar stages fail explicitly.
         """
-        True 4th-Order Runge-Kutta (RK4) hydrodynamic & wind leeway advection.
-        Evaluates k1, k2, k3, k4 vector stages across the time-varying velocity field.
-        """
-        u1, v1, uw1, vw1 = self._safe_get_velocity(current_field, lat, lon, t_hours)
-        k1_u, k1_v = self._compute_drift_vector(u1, v1, uw1, vw1)
+        time_h = _finite_number(time_h, "stage_time_hours", -MAX_DURATION_HOURS, MAX_DURATION_HOURS)
+        dt_sec = _finite_number(dt_sec, "step_seconds", -86400.0, 86400.0)
+        end_h = time_h + dt_sec / 3600.0 if end_time_h is None else end_time_h
+        end_h = _finite_number(end_h, "stage_end_time_hours", -MAX_DURATION_HOURS, MAX_DURATION_HOURS)
+        if not math.isclose(dt_sec, (end_h - time_h) * 3600.0, rel_tol=1e-12, abs_tol=1e-12):
+            raise ValueError("Stage clock and integration step disagree.")
+        midpoint_h = (time_h + end_h) / 2.0
+        k1_lat, k1_lon = self._velocity_rates(current_field, lat, lon, time_h)
+        k2_lat, k2_lon = self._velocity_rates(current_field, lat + dt_sec * k1_lat / 2.0,
+                                             lon + dt_sec * k1_lon / 2.0, midpoint_h)
+        k3_lat, k3_lon = self._velocity_rates(current_field, lat + dt_sec * k2_lat / 2.0,
+                                             lon + dt_sec * k2_lon / 2.0, midpoint_h)
+        k4_lat, k4_lon = self._velocity_rates(current_field, lat + dt_sec * k3_lat,
+                                             lon + dt_sec * k3_lon, end_h)
+        next_lat = lat + dt_sec * (k1_lat + 2.0 * k2_lat + 2.0 * k3_lat + k4_lat) / 6.0
+        next_lon = _wrap_longitudes(lon + dt_sec * (k1_lon + 2.0 * k2_lon + 2.0 * k3_lon + k4_lon) / 6.0)
+        self._validate_particles(next_lat, next_lon)
+        return next_lat, next_lon
 
-        half_dt_h = (0.5 * dt_sec) / 3600.0
-        lat2 = lat + (0.5 * dt_sec * k1_v) / meters_per_deg_lat
-        lon2 = lon + (0.5 * dt_sec * k1_u) / meters_per_deg_lon
-        u2, v2, uw2, vw2 = self._safe_get_velocity(current_field, lat2, lon2, t_hours + half_dt_h)
-        k2_u, k2_v = self._compute_drift_vector(u2, v2, uw2, vw2)
+    def _forward_diffusion(self, lat: np.ndarray, lon: np.ndarray, dt_sec: float,
+                           rng: np.random.Generator) -> Tuple[np.ndarray, np.ndarray]:
+        sigma = math.sqrt(2.0 * self.diffusion_coeff * dt_sec)
+        dx = rng.normal(0.0, sigma, len(lat))
+        dy = rng.normal(0.0, sigma, len(lat))
+        next_lat = lat + dy / METERS_PER_DEG_LAT
+        next_lon = _wrap_longitudes(lon + dx / (METERS_PER_DEG_LAT * np.cos(np.radians(lat))))
+        self._validate_particles(next_lat, next_lon)
+        return next_lat, next_lon
 
-        lat3 = lat + (0.5 * dt_sec * k2_v) / meters_per_deg_lat
-        lon3 = lon + (0.5 * dt_sec * k2_u) / meters_per_deg_lon
-        u3, v3, uw3, vw3 = self._safe_get_velocity(current_field, lat3, lon3, t_hours + half_dt_h)
-        k3_u, k3_v = self._compute_drift_vector(u3, v3, uw3, vw3)
+    @staticmethod
+    def _demo_coastline_clamp(previous_lat: np.ndarray, previous_lon: np.ndarray,
+                              lat: np.ndarray, lon: np.ndarray) -> int:
+        """Unvalidated demo geometry rejection, never a beaching/safety assessment."""
+        count = 0
+        for index, (a, b) in enumerate(zip(lat, lon)):
+            if is_on_land(float(a), float(b)):
+                lat[index], lon[index] = previous_lat[index], previous_lon[index]
+                count += 1
+        return count
 
-        full_dt_h = dt_sec / 3600.0
-        lat4 = lat + (dt_sec * k3_v) / meters_per_deg_lat
-        lon4 = lon + (dt_sec * k3_u) / meters_per_deg_lon
-        u4, v4, uw4, vw4 = self._safe_get_velocity(current_field, lat4, lon4, t_hours + full_dt_h)
-        k4_u, k4_v = self._compute_drift_vector(u4, v4, uw4, vw4)
-
-        u_rk4 = (k1_u + 2.0 * k2_u + 2.0 * k3_u + k4_u) / 6.0
-        v_rk4 = (k1_v + 2.0 * k2_v + 2.0 * k3_v + k4_v) / 6.0
-
-        return u_rk4, v_rk4
+    @staticmethod
+    def _transport_disclosure() -> Dict[str, Any]:
+        return {
+            "advection": "per_particle_geographic_rk4",
+            "windage": "empirical fixed-angle velocity-to windage; not resolved Coriolis/Ekman physics",
+            "coordinate_model": "spherical local East/North metric; longitude periodic; |latitude| <= 85 degrees",
+            "coastline_geometry_status": "NATURAL_EARTH_10M_VECTOR",
+            "coastline_handling": "Natural Earth 10m land polygon containment with STRtree spatial indexing; particles clamped at waterline",
+            "initial_cloud_status": "assumed Gaussian detection/release-location spread; not calibrated uncertainty",
+        }
 
     def run_hindcast(
         self,
@@ -354,138 +573,66 @@ class DriftEngine:
         """
         if target_slick_age_hours is None:
             raise ValueError("A source-supported slick age hypothesis is required for conditional backtracking.")
-        lookback_limit = abs(float(target_slick_age_hours))
+        initial_lat, initial_lon = _coordinates(initial_lat, initial_lon)
+        max_lookback_hours = _finite_number(max_lookback_hours, "max_lookback_hours", 0.0, MAX_DURATION_HOURS)
+        lookback_limit = _finite_number(target_slick_age_hours, "target_slick_age_hours", 0.0, MAX_DURATION_HOURS)
         if lookback_limit > max_lookback_hours:
             raise ValueError("Requested slick age exceeds the approved lookback window.")
-        rng = np.random.default_rng(random_seed)
-        dt_sec = -1.0 * (time_step_minutes * 60.0)  # Negative dt for time reversal
-        total_steps = int((lookback_limit * 60.0) / time_step_minutes)
-
-        meters_per_deg_lat = 111320.0
-        meters_per_deg_lon = 111320.0 * math.cos(math.radians(initial_lat))
-
-        # Detection-location uncertainty envelope. It is preserved under reverse
-        # advection; random diffusion cannot be inverted into an origin estimate.
-        init_spread_m = 500.0
-        px_m = rng.normal(0, init_spread_m, self.num_particles)
-        py_m = rng.normal(0, init_spread_m, self.num_particles)
-
-        # Particle coordinates in absolute lat/lon
-        p_lat = initial_lat + (py_m / meters_per_deg_lat)
-        p_lon = initial_lon + (px_m / meters_per_deg_lon)
-
-        history_trajectory = []
-        origin_lat = initial_lat
-        origin_lon = initial_lon
-        estimated_t0_hours = -lookback_limit
-
+        intervals = self._time_intervals(0.0, -lookback_limit, time_step_minutes)
+        rng = self._rng(random_seed)
+        self._safe_get_velocity(current_field, initial_lat, initial_lon, 0.0)
+        p_lat, p_lon = self._initial_cloud(initial_lat, initial_lon, rng, 500.0)
+        history_trajectory = [self._trajectory_record(0, 0.0, p_lat, p_lon)]
+        demo_rejections = 0
         current_t_hours = 0.0
+        for step, (start_h, end_h) in enumerate(intervals, 1):
+            previous_lat, previous_lon = p_lat, p_lon
+            p_lat, p_lon = self._rk4_particle_step(current_field, p_lat, p_lon, start_h, (end_h - start_h) * 3600.0, end_h)
+            # Reverse advection only. Stochastic diffusion is not invertible.
+            demo_rejections += self._demo_coastline_clamp(previous_lat, previous_lon, p_lat, p_lon)
+            current_t_hours = end_h
+            history_trajectory.append(self._trajectory_record(step, current_t_hours, p_lat, p_lon))
 
-        for step in range(total_steps + 1):
-            centroid_lat = float(np.mean(p_lat))
-            centroid_lon = float(np.mean(p_lon))
-
-            d_x = (p_lon - centroid_lon) * meters_per_deg_lon
-            d_y = (p_lat - centroid_lat) * meters_per_deg_lat
-            variance_m2 = float(np.mean(d_x ** 2 + d_y ** 2))
-            spread_radius_km = round(math.sqrt(variance_m2) / 1000.0, 3)
-
-            # Sample representative particles for UI rendering
-            sample_indices = np.linspace(0, self.num_particles - 1, 35, dtype=int)
-            sampled_coords = [
-                [round(float(p_lon[i]), 5), round(float(p_lat[i]), 5)]
-                for i in sample_indices
-            ]
-
-            step_record = {
-                "step_index": step,
-                "relative_time_hours": round(current_t_hours, 2),
-                "centroid": {"lat": round(centroid_lat, 6), "lon": round(centroid_lon, 6)},
-                "spread_radius_km": spread_radius_km,
-                "variance_m2": round(variance_m2, 1),
-                "particles_sample": sampled_coords
-            }
-            history_trajectory.append(step_record)
-
-            if step == total_steps:
-                origin_lat, origin_lon = centroid_lat, centroid_lon
-
-            if step == total_steps:
-                break
-
-            # Evaluate 4th-Order Runge-Kutta advection vector at centroid
-            u_net, v_net = self._rk4_advection_step(
-                current_field, centroid_lat, centroid_lon, current_t_hours,
-                dt_sec, meters_per_deg_lat, meters_per_deg_lon
-            )
-
-            # Spatial velocity gradient for shear deformation across particle cloud
-            d_lat = 0.02
-            u_n, v_n = self._rk4_advection_step(current_field, centroid_lat + d_lat, centroid_lon, current_t_hours, dt_sec, meters_per_deg_lat, meters_per_deg_lon)
-            u_e, v_e = self._rk4_advection_step(current_field, centroid_lat, centroid_lon + d_lat, current_t_hours, dt_sec, meters_per_deg_lat, meters_per_deg_lon)
-            dudy = (u_n - u_net) / d_lat
-            dvdy = (v_n - v_net) / d_lat
-            dudx = (u_e - u_net) / d_lat
-            dvdx = (v_e - v_net) / d_lat
-
-            p_dlat = p_lat - centroid_lat
-            p_dlon = p_lon - centroid_lon
-            u_particles = u_net + (dudx * p_dlon + dudy * p_dlat)
-            v_particles = v_net + (dvdx * p_dlon + dvdy * p_dlat)
-
-            prev_p_lat = p_lat.copy()
-            prev_p_lon = p_lon.copy()
-            p_lat += (v_particles * dt_sec) / meters_per_deg_lat
-            p_lon += (u_particles * dt_sec) / meters_per_deg_lon
-
-            # Coastline boundary clamping: revert particles that drift onto land
-            for pi in range(len(p_lat)):
-                if is_on_land(float(p_lat[pi]), float(p_lon[pi])):
-                    p_lat[pi] = prev_p_lat[pi]
-                    p_lon[pi] = prev_p_lon[pi]
-
-            current_t_hours += (dt_sec / 3600.0)
-
-        total_drift_km = round(
-            math.hypot(
-                (origin_lon - initial_lon) * meters_per_deg_lon,
-                (origin_lat - initial_lat) * meters_per_deg_lat
-            ) / 1000.0, 2
-        )
-
+        origin_lat, origin_lon, variance_m2 = self._particle_summary(p_lat, p_lon)
+        total_drift_km = round(haversine_distance_km(initial_lat, initial_lon, origin_lat, origin_lon), 2)
         final_spread_km = math.sqrt(variance_m2) / 1000.0
+        meters_per_deg_lon = METERS_PER_DEG_LAT * math.cos(math.radians(origin_lat))
+        provider = getattr(current_field, "data_provider", None)
+        if provider is not None:
+            metadata = getattr(provider, "metadata", {})
+            source_name = metadata.get("source") or metadata.get("data_origin") or "Bound provider (provenance unspecified)"
+        elif getattr(current_field, "constant_vectors", False):
+            source_name = "Explicit constant-vector scenario (not a gridded observation)"
+        else:
+            source_name = "Demonstration analytical/custom vector field (source validation not established)"
 
-        data_provider_meta = getattr(current_field, "data_provider", None)
-        source_name = data_provider_meta.metadata.get("source", "HYCOM GOFS 3.1 NetCDF") if (data_provider_meta and hasattr(data_provider_meta, "metadata")) else "Physical Oceanographic Hydrodynamic Field"
-
-        # ── Gaussian KDE 95% / 75% / 50% Highest Density Region (HDR) Contours ──
-        # Computes kernel density estimation on the terminal particle cloud and
-        # extracts iso-probability contour polygons at the 95%, 75%, and 50% HDR
-        # levels. This produces a defensible *probability density region* for the
-        # candidate origin — the same methodology used by OpenDrift-based systems.
+        # KDE describes only the generated conditional terminal cloud; its
+        # coverage fractions are not validated release-origin probabilities.
         kde_contours = self._compute_kde_hdr_contours(
             p_lat, p_lon, origin_lat, origin_lon,
-            meters_per_deg_lat, meters_per_deg_lon,
+            METERS_PER_DEG_LAT, meters_per_deg_lon,
             levels=[0.95, 0.75, 0.50]
         )
-
-        # Hydrodynamic concurrence confidence based on particle dispersion radius
-        confidence_percent = round(min(96.5, max(68.0, 96.0 - (final_spread_km * 4.5))), 1)
 
         return {
             "origin_release_point": {
                 "lat": round(origin_lat, 6),
                 "lon": round(origin_lon, 6),
-                "estimated_t0_hours_relative": round(estimated_t0_hours, 2),
-                "assumed_slick_age_hours": round(abs(estimated_t0_hours), 1),
+                "estimated_t0_hours_relative": current_t_hours,
+                "assumed_slick_age_hours": lookback_limit,
                 "hydrodynamic_data_source": source_name,
                 "inference_status": "conditional transport scenario; not an inferred spill origin",
-                "confidence_percent": confidence_percent,
-                "confidence_status": "particle_dispersion_inverse_spread_metric",
+                "confidence_percent": None,
+                "confidence_status": "NOT_ESTIMATED_UNCALIBRATED_CONDITIONAL_CLOUD",
                 "location_uncertainty_radius_km": round(final_spread_km, 3),
+                "location_uncertainty_status": "generated-cloud RMS spread; not calibrated origin uncertainty",
             },
             "hindcast_trajectory": history_trajectory,
             "total_drift_distance_km": total_drift_km,
+            "simulated_duration_hours": abs(current_t_hours),
+            "transport_model": dict(self._transport_disclosure(),
+                                    diffusion_status="NOT_INVERTED_REVERSE_ADVECTION_ONLY",
+                                    demo_coastline_rejections=demo_rejections),
             "kde_origin_contours": kde_contours
         }
 
@@ -500,27 +647,44 @@ class DriftEngine:
         levels: List[float] = None
     ) -> Dict[str, Any]:
         """
-        Gaussian Kernel Density Estimation → Highest Density Region (HDR) Contours.
-        Evaluates KDE on the terminal particle cloud and extracts iso-probability
-        contour polygons at specified HDR levels (default: 95%, 75%, 50%).
-
-        This is the AlgoRise-equivalent methodology: instead of reporting a single
-        origin point, we report a *probability density surface* with credible region
-        contours, making the uncertainty envelope scientifically defensible.
-
-        Falls back to a covariance-based elliptical approximation if scipy is
-        unavailable (e.g., lightweight deployment).
+        Conditional generated-cloud density coverage, not origin probabilities.
+        Levels describe fractions of the model KDE on its finite display grid.
+        The covariance fallback additionally assumes a Gaussian cloud. Neither
+        construction calibrates release-origin uncertainty against observations.
         """
         if levels is None:
             levels = [0.95, 0.75, 0.50]
+        self._validate_particles(p_lat, p_lon)
+        levels = [_finite_number(level, "cloud_coverage_level", 0.0, 1.0, positive=True) for level in levels]
+        if any(level == 1.0 for level in levels):
+            raise ValueError("cloud_coverage_level must be below 1.")
 
         contour_results = {
             "method": "gaussian_kde_hdr",
+            "status": "CONDITIONAL_GENERATED_CLOUD_ONLY",
+            "coverage_interpretation": "conditional generated-cloud density coverage; not validated origin probabilities or confidence regions",
+            "origin_probability": None,
             "levels": levels,
             "contours": [],
             "peak_density_lat": round(centroid_lat, 6),
             "peak_density_lon": round(centroid_lon, 6),
         }
+        x_m = _wrap_longitudes(p_lon - centroid_lon) * meters_per_deg_lon
+        y_m = (p_lat - centroid_lat) * meters_per_deg_lat
+        if np.any(np.abs(_wrap_longitudes(p_lon - centroid_lon)) > 45.0) or np.any(np.abs(p_lat - centroid_lat) > 10.0):
+            contour_results.update(method="no_density_contours", status="NOT_ASSESSED_NONLOCAL_GENERATED_CLOUD",
+                                   reason="This local KDE display is unsupported for a geographically nonlocal cloud.")
+            return contour_results
+        if len(p_lat) < 3 or np.linalg.matrix_rank(np.vstack([x_m, y_m])) < 2:
+            contour_results.update(method="no_density_contours", status="DEGENERATE_GENERATED_CLOUD",
+                                   reason="Too few or collinear particles for two-dimensional density coverage.")
+            return contour_results
+
+        def latlon(x: float, y: float) -> List[float]:
+            lat = centroid_lat + float(y) / meters_per_deg_lat
+            lon = float(_wrap_longitudes(np.asarray(centroid_lon + float(x) / meters_per_deg_lon)))
+            _coordinates(lat, lon, transport=False)
+            return [round(lat, 6), round(lon, 6)]
 
         try:
             from scipy.stats import gaussian_kde
@@ -529,9 +693,6 @@ class DriftEngine:
             import matplotlib.pyplot as plt
 
             # Work in metres relative to centroid to avoid numerical issues
-            x_m = (p_lon - centroid_lon) * meters_per_deg_lon
-            y_m = (p_lat - centroid_lat) * meters_per_deg_lat
-
             data = np.vstack([x_m, y_m])
             kde = gaussian_kde(data, bw_method='silverman')
 
@@ -544,15 +705,11 @@ class DriftEngine:
             positions = np.vstack([X.ravel(), Y.ravel()])
             Z = kde(positions).reshape(X.shape)
 
-            # Normalise so integral ~ 1 over cell area
+            # Fractions of this finite display-grid KDE, not measured origin probability.
             cell_area = (xgrid[1] - xgrid[0]) * (ygrid[1] - ygrid[0])
-            Z_norm = Z * cell_area
-
-            # For each HDR level, find the density threshold below which
-            # the integral equals (1 - level).  E.g. 95% HDR contains 95%
-            # of the probability mass.
             sorted_vals = np.sort(Z.ravel())[::-1]
             cumsum = np.cumsum(sorted_vals * cell_area)
+            cumsum /= cumsum[-1]
 
             level_colors = {0.95: "#00f2fe", 0.75: "#38bdf8", 0.50: "#818cf8"}
 
@@ -570,51 +727,30 @@ class DriftEngine:
                 if hasattr(cs, 'get_paths'):
                     for path in cs.get_paths():
                         verts_m = path.vertices
-                        verts_latlon = [
-                            [
-                                round(centroid_lat + (float(vy) / meters_per_deg_lat), 6),
-                                round(centroid_lon + (float(vx) / meters_per_deg_lon), 6)
-                            ]
-                            for vx, vy in verts_m
-                        ]
+                        verts_latlon = [latlon(vx, vy) for vx, vy in verts_m]
                         if len(verts_latlon) >= 3:
                             paths.append(verts_latlon)
                 elif hasattr(cs, 'allsegs'):
                     for seg_list in cs.allsegs:
                         for seg in seg_list:
-                            verts_latlon = [
-                                [
-                                    round(centroid_lat + (float(vy) / meters_per_deg_lat), 6),
-                                    round(centroid_lon + (float(vx) / meters_per_deg_lon), 6)
-                                ]
-                                for vx, vy in seg
-                            ]
+                            verts_latlon = [latlon(vx, vy) for vx, vy in seg]
                             if len(verts_latlon) >= 3:
                                 paths.append(verts_latlon)
                 elif hasattr(cs, 'collections'):
                     for collection in cs.collections:
                         for path in collection.get_paths():
                             verts_m = path.vertices
-                            verts_latlon = [
-                                [
-                                    round(centroid_lat + (float(vy) / meters_per_deg_lat), 6),
-                                    round(centroid_lon + (float(vx) / meters_per_deg_lon), 6)
-                                ]
-                                for vx, vy in verts_m
-                            ]
+                            verts_latlon = [latlon(vx, vy) for vx, vy in verts_m]
                             if len(verts_latlon) >= 3:
                                 paths.append(verts_latlon)
                 plt.close(fig)
 
-                area_km2 = round(
-                    float(np.sum(Z_norm[Z >= threshold])) *
-                    (x_pad * 2 * y_pad * 2) / (64 * 64 * 1e6),
-                    3
-                ) if threshold > 0 else 0.0
+                area_km2 = round(float(np.count_nonzero(Z >= threshold)) * cell_area / 1e6, 3)
 
                 contour_results["contours"].append({
                     "level": level,
-                    "label": f"{int(level * 100)}% HDR",
+                    "label": f"{int(level * 100)}% conditional generated-cloud coverage",
+                    "coverage_status": "MODEL_KDE_DISPLAY_GRID_FRACTION_NOT_ORIGIN_PROBABILITY",
                     "color": level_colors.get(level, "#ffffff"),
                     "polygon_coords": paths[0] if paths else [],
                     "all_polygons": paths,
@@ -625,43 +761,33 @@ class DriftEngine:
             peak_idx = np.unravel_index(np.argmax(Z), Z.shape)
             peak_x_m = float(X[peak_idx])
             peak_y_m = float(Y[peak_idx])
-            contour_results["peak_density_lat"] = round(
-                centroid_lat + (peak_y_m / meters_per_deg_lat), 6
-            )
-            contour_results["peak_density_lon"] = round(
-                centroid_lon + (peak_x_m / meters_per_deg_lon), 6
-            )
+            contour_results["peak_density_lat"], contour_results["peak_density_lon"] = latlon(peak_x_m, peak_y_m)
 
         except Exception:
             # Robust fallback: covariance ellipse approximation (works without matplotlib/scipy or if grid diverges)
             contour_results["method"] = "covariance_ellipse_fallback"
             contour_results["contours"] = []
-            x_m = (p_lon - centroid_lon) * meters_per_deg_lon
-            y_m = (p_lat - centroid_lat) * meters_per_deg_lat
             cov = np.cov(x_m, y_m)
             eigvals, eigvecs = np.linalg.eigh(cov)
             angle = math.atan2(eigvecs[1, 1], eigvecs[0, 1])
 
-            chi2_thresholds = {0.95: 5.991, 0.75: 2.773, 0.50: 1.386}
             level_colors = {0.95: "#00f2fe", 0.75: "#38bdf8", 0.50: "#818cf8"}
 
             for level in levels:
-                chi2 = chi2_thresholds.get(level, 5.991)
-                a = math.sqrt(max(eigvals[1], 1.0) * chi2)
-                b = math.sqrt(max(eigvals[0], 1.0) * chi2)
+                chi2 = -2.0 * math.log1p(-level)  # Exact chi-square quantile with 2 degrees of freedom
+                a = math.sqrt(max(eigvals[1], 0.0) * chi2)
+                b = math.sqrt(max(eigvals[0], 0.0) * chi2)
                 ellipse_pts = []
                 for theta_deg in np.linspace(0, 360, 33)[:-1]:
                     theta = math.radians(theta_deg)
                     ex = a * math.cos(theta) * math.cos(angle) - b * math.sin(theta) * math.sin(angle)
                     ey = a * math.cos(theta) * math.sin(angle) + b * math.sin(theta) * math.cos(angle)
-                    ellipse_pts.append([
-                        round(centroid_lat + (ey / meters_per_deg_lat), 6),
-                        round(centroid_lon + (ex / meters_per_deg_lon), 6)
-                    ])
+                    ellipse_pts.append(latlon(ex, ey))
                 ellipse_pts.append(ellipse_pts[0])  # Close the polygon
                 contour_results["contours"].append({
                     "level": level,
-                    "label": f"{int(level * 100)}% HDR (ellipse)",
+                    "label": f"{int(level * 100)}% conditional generated-cloud coverage (Gaussian ellipse approximation)",
+                    "coverage_status": "GAUSSIAN_COVARIANCE_APPROXIMATION_NOT_ORIGIN_PROBABILITY",
                     "color": level_colors.get(level, "#ffffff"),
                     "polygon_coords": ellipse_pts,
                     "all_polygons": [ellipse_pts],
@@ -686,152 +812,168 @@ class DriftEngine:
         Runs a forward particle-transport scenario. A shoreline impact is not assessed
         without an authoritative shoreline polygon and asset layer.
         """
-        np.random.seed(random_seed)
+        current_lat, current_lon = _coordinates(current_lat, current_lon)
+        forecast_hours = _finite_number(forecast_hours, "forecast_hours", 0.0, MAX_DURATION_HOURS)
+        intervals = self._time_intervals(0.0, forecast_hours, time_step_minutes)
+        if coastline_lat_threshold is not None:
+            coastline_lat_threshold = _finite_number(coastline_lat_threshold, "coastline_lat_threshold", -MAX_TRANSPORT_LAT, MAX_TRANSPORT_LAT)
+        if oil_profile is not None and not isinstance(oil_profile, dict):
+            raise ValueError("oil_profile must be a mapping of sensitivity inputs.")
+        rng = self._rng(random_seed)
+        _, _, initial_wind_u, initial_wind_v = self._safe_get_velocity(current_field, current_lat, current_lon, 0.0)
 
-        dt_sec = time_step_minutes * 60.0
-        total_steps = int((forecast_hours * 60.0) / time_step_minutes)
-
-        meters_per_deg_lat = 111320.0
-        meters_per_deg_lon = 111320.0 * math.cos(math.radians(current_lat))
-
-        # Initial particle cloud
-        p_lat = current_lat + (np.random.normal(0, 500.0, self.num_particles) / meters_per_deg_lat)
-        p_lon = current_lon + (np.random.normal(0, 500.0, self.num_particles) / meters_per_deg_lon)
-
-        forecast_trajectory = []
-        beaching_detected = False
-        estimated_time_to_beach_hours = None
-        beaching_location = None
-
-        current_t_hours = 0.0
-
-        for step in range(total_steps + 1):
-            centroid_lat = float(np.mean(p_lat))
-            centroid_lon = float(np.mean(p_lon))
-
-            d_x = (p_lon - centroid_lon) * meters_per_deg_lon
-            d_y = (p_lat - centroid_lat) * meters_per_deg_lat
-            variance_m2 = float(np.mean(d_x ** 2 + d_y ** 2))
-            spread_radius_km = round(math.sqrt(variance_m2) / 1000.0, 3)
-
-            # Sample particles for map visualization
-            sample_indices = np.linspace(0, self.num_particles - 1, 35, dtype=int)
-            sampled_coords = [
-                [round(float(p_lon[i]), 5), round(float(p_lat[i]), 5)]
-                for i in sample_indices
-            ]
-
-            forecast_trajectory.append({
-                "step_index": step,
-                "relative_time_hours": round(current_t_hours, 2),
-                "centroid": {"lat": round(centroid_lat, 6), "lon": round(centroid_lon, 6)},
-                "spread_radius_km": spread_radius_km,
-                "beached": beaching_detected,
-                "particles_sample": sampled_coords
-            })
-
-            if step == total_steps:
-                break
-
-            # Forward advection using 4th-Order Runge-Kutta with spatial shear
-            u_net, v_net = self._rk4_advection_step(
-                current_field, centroid_lat, centroid_lon, current_t_hours,
-                dt_sec, meters_per_deg_lat, meters_per_deg_lon
-            )
-
-            # Spatial velocity gradient for shear deformation across particle cloud
-            d_lat = 0.02
-            u_n, v_n = self._rk4_advection_step(current_field, centroid_lat + d_lat, centroid_lon, current_t_hours, dt_sec, meters_per_deg_lat, meters_per_deg_lon)
-            u_e, v_e = self._rk4_advection_step(current_field, centroid_lat, centroid_lon + d_lat, current_t_hours, dt_sec, meters_per_deg_lat, meters_per_deg_lon)
-            dudy = (u_n - u_net) / d_lat
-            dvdy = (v_n - v_net) / d_lat
-            dudx = (u_e - u_net) / d_lat
-            dvdx = (v_e - v_net) / d_lat
-
-            p_dlat = p_lat - centroid_lat
-            p_dlon = p_lon - centroid_lon
-            u_particles = u_net + (dudx * p_dlon + dudy * p_dlat)
-            v_particles = v_net + (dvdx * p_dlon + dvdy * p_dlat)
-
-            # Stochastic horizontal turbulent diffusion
-            sigma_diff = math.sqrt(2.0 * self.diffusion_coeff * dt_sec)
-            rand_dx = np.random.normal(0, sigma_diff, self.num_particles)
-            rand_dy = np.random.normal(0, sigma_diff, self.num_particles)
-
-            prev_p_lat = p_lat.copy()
-            prev_p_lon = p_lon.copy()
-            p_lat += (v_particles * dt_sec + rand_dy) / meters_per_deg_lat
-            p_lon += (u_particles * dt_sec + rand_dx) / meters_per_deg_lon
-
-            # Coastline boundary clamping: revert particles that drift onto land
-            beached_count = 0
-            for pi in range(len(p_lat)):
-                if is_on_land(float(p_lat[pi]), float(p_lon[pi])):
-                    p_lat[pi] = prev_p_lat[pi]
-                    p_lon[pi] = prev_p_lon[pi]
-                    beached_count += 1
-            if beached_count > len(p_lat) * 0.3 and not beaching_detected:
-                beaching_detected = True
-                estimated_time_to_beach_hours = round(current_t_hours + (dt_sec / 3600.0), 1)
-                beaching_location = {"lat": round(centroid_lat, 5), "lon": round(centroid_lon, 5)}
-
-            # Sector-specific coastline / environmentally sensitive zone threshold check
-            if coastline_lat_threshold is not None and not beaching_detected:
-                crossed = False
-                if coastline_lat_threshold >= current_lat:
-                    crossed = (centroid_lat >= coastline_lat_threshold) or (np.sum(p_lat >= coastline_lat_threshold) > len(p_lat) * 0.25)
-                else:
-                    crossed = (centroid_lat <= coastline_lat_threshold) or (np.sum(p_lat <= coastline_lat_threshold) > len(p_lat) * 0.25)
-                if crossed:
-                    beaching_detected = True
-                    estimated_time_to_beach_hours = round(current_t_hours + (dt_sec / 3600.0), 1)
-                    beaching_location = {"lat": round(centroid_lat, 5), "lon": round(centroid_lon, 5)}
-
-            current_t_hours += (dt_sec / 3600.0)
-
-        # ADIOS Physical Weathering: Computed when initial_mass_tonnes or oil_profile is provided
+        # Generic sensitivity only. Source wind is held at its initial value for
+        # this calculation, and a missing mass is an explicitly labelled demo assumption.
         weathering_summary = None
         if initial_mass_tonnes is not None or oil_profile is not None:
-            mass_t = float(initial_mass_tonnes) if initial_mass_tonnes is not None and float(initial_mass_tonnes) > 0 else 100.0
+            mass_t = _finite_number(initial_mass_tonnes, "initial_mass_tonnes", 0.0, 1.0e9, positive=True) if initial_mass_tonnes is not None else 100.0
             prof = oil_profile or {}
-            try:
-                weathering_summary = self.compute_oil_weathering(
-                    elapsed_hours=abs(forecast_hours),
-                    initial_mass_tonnes=mass_t,
-                    wind_speed_ms=math.hypot(current_field.base_wind_u, current_field.base_wind_v),
-                    initial_viscosity_cp=float(prof.get("initial_viscosity_cp", 18.0)),
-                    sea_temp_c=float(prof.get("water_temp_c", prof.get("sea_temp_c", 26.0))),
-                )
-            except Exception as e:
-                weathering_summary = None
+            weathering_summary = self.compute_oil_weathering(
+                elapsed_hours=forecast_hours,
+                initial_mass_tonnes=mass_t,
+                wind_speed_ms=math.hypot(initial_wind_u, initial_wind_v),
+                initial_viscosity_cp=prof.get("initial_viscosity_cp", 18.0),
+                sea_temp_c=prof.get("water_temp_c", prof.get("sea_temp_c", 26.0)),
+            )
+            weathering_summary["initial_mass_status"] = "SUPPLIED_SENSITIVITY_INPUT" if initial_mass_tonnes is not None else "ASSUMED_100_TONNE_DEMO_INPUT"
+            weathering_summary["wind_forcing_status"] = "initial source wind held constant for generic sensitivity"
 
-        if coastline_lat_threshold is None:
+        p_lat, p_lon = self._initial_cloud(current_lat, current_lon, rng, 500.0)
+        forecast_trajectory = []
+        trigger_time = None
+        trigger_location = None
+        beaching_time = None
+        beaching_loc = None
+        demo_rejections = 0
+        current_t_hours = 0.0
+        beached_stop = False
+
+        def record(step: int, time_h: float) -> None:
+            nonlocal trigger_time, trigger_location
+            item = self._trajectory_record(step, time_h, p_lat, p_lon)
+            # Check real land contact using Natural Earth 10m polygons
+            beached_count = sum(1 for a, b in zip(p_lat, p_lon) if is_on_land(float(a), float(b)))
+            beached_fraction = beached_count / max(len(p_lat), 1)
+            item.update(beached=True if beached_fraction > 0.05 else None,
+                        shoreline_impact_status="BEACHING_DETECTED" if beached_fraction > 0.05 else "OPEN_WATER",
+                        beached_particle_fraction=round(beached_fraction, 3))
+            if coastline_lat_threshold is not None and trigger_time is None:
+                centroid_lat = float(np.mean(p_lat))
+                crossed = ((centroid_lat >= coastline_lat_threshold or np.mean(p_lat >= coastline_lat_threshold) > 0.25)
+                           if coastline_lat_threshold >= current_lat else
+                           (centroid_lat <= coastline_lat_threshold or np.mean(p_lat <= coastline_lat_threshold) > 0.25))
+                if crossed:
+                    trigger_time = time_h
+                    trigger_location = item["centroid"]
+            item["demo_latitude_trigger_reached"] = trigger_time is not None
+            forecast_trajectory.append(item)
+
+        record(0, 0.0)
+        for step, (start_h, end_h) in enumerate(intervals, 1):
+            if beached_stop:
+                break
+            dt_sec = (end_h - start_h) * 3600.0
+            previous_lat, previous_lon = p_lat, p_lon
+            p_lat, p_lon = self._rk4_particle_step(current_field, p_lat, p_lon, start_h, dt_sec, end_h)
+            p_lat, p_lon = self._forward_diffusion(p_lat, p_lon, dt_sec, rng)
+            rejections = self._demo_coastline_clamp(previous_lat, previous_lon, p_lat, p_lon)
+            demo_rejections += rejections
+            current_t_hours = end_h
+            record(step, current_t_hours)
+
+            # Detect first beaching event: when >5% of particles contact land
+            if beaching_time is None and rejections > 0:
+                beaching_fraction = rejections / max(len(p_lat), 1)
+                if beaching_fraction > 0.05:
+                    beaching_time = end_h
+                    # Use the centroid of the clamped particles at the waterline
+                    beaching_loc = {
+                        "lat": round(float(np.mean(p_lat)), 6),
+                        "lon": round(float(np.mean(p_lon)), 6),
+                    }
+            # Stop if majority (>50%) of particles have beached — trajectory is done
+            if demo_rejections > 0 and beaching_time is not None:
+                total_beached_frac = sum(1 for a, b in zip(p_lat, p_lon) if is_on_land(float(a), float(b))) / max(len(p_lat), 1)
+                if total_beached_frac > 0.50 or (demo_rejections / max(len(p_lat), 1)) > 0.50:
+                    beached_stop = True
+
+        # Identify vulnerable coastal assets near beaching location
+        vulnerable_assets = []
+        if beaching_loc is not None:
+            beach_lat, beach_lon = beaching_loc["lat"], beaching_loc["lon"]
+            # Indian coastal sensitive assets database
+            _COASTAL_ASSETS = [
+                {"name": "Mangalore Port & MRPL Refinery", "lat": 12.87, "lon": 74.83, "type": "port_refinery"},
+                {"name": "New Mangalore Port Trust", "lat": 12.92, "lon": 74.80, "type": "port"},
+                {"name": "Kochi Port & BPCL Refinery", "lat": 9.97, "lon": 76.27, "type": "port_refinery"},
+                {"name": "Mormugao Port, Goa", "lat": 15.41, "lon": 73.80, "type": "port"},
+                {"name": "Visakhapatnam Port & HPCL Refinery", "lat": 17.69, "lon": 83.29, "type": "port_refinery"},
+                {"name": "Mumbai JNPT & BPCL Mahul", "lat": 18.95, "lon": 72.95, "type": "port_refinery"},
+                {"name": "Kandla Port, Gulf of Kachchh", "lat": 23.03, "lon": 70.22, "type": "port"},
+                {"name": "Marine National Park, Gulf of Kachchh", "lat": 22.43, "lon": 69.15, "type": "marine_sanctuary"},
+                {"name": "Gulf of Mannar Marine NP", "lat": 9.14, "lon": 79.10, "type": "marine_sanctuary"},
+                {"name": "Sundarbans Biosphere Reserve", "lat": 21.94, "lon": 88.89, "type": "mangrove_biosphere"},
+                {"name": "Lakshadweep Coral Islands", "lat": 10.57, "lon": 72.64, "type": "coral_reef"},
+                {"name": "Chilika Lake, Odisha", "lat": 19.72, "lon": 85.32, "type": "lagoon_wetland"},
+                {"name": "Paradip Port, Odisha", "lat": 20.27, "lon": 86.67, "type": "port"},
+                {"name": "Chennai-Ennore Port Complex", "lat": 13.22, "lon": 80.32, "type": "port"},
+                {"name": "Tuticorin V.O.C. Port", "lat": 8.76, "lon": 78.18, "type": "port"},
+                {"name": "Haldia Port & IOC Refinery", "lat": 22.06, "lon": 88.11, "type": "port_refinery"},
+            ]
+            for asset in _COASTAL_ASSETS:
+                dist = haversine_distance_km(beach_lat, beach_lon, asset["lat"], asset["lon"])
+                if dist < 80.0:
+                    vulnerable_assets.append({
+                        "name": asset["name"],
+                        "type": asset["type"],
+                        "distance_km": round(dist, 1),
+                        "threat_level": "CRITICAL" if dist < 15.0 else ("HIGH" if dist < 35.0 else "MODERATE"),
+                    })
+            vulnerable_assets.sort(key=lambda x: x["distance_km"])
+
+        demo_cues = {
+            "latitude_trigger": {
+                "status": "DEMO_TRIGGER_REACHED" if trigger_time is not None else "NOT_TRIGGERED",
+                "time_hours": trigger_time,
+                "location": trigger_location,
+            }
+        }
+
+        if beaching_time is not None:
             beaching_warning = {
-                "status": "not_assessed",
+                "status": "BEACHING_DETECTED",
+                "will_beach": True,
+                "estimated_time_to_beach_hours": round(beaching_time, 2),
+                "beaching_location": beaching_loc,
+                "vulnerable_assets": vulnerable_assets,
+                "reason": f"Particle cloud contacts the Natural Earth 10m shoreline at T+{beaching_time:.1f}h. "
+                          f"Trajectory terminated at waterline contact. {len(vulnerable_assets)} coastal assets within 80 km threat radius.",
+                "demo_cues": demo_cues,
+                "coastline_rejections": demo_rejections,
+            }
+        else:
+            beaching_warning = {
+                "status": "NOT_ASSESSED",
                 "will_beach": None,
                 "estimated_time_to_beach_hours": None,
                 "beaching_location": None,
                 "vulnerable_assets": [],
-                "reason": "Coastline hazard threshold not configured for this sector; shoreline impact not assessed without an authoritative shoreline polygon and asset layer."
-            }
-        else:
-            beaching_warning = {
-                "status": "beaching_detected" if beaching_detected else "clear",
-                "will_beach": beaching_detected,
-                "estimated_time_to_beach_hours": estimated_time_to_beach_hours,
-                "beaching_location": beaching_location,
-                "vulnerable_assets": [],
-                "reason": (
-                    f"Particle front reached coastline at approximately +{estimated_time_to_beach_hours}h forecast. "
-                    "Shoreline response teams should be alerted."
-                ) if beaching_detected else
-                "Forecast trajectory remains in open water within the simulation window."
+                "reason": f"No shoreline impact detected within {forecast_hours}h forecast window. "
+                          f"Particle cloud remains in open water.",
+                "demo_cues": demo_cues,
+                "coastline_rejections": demo_rejections,
             }
 
         return {
             "forecast_trajectory": forecast_trajectory,
             "weathering_summary": weathering_summary,
-            "beaching_warning": beaching_warning
+            "beaching_warning": beaching_warning,
+            "simulated_duration_hours": current_t_hours,
+            "transport_model": dict(self._transport_disclosure(),
+                                    coastline_geometry_status="NATURAL_EARTH_10M_VECTOR",
+                                    coastline_handling="Natural Earth 10m land polygon containment with STRtree spatial indexing",
+                                    diffusion_status="FORWARD_STOCHASTIC_DISPERSION",
+                                    demo_coastline_rejections=demo_rejections),
         }
 
     def compute_oil_weathering(
@@ -853,14 +995,18 @@ class DriftEngine:
         """
         if water_temp_c is not None:
             sea_temp_c = water_temp_c
-        t = max(elapsed_hours, 0.0)
+        t = _finite_number(elapsed_hours, "elapsed_hours", 0.0, MAX_DURATION_HOURS)
+        initial_mass_tonnes = _finite_number(initial_mass_tonnes, "initial_mass_tonnes", 0.0, 1.0e9, positive=True)
+        sea_temp_c = _finite_number(sea_temp_c, "sea_temp_c", -5.0, 50.0)
+        wind_speed_ms = _finite_number(wind_speed_ms, "wind_speed_ms", 0.0, 300.0)
+        initial_viscosity_cp = _finite_number(initial_viscosity_cp, "initial_viscosity_cp", 0.0, 1.0e9, positive=True)
         t_kelvin = sea_temp_c + 273.15
 
         # 1. Evaporative exposure fraction (Mackay 1980 logarithmic formulation)
         # F_evap = (T / 1000) * alpha * ln(1 + beta * t)
         alpha = 0.165
         beta = 3.8
-        f_evap = (t_kelvin / 1000.0) * alpha * math.log(1.0 + beta * t)
+        f_evap = (t_kelvin / 1000.0) * alpha * math.log1p(beta * t)
         f_evap = float(np.clip(f_evap, 0.0, 0.55))
 
         # 2. Water-in-oil emulsification uptake (Mooney / Mackay equation)
@@ -869,7 +1015,7 @@ class DriftEngine:
         k_emul = 2.0e-6  # Standard Mackay oceanic emulsification rate constant
         t_sec = t * 3600.0
         y_max = 0.75  # 75% maximum water content in chocolate mousse
-        y_w = y_max * (1.0 - math.exp(-k_emul * ((1.0 + wind_speed_ms) ** 2) * t_sec))
+        y_w = -y_max * math.expm1(-k_emul * ((1.0 + wind_speed_ms) ** 2) * t_sec)
         y_w = float(np.clip(y_w, 0.0, y_max))
 
         # 3. Mass and volume balance. Water uptake raises emulsion mass, but mass
@@ -883,12 +1029,12 @@ class DriftEngine:
             remaining_pure_oil_tonnes * 1000.0 / oil_density_kg_m3 +
             absorbed_water_tonnes * 1000.0 / water_density_kg_m3
         )
-        volume_expansion_ratio = emulsion_volume_m3 / max(initial_volume_m3, 0.1)
+        volume_expansion_ratio = emulsion_volume_m3 / initial_volume_m3
 
         # 4. Viscosity growth (Mooney equation)
         # Viscosity increases exponentially with evaporation and water droplet packing
         viscosity_factor = math.exp(2.5 * y_w / (1.0 - 0.65 * y_w)) * math.exp(8.0 * f_evap)
-        current_viscosity_cp = round(initial_viscosity_cp * viscosity_factor, 1)
+        current_viscosity_cp = initial_viscosity_cp if t == 0.0 else round(initial_viscosity_cp * viscosity_factor, 1)
 
         # State classification
         if y_w > 0.50:
@@ -899,23 +1045,26 @@ class DriftEngine:
             physical_state = "Fresh Liquid Petroleum Hydrocarbon"
 
         # Generate hourly timeline curves for visualization
-        curve_times = [round(x, 1) for x in np.linspace(0.5, t, num=8)]
+        curve_times = [float(x) for x in np.linspace(0.0, t, num=8)] if t > 0.0 else [0.0]
         evap_curve = []
         emul_curve = []
         for ct in curve_times:
-            fe = float(np.clip((t_kelvin / 1000.0) * alpha * math.log(1.0 + beta * ct), 0.02, 0.55))
-            yw = float(np.clip(y_max * (1.0 - math.exp(-k_emul * ((1.0 + wind_speed_ms) ** 2) * ct * 3600.0)), 0.0, y_max))
+            fe = float(np.clip((t_kelvin / 1000.0) * alpha * math.log1p(beta * ct), 0.0, 0.55))
+            yw = float(np.clip(-y_max * math.expm1(-k_emul * ((1.0 + wind_speed_ms) ** 2) * ct * 3600.0), 0.0, y_max))
             evap_curve.append(round(fe * 100.0, 1))
             emul_curve.append(round(yw * 100.0, 1))
 
         return {
-            "initial_mass_tonnes": round(initial_mass_tonnes, 2),
+            "model_status": "ILLUSTRATIVE_GENERIC_SENSITIVITY",
+            "is_adios_model": False,
+            "limitations": "Generic fixed-coefficient sensitivity, not ADIOS, oil-specific calibration, validated weathering, or an operational prediction. Water uptake is represented as an emulsion mass fraction.",
+            "initial_mass_tonnes": initial_mass_tonnes,
             "evaporated_fraction_pct": round(f_evap * 100.0, 1),
             "evaporated_mass_tonnes": round(initial_mass_tonnes * f_evap, 2),
             "water_content_mousse_pct": round(y_w * 100.0, 1),
-            "emulsion_apparent_mass_tonnes": round(emulsion_mass_tonnes, 2),
-            "initial_volume_m3": round(initial_volume_m3, 2),
-            "emulsion_volume_m3": round(emulsion_volume_m3, 2),
+            "emulsion_apparent_mass_tonnes": initial_mass_tonnes if t == 0.0 else round(emulsion_mass_tonnes, 2),
+            "initial_volume_m3": initial_volume_m3 if t == 0.0 else round(initial_volume_m3, 2),
+            "emulsion_volume_m3": initial_volume_m3 if t == 0.0 else round(emulsion_volume_m3, 2),
             "volume_expansion_ratio": round(volume_expansion_ratio, 2),
             "volume_expansion_factor": round(volume_expansion_ratio, 2),
             "viscosity_cp": current_viscosity_cp,
@@ -949,132 +1098,106 @@ class DriftEngine:
         vessel_info: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Stage 4: Forward Counterfactual Verification (Physical Re-Simulation).
-        Seeds particles at the suspect's exact AIS coordinates at candidate release time t_0,
-        runs 4th-Order Runge-Kutta advection FORWARD in time to satellite observation time T_obs,
-        and computes spatial & geometric agreement against the observed slick footprint.
+        Conditional forward transport comparison from a candidate release hypothesis.
+        Generated-cloud spatial agreement is not causality, vessel responsibility,
+        calibrated origin confidence, or a Navier-Stokes solution.
         """
-        rng = np.random.default_rng(random_seed)
-        start_t = float(release_time_rel_h)
+        release_lat, release_lon = _coordinates(release_lat, release_lon)
+        observed_slick_lat, observed_slick_lon = _coordinates(observed_slick_lat, observed_slick_lon)
+        start_t = _finite_number(release_time_rel_h, "release_time_rel_h", -MAX_DURATION_HOURS, 0.0)
         end_t = 0.0
-        duration_h = max(0.1, abs(end_t - start_t))
-
-        dt_sec = time_step_minutes * 60.0  # Positive dt for forward integration
-        total_steps = max(1, int((duration_h * 60.0) / time_step_minutes))
-
-        meters_per_deg_lat = 111320.0
-        meters_per_deg_lon = 111320.0 * math.cos(math.radians(release_lat))
-
-        num_p = 300
-        # Realistic initial discharge plume width (250m standard deviation)
-        px_m = rng.normal(0, 250.0, num_p)
-        py_m = rng.normal(0, 250.0, num_p)
-
-        p_lat = release_lat + (py_m / meters_per_deg_lat)
-        p_lon = release_lon + (px_m / meters_per_deg_lon)
-
+        duration_h = -start_t
+        area_km2 = (_finite_number(observed_slick_area_km2, "observed_slick_area_km2", 0.0, 1.0e8, positive=True)
+                    if observed_slick_area_km2 is not None else None)
+        poly_points = None
+        if observed_slick_polygon is not None:
+            if not isinstance(observed_slick_polygon, (list, tuple)) or not 3 <= len(observed_slick_polygon) <= 1000:
+                raise ValueError("observed_slick_polygon must have 3 to 1000 coordinate pairs.")
+            try:
+                pairs = [(float(point[0]), float(point[1])) for point in observed_slick_polygon
+                         if isinstance(point, (list, tuple)) and len(point) == 2]
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("observed_slick_polygon must contain finite coordinate pairs.") from exc
+            if len(pairs) != len(observed_slick_polygon):
+                raise ValueError("observed_slick_polygon must contain coordinate pairs.")
+            # Retain the legacy coordinate-order convention for this list API.
+            # It is not a validated GeoJSON geometry contract.
+            if abs(pairs[0][0]) > 40.0 and abs(pairs[0][1]) < 40.0:
+                pairs = [(b, a) for a, b in pairs]
+            poly_points = [_coordinates(a, b) for a, b in pairs]
+            if len(set(poly_points)) < 3:
+                raise ValueError("observed_slick_polygon requires at least three distinct vertices.")
+        r_obs_km = math.sqrt(area_km2 / math.pi) if area_km2 is not None else None
+        num_p = min(300, self.num_particles)
+        intervals = self._time_intervals(start_t, end_t, time_step_minutes, num_p)
+        rng = self._rng(random_seed)
+        self._safe_get_velocity(current_field, release_lat, release_lon, start_t)
+        p_lat, p_lon = self._initial_cloud(release_lat, release_lon, rng, 250.0, num_p)
         forward_trajectory = []
         current_t_hours = start_t
         min_dist_to_slick_km = float("inf")
+        demo_rejections = 0
 
-        for step in range(total_steps + 1):
-            centroid_lat = float(np.mean(p_lat))
-            centroid_lon = float(np.mean(p_lon))
-
-            d_x = (p_lon - centroid_lon) * meters_per_deg_lon
-            d_y = (p_lat - centroid_lat) * meters_per_deg_lat
-            variance_m2 = float(np.mean(d_x ** 2 + d_y ** 2))
-            spread_radius_km = round(math.sqrt(variance_m2) / 1000.0, 3)
-
-            sample_indices = np.linspace(0, num_p - 1, 35, dtype=int)
-            sampled_coords = [
-                [round(float(p_lon[i]), 5), round(float(p_lat[i]), 5)]
-                for i in sample_indices
-            ]
-
+        for step in range(len(intervals) + 1):
+            centroid_lat, centroid_lon, variance_m2 = self._particle_summary(p_lat, p_lon)
             dist_step_km = haversine_distance_km(
                 centroid_lat, centroid_lon, observed_slick_lat, observed_slick_lon
             )
             if dist_step_km < min_dist_to_slick_km:
                 min_dist_to_slick_km = dist_step_km
 
-            forward_trajectory.append({
-                "step_index": step,
-                "relative_time_hours": round(current_t_hours, 2),
-                "centroid": {"lat": round(centroid_lat, 6), "lon": round(centroid_lon, 6)},
-                "spread_radius_km": spread_radius_km,
-                "particles_sample": sampled_coords,
-                "distance_to_observed_km": round(dist_step_km, 2)
-            })
+            item = self._trajectory_record(step, current_t_hours, p_lat, p_lon)
+            item["distance_to_observed_km"] = round(dist_step_km, 2)
+            forward_trajectory.append(item)
 
-            if step == total_steps:
+            if step == len(intervals):
                 break
+            start_h, end_h = intervals[step]
+            dt_sec = (end_h - start_h) * 3600.0
+            previous_lat, previous_lon = p_lat, p_lon
+            p_lat, p_lon = self._rk4_particle_step(current_field, p_lat, p_lon, start_h, dt_sec, end_h)
+            p_lat, p_lon = self._forward_diffusion(p_lat, p_lon, dt_sec, rng)
+            demo_rejections += self._demo_coastline_clamp(previous_lat, previous_lon, p_lat, p_lon)
+            current_t_hours = end_h
 
-            # 4th-Order Runge-Kutta advection step forward in time
-            u_net, v_net = self._rk4_advection_step(
-                current_field, centroid_lat, centroid_lon, current_t_hours,
-                dt_sec, meters_per_deg_lat, meters_per_deg_lon
-            )
-
-            # Turbulent dispersion
-            sigma_diff = math.sqrt(2.0 * self.diffusion_coeff * dt_sec)
-            rand_dx = rng.normal(0, sigma_diff, num_p)
-            rand_dy = rng.normal(0, sigma_diff, num_p)
-
-            prev_p_lat = p_lat.copy()
-            prev_p_lon = p_lon.copy()
-            p_lat += (v_net * dt_sec + rand_dy) / meters_per_deg_lat
-            p_lon += (u_net * dt_sec + rand_dx) / meters_per_deg_lon
-
-            # Coastline boundary clamping
-            for pi in range(len(p_lat)):
-                if is_on_land(float(p_lat[pi]), float(p_lon[pi])):
-                    p_lat[pi] = prev_p_lat[pi]
-                    p_lon[pi] = prev_p_lon[pi]
-
-            current_t_hours += (dt_sec / 3600.0)
-
-        final_centroid_lat = float(np.mean(p_lat))
-        final_centroid_lon = float(np.mean(p_lon))
+        final_centroid_lat, final_centroid_lon, variance_m2 = self._particle_summary(p_lat, p_lon)
         final_spread_km = math.sqrt(variance_m2) / 1000.0
+        meters_per_deg_lat = METERS_PER_DEG_LAT
+        meters_per_deg_lon = METERS_PER_DEG_LAT * math.cos(math.radians(final_centroid_lat))
 
-        centroid_distance_km = round(haversine_distance_km(
+        centroid_distance = haversine_distance_km(
             final_centroid_lat, final_centroid_lon, observed_slick_lat, observed_slick_lon
-        ), 2)
-
-        area_km2 = float(observed_slick_area_km2) if (observed_slick_area_km2 and observed_slick_area_km2 > 0) else 12.0
-        r_obs_km = max(1.2, math.sqrt(area_km2 / math.pi) * 1.25)
-
-        # Polygon-in-point containment test
-        poly_points = None
-        if observed_slick_polygon and len(observed_slick_polygon) >= 3:
-            p0 = observed_slick_polygon[0]
-            if isinstance(p0, (list, tuple)) and len(p0) >= 2:
-                if abs(p0[0]) > 40.0 and abs(p0[1]) < 40.0:  # [lon, lat] format
-                    poly_points = [(float(pt[1]), float(pt[0])) for pt in observed_slick_polygon]
-                else:
-                    poly_points = [(float(pt[0]), float(pt[1])) for pt in observed_slick_polygon]
+        )
+        centroid_distance_km = round(centroid_distance, 2)
 
         contained_count = 0
+        # Use a local periodic longitude frame for a supplied polygon, including
+        # antimeridian-crossing footprints. This does not validate its topology.
+        local_polygon = ([(a, float(_wrap_longitudes(np.asarray(b - observed_slick_lon)))) for a, b in poly_points]
+                         if poly_points else None)
         for i in range(num_p):
             plat_i = float(p_lat[i])
             plon_i = float(p_lon[i])
             inside = False
-            if poly_points:
-                inside = _point_in_polygon(plat_i, plon_i, poly_points)
-            if not inside:
+            if local_polygon:
+                local_lon = float(_wrap_longitudes(np.asarray(plon_i - observed_slick_lon)))
+                inside = _point_in_polygon(plat_i, local_lon, local_polygon)
+            elif r_obs_km is not None:
                 d_km = haversine_distance_km(plat_i, plon_i, observed_slick_lat, observed_slick_lon)
                 if d_km <= r_obs_km:
                     inside = True
             if inside:
                 contained_count += 1
 
-        containment_percent = round((contained_count / num_p) * 100.0, 1)
+        containment_percent = round((contained_count / num_p) * 100.0, 1) if poly_points or r_obs_km is not None else None
 
-        # Spatial Jaccard Overlap Index
-        r_pred_km = max(1.0, final_spread_km * 1.4)
-        d = centroid_distance_km
-        if d >= (r_pred_km + r_obs_km):
+        # Circle-proxy IoU only, never a weighted mixture with particle containment.
+        # A polygon or point observation does not establish circle overlap.
+        r_pred_km = max(1.0e-9, final_spread_km)
+        d = centroid_distance
+        if r_obs_km is None or poly_points:
+            circle_iou = None
+        elif d >= (r_pred_km + r_obs_km):
             circle_iou = 0.0
         elif d <= abs(r_pred_km - r_obs_km):
             smaller_r = min(r_pred_km, r_obs_km)
@@ -1093,7 +1216,7 @@ class DriftEngine:
             un_area = math.pi * r1 * r1 + math.pi * r2 * r2 - int_area
             circle_iou = int_area / max(un_area, 0.01)
 
-        jaccard_index = round(min(0.96, max(0.0, 0.45 * circle_iou + 0.55 * (containment_percent / 100.0))), 3)
+        jaccard_index = round(min(1.0, max(0.0, circle_iou)), 3) if circle_iou is not None else None
 
         # Compute Modified Hausdorff Distance (Dubuisson & Jain, 1994)
         sim_pts = [(float(p_lat[i]), float(p_lon[i])) for i in range(0, num_p, max(1, num_p // 40))]
@@ -1115,72 +1238,71 @@ class DriftEngine:
         
         modified_hausdorff_km = round(max(d_sim_obs, d_obs_sim), 2)
 
-        trajectory_reaches_slick = bool(min_dist_to_slick_km <= max(2.5, r_obs_km))
+        trajectory_reaches_slick = bool(min_dist_to_slick_km <= (r_obs_km if r_obs_km is not None else 2.5))
 
-        # Forensic causality verdict
-        if centroid_distance_km <= 2.5 and (containment_percent >= 40.0 or jaccard_index >= 0.30):
-            verdict = "CONFIRMED_PHYSICAL_MATCH"
-            verdict_badge = "CONFIRMED PHYSICAL MATCH"
+        # Illustrative spatial screening thresholds, not a causality verdict.
+        causality_score = None
+        if centroid_distance_km <= 2.5:
+            verdict = "CONDITIONAL_SPATIAL_AGREEMENT"
+            verdict_badge = "CONDITIONAL SPATIAL AGREEMENT"
             verdict_color = "#05d6a0"
-            causality_score = round(min(98.5, max(76.0, 100.0 - (centroid_distance_km * 7.0) + (containment_percent * 0.15))), 1)
             explanation = (
-                f"Forward Navier-Stokes/RK4 advection initiated from candidate AIS coordinates "
-                f"({release_lat:.4f}°N, {release_lon:.4f}°E at {abs(start_t):.1f}h prior) "
-                f"reproduces the observed slick position at T0 with only {centroid_distance_km:.2f} km centroid error, "
-                f"{containment_percent:.1f}% particle containment, and Jaccard overlap of {jaccard_index:.2f}. "
-                f"Physical hydrodynamic causality is confirmed."
+                f"The conditional generated-cloud centroid ends {centroid_distance_km:.2f} km from the supplied observation. "
+                "Agreement is conditional on release time, forcing, windage, assumed spread and observation geometry; "
+                "it does not establish a release origin, causality or vessel responsibility."
             )
         elif centroid_distance_km <= 5.8:
-            verdict = "PLAUSIBLE_CORRIDOR"
-            verdict_badge = "PLAUSIBLE DRIFT PATH"
+            verdict = "CONDITIONAL_NEARBY_CORRIDOR"
+            verdict_badge = "CONDITIONAL NEARBY CORRIDOR"
             verdict_color = "#f59e0b"
-            causality_score = round(max(35.0, 72.0 - (centroid_distance_km * 6.5)), 1)
             explanation = (
-                f"Plausible hydrodynamic corridor: forward drift passes within {centroid_distance_km:.2f} km "
-                f"of the observed slick ({containment_percent:.1f}% containment). While spatially close, minor "
-                f"deviations in wind leeway or AIS broadcast timing prevent definitive confirmation."
+                f"The conditional generated-cloud centroid ends {centroid_distance_km:.2f} km from the supplied observation. "
+                "This illustrative nearby-corridor cue is not calibrated origin evidence or a causality finding."
             )
         else:
-            verdict = "PHYSICALLY_REFUTED"
-            verdict_badge = "PHYSICALLY REFUTED"
+            verdict = "CONDITIONAL_SPATIAL_MISMATCH"
+            verdict_badge = "CONDITIONAL SPATIAL MISMATCH"
             verdict_color = "#ff3366"
-            causality_score = round(max(4.0, 24.0 - (centroid_distance_km * 1.5)), 1)
             explanation = (
-                f"Counterfactual refutation: forward drift terminates {centroid_distance_km:.2f} km away "
-                f"from observed satellite slick ({containment_percent:.1f}% containment). Prevailing HYCOM "
-                f"ocean currents and ERA5 wind vectors physically rule out this vessel's position as the discharge origin."
+                f"The conditional generated-cloud centroid ends {centroid_distance_km:.2f} km from the supplied observation. "
+                "Mismatch under these inputs does not rule out a release origin or exonerate/attribute a vessel."
             )
 
         footprint_poly = []
         for angle_deg in np.linspace(0, 360, 17)[:-1]:
             rad = math.radians(angle_deg)
-            r_km = r_pred_km * (1.0 + 0.15 * math.sin(2.0 * rad))
+            r_km = r_pred_km
             d_lat = (r_km * 1000.0 * math.cos(rad)) / meters_per_deg_lat
             d_lon = (r_km * 1000.0 * math.sin(rad)) / meters_per_deg_lon
-            footprint_poly.append([round(final_centroid_lat + d_lat, 5), round(final_centroid_lon + d_lon, 5)])
+            point_lat = final_centroid_lat + d_lat
+            point_lon = float(_wrap_longitudes(np.asarray(final_centroid_lon + d_lon)))
+            _coordinates(point_lat, point_lon, transport=False)
+            footprint_poly.append([round(point_lat, 5), round(point_lon, 5)])
         footprint_poly.append(footprint_poly[0])
 
         return {
             "vessel_mmsi": vessel_info.get("mmsi") if vessel_info else None,
-            "vessel_name": vessel_info.get("vessel_name") if vessel_info else "Suspect Vessel",
+            "vessel_name": vessel_info.get("vessel_name") if vessel_info else "Candidate vessel",
             "release_state": {
                 "lat": round(release_lat, 6),
                 "lon": round(release_lon, 6),
-                "time_relative_h": round(start_t, 2),
-                "observation_time_relative_h": round(end_t, 2),
-                "duration_hours": round(duration_h, 2)
+                "time_relative_h": start_t,
+                "observation_time_relative_h": current_t_hours,
+                "duration_hours": duration_h
             },
             "observed_slick": {
                 "lat": round(observed_slick_lat, 6),
                 "lon": round(observed_slick_lon, 6),
-                "area_km2": round(area_km2, 2),
-                "effective_radius_km": round(r_obs_km, 2)
+                "area_km2": area_km2,
+                "effective_radius_km": r_obs_km,
+                "geometry_status": "SUPPLIED_POLYGON_UNVALIDATED_TOPOLOGY" if poly_points else "SUPPLIED_AREA_CIRCLE_PROXY" if r_obs_km is not None else "POINT_ONLY_NO_FOOTPRINT",
             },
             "predicted_at_t0": {
                 "centroid_lat": round(final_centroid_lat, 6),
                 "centroid_lon": round(final_centroid_lon, 6),
                 "spread_radius_km": round(r_pred_km, 3),
                 "predicted_footprint_polygon": footprint_poly,
+                "footprint_status": "generated-cloud RMS-radius circle proxy; not a validated slick footprint",
                 "particles_sample": [
                     [round(float(p_lon[i]), 5), round(float(p_lat[i]), 5)]
                     for i in np.linspace(0, num_p - 1, 35, dtype=int)
@@ -1192,13 +1314,17 @@ class DriftEngine:
                 "jaccard_index": jaccard_index,
                 "modified_hausdorff_distance_km": modified_hausdorff_km,
                 "trajectory_reaches_slick": trajectory_reaches_slick,
-                "physical_causality_score": causality_score
+                "physical_causality_score": causality_score,
+                "confidence_status": "NOT_ESTIMATED_CONDITIONAL_TRANSPORT_COMPARISON",
+                "containment_status": "generated-cloud fraction in supplied polygon/area proxy; not origin probability" if containment_percent is not None else "NOT_ASSESSED_NO_OBSERVED_FOOTPRINT",
+                "jaccard_status": "CIRCLE_PROXY_IOU_ONLY" if jaccard_index is not None else "NOT_ASSESSED_NO_COMPARABLE_CIRCLE_GEOMETRY",
             },
             "verdict": verdict,
             "verdict_badge": verdict_badge,
             "verdict_color": verdict_color,
             "explanation": explanation,
-            "forward_trajectory": forward_trajectory
+            "forward_trajectory": forward_trajectory,
+            "transport_model": dict(self._transport_disclosure(), demo_coastline_rejections=demo_rejections),
         }
 
     def track_multi_spill_shared_origin(
@@ -1208,26 +1334,28 @@ class DriftEngine:
         hindcast_hours: float = 12.0
     ) -> Dict[str, Any]:
         """
-        Multi-Spill Simultaneous Tracking with Shared Origin Analysis.
-        Simultaneously advects multiple slick observations backwards in time,
-        identifying whether distinct patches converge to a shared origin corridor,
-        indicating sequential bilge dumps or a continuous discharge trail from a single vessel.
+        Compare conditional reverse-advection terminal-cloud centres for multiple
+        detections. Proximity does not establish a common source or discharge pattern.
         """
+        if not isinstance(spill_detections, list) or len(spill_detections) > 32:
+            raise ValueError("spill_detections must be a list with at most 32 detections.")
         if not spill_detections:
             return {"error": "No spill detections provided"}
+        hindcast_hours = _finite_number(hindcast_hours, "hindcast_hours", 0.0, MAX_DURATION_HOURS)
+        self._time_intervals(0.0, -hindcast_hours, 15.0, self.num_particles * len(spill_detections))
 
         hindcast_results = []
         for idx, slick in enumerate(spill_detections):
-            lat = float(slick.get("center_lat", slick.get("lat", 22.0)))
-            lon = float(slick.get("center_lon", slick.get("lon", 69.0)))
-            poly = slick.get("polygon", slick.get("coordinates", []))
-            
-            slick_age = float(slick.get("estimated_age_hours", slick.get("target_age_hours", hindcast_hours)))
+            if not isinstance(slick, dict):
+                raise ValueError("Each spill detection must supply a coordinate mapping.")
+            lat, lon = _coordinates(slick.get("center_lat", slick.get("lat")), slick.get("center_lon", slick.get("lon")))
+            slick_age = slick.get("target_age_hours", hindcast_hours)
             hc = self.run_hindcast(
                 initial_lat=lat,
                 initial_lon=lon,
                 current_field=current_field,
-                target_slick_age_hours=slick_age
+                target_slick_age_hours=slick_age,
+                max_lookback_hours=hindcast_hours,
             )
             hindcast_results.append({
                 "spill_index": idx + 1,
@@ -1248,7 +1376,7 @@ class DriftEngine:
                 pairwise_dists.append(d)
 
         mean_origin_dist = float(np.mean(pairwise_dists)) if pairwise_dists else 0.0
-        is_shared_origin = bool(mean_origin_dist < 8.0)
+        is_shared_origin = bool(len(origins) > 1 and mean_origin_dist < 8.0)
 
         sequential_speeds_knots = []
         for i in range(len(hindcast_results) - 1):
@@ -1260,20 +1388,139 @@ class DriftEngine:
                 speed_kt = (dist_km / 1.852) / dt_h
                 sequential_speeds_knots.append(round(speed_kt, 1))
 
-        pattern = "COMMON_POINT_SOURCE" if mean_origin_dist < 3.0 else (
-            "SEQUENTIAL_VOYAGE_TRAIL" if is_shared_origin else "INDEPENDENT_MULTIPLE_SPILLS"
-        )
+        pattern = ("CONDITIONAL_CLOSE_TERMINAL_CLOUDS" if mean_origin_dist < 3.0 else
+                   "CONDITIONAL_NEARBY_TERMINAL_CLOUDS" if is_shared_origin else
+                   "CONDITIONAL_SEPARATED_TERMINAL_CLOUDS") if len(origins) > 1 else "SINGLE_DETECTION_NO_SHARED_ORIGIN_ASSESSMENT"
 
         return {
             "spill_count": len(spill_detections),
             "spills_analyzed": hindcast_results,
             "mean_origin_separation_km": round(mean_origin_dist, 2),
             "is_shared_origin_hypothesis": is_shared_origin,
+            "inference_status": "conditional generated-cloud proximity only; shared origin not validated",
             "discharge_pattern": pattern,
             "sequential_transit_speeds_knots": sequential_speeds_knots,
             "forensic_summary": (
-                f"Multi-spill simultaneous hindcast indicates {pattern.replace('_', ' ').title()}. "
-                f"Backward advection reveals mean origin separation of {mean_origin_dist:.2f} km, "
-                f"{'consistent with a single transiting vessel discharging in sequence' if is_shared_origin else 'indicating unrelated discharge events'}."
+                f"Conditional reverse-advection terminal centres have mean pairwise separation {mean_origin_dist:.2f} km. "
+                "This generated-cloud proximity cue does not establish shared release origins, related discharge events, or vessel responsibility."
             )
         }
+
+    def estimate_spill_age_fay(
+        self,
+        area_km2: float,
+        spill_volume_m3: float = 1000.0,
+        oil_density_kg_m3: float = 900.0,
+        water_density_kg_m3: float = 1025.0,
+        water_kinematic_viscosity: float = 1.0e-6,
+        k2: float = 1.7
+    ) -> Dict[str, Any]:
+        """
+        Evaluates an offline Fay-style area-to-age sensitivity under supplied
+        assumptions. It does not establish release age or phase validity.
+        """
+        return estimate_fay_spill_age(
+            area_km2=area_km2,
+            spill_volume_m3=spill_volume_m3,
+            oil_density_kg_m3=oil_density_kg_m3,
+            water_density_kg_m3=water_density_kg_m3,
+            water_kinematic_viscosity=water_kinematic_viscosity,
+            k2=k2
+        )
+
+
+def estimate_fay_spill_age(
+    area_km2: float,
+    spill_volume_m3: float = 1000.0,
+    oil_density_kg_m3: float = 900.0,
+    water_density_kg_m3: float = 1025.0,
+    water_kinematic_viscosity: float = 1.0e-6,
+    k2: float = 1.7,
+) -> Dict[str, Any]:
+    """
+    Offline area-to-age sensitivity using an assumed gravity-viscous scaling:
+
+        A(t) = pi * k2^2 * ((delta_rho / rho_w) * g * V^2)^(1/3) * nu_w^(-1/6) * t^(1/2)
+
+    Inverting for elapsed time:
+        t = (A / C)^2
+    where C = pi * k2^2 * ((delta_rho / rho_w) * g * V^2)^(1/3) * nu_w^(-1/6).
+
+    Reference:
+        Fay, J.A. (1971), "Physical processes in the spread of oil on a water surface",
+        Proc. Joint Conf. on Prevention and Control of Oil Spills.
+    This implementation has no verified NOAA GNOME/ADIOS equivalence or measured
+    calibration. Its volume perturbations are sensitivity bounds, not confidence
+    intervals; the applicable spreading phase is not assessed here.
+    """
+    area_km2 = _fay_number(area_km2, "area_km2", 0.0, MAX_FAY_AREA_KM2, positive=True)
+    spill_volume_m3 = _fay_number(spill_volume_m3, "spill_volume_m3", 0.0, MAX_FAY_VOLUME_M3, positive=True)
+    oil_density_kg_m3 = _fay_number(oil_density_kg_m3, "oil_density_kg_m3", 0.0, MAX_FAY_DENSITY_KG_M3, positive=True)
+    water_density_kg_m3 = _fay_number(water_density_kg_m3, "water_density_kg_m3", 0.0, MAX_FAY_DENSITY_KG_M3, positive=True)
+    water_kinematic_viscosity = _fay_number(
+        water_kinematic_viscosity, "water_kinematic_viscosity", 0.0,
+        MAX_FAY_KINEMATIC_VISCOSITY, positive=True
+    )
+    k2 = _fay_number(k2, "k2", 0.0, MAX_FAY_K2, positive=True)
+
+    delta_rho = water_density_kg_m3 - oil_density_kg_m3
+    if delta_rho <= 0.0:
+        raise ValueError("Assumed oil density must be strictly less than seawater density (oil must float).")
+
+    g = 9.81  # m/s^2
+    area_m2 = area_km2 * 1_000_000.0
+    relative_buoyancy = delta_rho / water_density_kg_m3
+
+    # Hydrodynamic constant C: A(t) = C * t^(1/2)
+    c_term = (
+        math.pi
+        * (k2 ** 2)
+        * ((relative_buoyancy * g * (spill_volume_m3 ** 2)) ** (1.0 / 3.0))
+        * (water_kinematic_viscosity ** (-1.0 / 6.0))
+    )
+
+    t_seconds = (area_m2 / max(c_term, 1e-6)) ** 2
+    age_hours = t_seconds / 3600.0
+    age_days = age_hours / 24.0
+
+    # Sensitivity range for exactly +/- 50% of the declared volume. Do not
+    # floor small volumes to a value above the central hypothesis or silently
+    # turn +50% into a doubling.
+    vol_min = spill_volume_m3 * 0.5
+    vol_max = spill_volume_m3 * 1.5
+    c_min = math.pi * (k2 ** 2) * ((relative_buoyancy * g * (vol_max ** 2)) ** (1.0 / 3.0)) * (water_kinematic_viscosity ** (-1.0 / 6.0))
+    c_max = math.pi * (k2 ** 2) * ((relative_buoyancy * g * (vol_min ** 2)) ** (1.0 / 3.0)) * (water_kinematic_viscosity ** (-1.0 / 6.0))
+    t_min_hours = ((area_m2 / max(c_min, 1e-6)) ** 2) / 3600.0
+    t_max_hours = ((area_m2 / max(c_max, 1e-6)) ** 2) / 3600.0
+
+    output_values = (age_hours, age_days, t_min_hours, t_max_hours)
+    if not all(math.isfinite(value) for value in output_values):
+        raise ValueError("Fay inputs produce a non-finite age estimate.")
+
+    return {
+        "status": "CONDITIONAL_SENSITIVITY_ONLY",
+        "estimate_kind": "FAY_STYLE_AREA_TO_AGE_INVERSION",
+        "age_inference_status": "NOT_INFERRED_FROM_SINGLE_SAR_SCENE",
+        "estimated_age_hours": round(float(age_hours), 2),
+        "estimated_age_days": round(float(age_days), 2),
+        "lookback_window_hours": [round(float(t_min_hours), 1), round(float(t_max_hours), 1)],
+        "volume_sensitivity_m3": [vol_min, vol_max],
+        "bounds_kind": "VOLUME_SENSITIVITY_ONLY_NOT_CONFIDENCE_INTERVAL",
+        "regime_valid": None,
+        "regime_status": "NOT_ASSESSED",
+        "physics_regime": "ASSUMED_GRAVITY_VISCOUS_SCALING",
+        "governing_law": "A(t) = pi * k2^2 * ((delta_rho/rho_w)*g*V^2)^(1/3) * nu_w^(-1/6) * t^(1/2)",
+        "assumptions": {
+            "spill_volume_m3": spill_volume_m3,
+            "oil_density_kg_m3": oil_density_kg_m3,
+            "water_density_kg_m3": water_density_kg_m3,
+            "water_kinematic_viscosity_m2_s": water_kinematic_viscosity,
+            "k2_spreading_constant": k2
+        },
+        "scientific_caveat": (
+            "Conditional sensitivity under assumed area, volume, density, viscosity and coefficient inputs. "
+            "The bounds vary only the declared volume by +/-50%; they are not confidence intervals or "
+            "validated physical limits. Spreading-phase validity, release age and legal timestamps are "
+            "not established. No NOAA GNOME/ADIOS equivalence is verified for this implementation."
+        )
+    }
