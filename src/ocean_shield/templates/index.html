@@ -47,6 +47,18 @@
       </div>
     </div>
 
+    <!-- Incident Case Queue Badge (AlgoRise Stitch Header Pattern) -->
+    <div class="incident-case-capsule" id="incidentCaseCapsule" title="Operational Case Docket">
+      <span class="incident-pulse-dot"></span>
+      <div class="incident-meta-text">
+        <div class="incident-id-row">
+          <span class="incident-prefix">CASE</span>
+          <span class="incident-id font-mono" id="incidentCaseId">#OS-2026-0904</span>
+        </div>
+        <span class="incident-status" id="incidentCaseStatus">ACTIVE C2 SCREENING</span>
+      </div>
+    </div>
+
     <!-- Central Interactive Pipeline Stepper (Full 5-Stage Closed-Loop) -->
     <nav class="pipeline-stepper" aria-label="Investigation Pipeline Stepper">
       <button id="btnDetectSAR" class="step-btn active" title="Stage 1: Sentinel-1 SAR Segmentation">
@@ -268,6 +280,77 @@
         </div>
       </div>
     </div>
+
+    <!-- INTEL NAVIGATION RAIL (AlgoRise Stitch Theme C2 Pattern) -->
+    <nav class="intel-navigation-rail" id="intelNavRail" aria-label="Tactical Intel Navigation Rail">
+      <div class="rail-group rail-stages">
+        <button class="rail-item active" id="railStage1" data-stage="1" title="Stage 1: Sentinel-1 SAR Slick Detection">
+          <span class="rail-icon">🛰️</span>
+          <span class="rail-indicator"></span>
+          <span class="rail-tooltip">01 &bull; SAR Slick Detection</span>
+        </button>
+        <button class="rail-item" id="railStage2" data-stage="2" title="Stage 2: Lagrangian RK4 Hindcast &amp; KDE Envelopes">
+          <span class="rail-icon">🌊</span>
+          <span class="rail-indicator"></span>
+          <span class="rail-tooltip">02 &bull; Lagrangian Hindcast</span>
+        </button>
+        <button class="rail-item" id="railStage3" data-stage="3" title="Stage 3: AIS Attribution &amp; TOPSIS MCDA">
+          <span class="rail-icon">🚢</span>
+          <span class="rail-indicator"></span>
+          <span class="rail-tooltip">03 &bull; AIS Attribution (TOPSIS)</span>
+        </button>
+        <button class="rail-item" id="railStage4" data-stage="4" title="Stage 4: Forward Counterfactual Falsification">
+          <span class="rail-icon">🔬</span>
+          <span class="rail-indicator"></span>
+          <span class="rail-tooltip">04 &bull; Counterfactual Verification</span>
+        </button>
+        <button class="rail-item" id="railStage5" data-stage="5" title="Stage 5: Forensic Screening Dossier PDF">
+          <span class="rail-icon">📄</span>
+          <span class="rail-indicator"></span>
+          <span class="rail-tooltip">05 &bull; Case Summary PDF</span>
+        </button>
+      </div>
+
+      <div class="rail-divider"></div>
+
+      <div class="rail-group rail-tools">
+        <button class="rail-item" id="railToolTraffic" title="Corridor Maritime Traffic Table">
+          <span class="rail-icon">📋</span>
+          <span class="rail-indicator"></span>
+          <span class="rail-tooltip">Corridor AIS Traffic</span>
+        </button>
+        <button class="rail-item" id="railToolStress" title="Adversarial Stress Testing Matrix">
+          <span class="rail-icon">🛡️</span>
+          <span class="rail-indicator"></span>
+          <span class="rail-tooltip">Adversarial Stress Matrix</span>
+        </button>
+        <button class="rail-item" id="railToolBayesian" title="Bayesian Decision Gate">
+          <span class="rail-icon">⚖️</span>
+          <span class="rail-indicator"></span>
+          <span class="rail-tooltip">Bayesian Decision Gate</span>
+        </button>
+        <button class="rail-item" id="railToolTimeline" title="Lagrangian Transport Playback Scrubber">
+          <span class="rail-icon">⏱️</span>
+          <span class="rail-indicator"></span>
+          <span class="rail-tooltip">Drift Playback Timeline</span>
+        </button>
+        <button class="rail-item" id="railToolIngestion" title="Source-Backed Live Ingestion Center">
+          <span class="rail-icon">🌐</span>
+          <span class="rail-indicator"></span>
+          <span class="rail-tooltip">Live Ingestion Center</span>
+        </button>
+      </div>
+
+      <div class="rail-divider"></div>
+
+      <div class="rail-group rail-bottom">
+        <button class="rail-item rail-autorun" id="railBtnAutoRun" title="Auto-Run Complete 5-Stage Closed-Loop Pipeline">
+          <span class="rail-icon">⚡</span>
+          <span class="pulse-dot-cyan"></span>
+          <span class="rail-tooltip">⚡ Auto-Run Full Pipeline</span>
+        </button>
+      </div>
+    </nav>
 
     <!-- LEFT FLOATING GLASS DOCK (Tabs: Detection | Hydrodynamics | Provenance) -->
     <aside class="floating-dock dock-left" id="panelLeft">
@@ -673,6 +756,11 @@
 
           <div class="suspect-identity-row">
             <div class="suspect-main-info">
+              <!-- Vessel Class Silhouette & Flag Badge Row (AlgoRise Suspect Panel pattern) -->
+              <div class="vessel-badge-row">
+                <span class="vessel-silhouette-chip" id="suspectSilhouetteChip">🚢 COMMERCIAL VESSEL</span>
+                <span class="vessel-flag-chip font-mono" id="suspectFlagChip">🏳️ UNK</span>
+              </div>
               <h2 class="suspect-name-display" id="suspectVesselName">AWAITING AIS RUN...</h2>
               <div class="suspect-identifiers-grid font-mono">
                 <div class="id-item"><span>IMO</span><b id="suspectIMO">--</b></div>
@@ -689,6 +777,18 @@
                 <span class="score-caption" title="Uncalibrated lead-priority screen; not confidence or attribution">LEAD SCREEN</span>
               </div>
             </div>
+          </div>
+
+          <!-- Quick Tactical Actions (AlgoRise Suspect Action pattern) -->
+          <div class="suspect-quick-actions">
+            <button id="btnFocusSuspectTrack" class="btn-suspect-action" title="Center map and focus candidate vessel trajectory">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="m12 8 4 4-4 4M8 12h8"/></svg>
+              <span>Focus Track</span>
+            </button>
+            <button id="btnSuspectCounterfactual" class="btn-suspect-action btn-action-glow" title="Re-simulate Stage 4 forward drift for this vessel">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <span>Run Stage 4 CF</span>
+            </button>
           </div>
 
           <div class="suspect-forensic-summary font-mono" id="suspectSummary">

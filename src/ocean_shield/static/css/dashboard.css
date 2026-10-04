@@ -184,6 +184,80 @@ html, body {
   white-space: nowrap;
 }
 
+/* Incident Case Queue Badge (AlgoRise Stitch Header Pattern) */
+.incident-case-capsule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(14, 22, 42, 0.75);
+  border: 1px solid rgba(0, 242, 254, 0.25);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  box-shadow: 0 0 14px rgba(0, 242, 254, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.incident-case-capsule:hover {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 18px rgba(0, 242, 254, 0.25);
+}
+
+.incident-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 8px var(--accent-cyan);
+  animation: pulseDotCyan 1.8s infinite;
+  flex-shrink: 0;
+}
+
+.incident-meta-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.incident-id-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.incident-prefix {
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+
+.incident-id {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.04em;
+}
+
+.incident-status {
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  letter-spacing: 0.06em;
+}
+
+@media (max-width: 1200px) {
+  .incident-status {
+    display: none;
+  }
+}
+
+@media (max-width: 1050px) {
+  .incident-case-capsule {
+    display: none;
+  }
+}
+
 /* Central Pipeline Stepper */
 .pipeline-stepper {
   display: flex;
@@ -505,6 +579,150 @@ html, body {
 }
 
 /* ══════════════════════════════════════════════════════════════════
+   INTEL NAVIGATION RAIL (AlgoRise Stitch Theme C2 Pattern)
+   ══════════════════════════════════════════════════════════════════ */
+.intel-navigation-rail {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 12px;
+  width: 50px;
+  z-index: 850;
+  background: rgba(9, 14, 27, 0.94);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--c2-border);
+  border-radius: var(--radius-dock);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 0;
+  gap: 8px;
+}
+
+.rail-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.rail-divider {
+  width: 28px;
+  height: 1px;
+  background: var(--c2-border-light);
+  margin: 4px 0;
+}
+
+.rail-item {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+}
+
+.rail-item .rail-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.rail-item .rail-indicator {
+  position: absolute;
+  left: -2px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 8px var(--accent-cyan);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.rail-item:hover {
+  background: rgba(0, 242, 254, 0.12);
+  border-color: rgba(0, 242, 254, 0.35);
+  color: #ffffff;
+  transform: translateX(2px);
+}
+
+.rail-item:hover .rail-icon {
+  transform: scale(1.1);
+}
+
+.rail-item.active {
+  background: rgba(0, 242, 254, 0.18);
+  border-color: var(--accent-cyan);
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(0, 242, 254, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.rail-item.active .rail-indicator {
+  opacity: 1;
+}
+
+/* Tooltip on hover */
+.rail-item .rail-tooltip {
+  position: absolute;
+  left: 48px;
+  background: rgba(10, 16, 30, 0.96);
+  border: 1px solid var(--accent-cyan);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 0.70rem;
+  font-weight: 700;
+  font-family: var(--font-ui);
+  color: #ffffff;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 12px rgba(0, 242, 254, 0.2);
+  z-index: 1000;
+}
+
+.rail-item:hover .rail-tooltip {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Auto-run glowing rail item */
+.rail-item.rail-autorun {
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.2), rgba(16, 185, 129, 0.2));
+  border: 1px solid rgba(0, 242, 254, 0.5);
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.25);
+  margin-top: auto;
+}
+
+.rail-item.rail-autorun:hover {
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.4), rgba(16, 185, 129, 0.35));
+  border-color: #00f2fe;
+  box-shadow: 0 0 20px rgba(0, 242, 254, 0.55);
+}
+
+@media (max-width: 900px) {
+  .intel-navigation-rail {
+    display: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
    FLOATING GLASS DOCKS (LEFT & RIGHT)
    ══════════════════════════════════════════════════════════════════ */
 .floating-dock {
@@ -525,8 +743,14 @@ html, body {
 }
 
 .dock-left {
-  left: 14px;
+  left: 74px;
   width: var(--dock-width-left);
+}
+
+@media (max-width: 900px) {
+  .dock-left {
+    left: 14px;
+  }
 }
 
 .dock-right {
@@ -573,7 +797,13 @@ html, body {
 
 /* Collapsed States */
 .dock-left.collapsed {
-  transform: translateX(calc(-100% - 14px));
+  transform: translateX(calc(-100% - 74px));
+}
+
+@media (max-width: 900px) {
+  .dock-left.collapsed {
+    transform: translateX(calc(-100% - 14px));
+  }
 }
 .dock-left.collapsed .btn-toggle-left {
   transform: rotate(180deg);
@@ -1244,6 +1474,42 @@ input:checked + .switch-slider:before {
   flex: 1;
 }
 
+/* Vessel Class Silhouette & Flag State Chips (AlgoRise Suspect Panel pattern) */
+.vessel-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.vessel-silhouette-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  background: rgba(0, 242, 254, 0.12);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  border-radius: 4px;
+  padding: 2px 7px;
+  letter-spacing: 0.04em;
+}
+
+.vessel-flag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--c2-border-light);
+  border-radius: 4px;
+  padding: 2px 7px;
+  letter-spacing: 0.05em;
+}
+
 .suspect-name-display {
   font-size: 1.15rem;
   font-weight: 800;
@@ -1268,6 +1534,53 @@ input:checked + .switch-slider:before {
 .id-item b {
   color: var(--text-primary);
   font-weight: 600;
+}
+
+/* Quick Tactical Actions (AlgoRise Suspect Action pattern) */
+.suspect-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.btn-suspect-action {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--c2-border-light);
+  color: var(--text-primary);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: var(--font-ui);
+}
+
+.btn-suspect-action:hover {
+  background: rgba(0, 242, 254, 0.15);
+  border-color: var(--accent-cyan);
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.25);
+}
+
+.btn-suspect-action.btn-action-glow {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: var(--accent-emerald);
+}
+
+.btn-suspect-action.btn-action-glow:hover {
+  background: rgba(16, 185, 129, 0.25);
+  border-color: var(--accent-emerald);
+  color: #ffffff;
+  box-shadow: 0 0 14px var(--accent-emerald-glow);
 }
 
 /* Circular Score Gauge */

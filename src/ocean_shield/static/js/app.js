@@ -33,6 +33,31 @@ function sourceNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function getVesselSilhouette(vesselType) {
+  const t = (vesselType || '').toLowerCase();
+  if (t.includes('tanker')) return { icon: '🛢️', label: 'CRUDE TANKER' };
+  if (t.includes('cargo') || t.includes('container')) return { icon: '🚢', label: 'CONTAINER CARGO' };
+  if (t.includes('bulk')) return { icon: '🏗️', label: 'BULK CARRIER' };
+  if (t.includes('tug') || t.includes('supply') || t.includes('support')) return { icon: '⚓', label: 'TUG / OFFSHORE' };
+  if (t.includes('fish')) return { icon: '🐟', label: 'FISHING VESSEL' };
+  return { icon: '🚢', label: (vesselType || 'COMMERCIAL').toUpperCase() };
+}
+
+function getFlagBadge(flagState) {
+  const f = (flagState || '').toLowerCase();
+  if (f.includes('panama')) return { flag: '🇵🇦', code: 'PAN' };
+  if (f.includes('liberia')) return { flag: '🇱🇷', code: 'LBR' };
+  if (f.includes('india')) return { flag: '🇮🇳', code: 'IND' };
+  if (f.includes('marshall')) return { flag: '🇲🇭', code: 'MHL' };
+  if (f.includes('singapore')) return { flag: '🇸🇬', code: 'SGP' };
+  if (f.includes('bahamas')) return { flag: '🇧🇸', code: 'BHS' };
+  if (f.includes('malta')) return { flag: '🇲🇹', code: 'MLT' };
+  if (f.includes('cyprus')) return { flag: '🇨🇾', code: 'CYP' };
+  if (f.includes('china')) return { flag: '🇨🇳', code: 'CHN' };
+  if (f.includes('greece')) return { flag: '🇬🇷', code: 'GRC' };
+  return { flag: '🏳️', code: (flagState || 'FLAG').toUpperCase().slice(0, 4) };
+}
+
 class OceanShieldApp {
   constructor() {
     this.activeScenarioId = 'gulf_of_kachchh';
@@ -150,6 +175,13 @@ class OceanShieldApp {
 
     // Suspect card elements & Candidate Lead Navigation
     this.suspectVesselName = document.getElementById('suspectVesselName');
+    this.suspectSilhouetteChip = document.getElementById('suspectSilhouetteChip');
+    this.suspectFlagChip = document.getElementById('suspectFlagChip');
+    this.btnFocusSuspectTrack = document.getElementById('btnFocusSuspectTrack');
+    this.btnSuspectCounterfactual = document.getElementById('btnSuspectCounterfactual');
+    this.incidentCaseId = document.getElementById('incidentCaseId');
+    this.incidentCaseStatus = document.getElementById('incidentCaseStatus');
+    this.intelNavRail = document.getElementById('intelNavRail');
     this.suspectIMO = document.getElementById('suspectIMO');
     this.suspectMMSI = document.getElementById('suspectMMSI');
     this.suspectFlag = document.getElementById('suspectFlag');
@@ -696,6 +728,131 @@ class OceanShieldApp {
     this.btnExecAutoRun?.addEventListener('click', () => this.runAutoInvestigation());
     this.btnTopAutoRun?.addEventListener('click', () => this.runAutoInvestigation());
     this.btnExecDownloadPDF?.addEventListener('click', () => this.downloadDossier());
+
+    // Suspect Dossier Tactical Quick Actions
+    if (this.btnFocusSuspectTrack) {
+      this.btnFocusSuspectTrack.addEventListener('click', () => {
+        if (!this.selectedVessel) {
+          this.showToast('Run AIS Attribution first to select a candidate vessel', 'warning');
+          return;
+        }
+        const coords = this.selectedVessel.closest_approach;
+        if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
+          this.map.setView([coords.lat, coords.lon], 12);
+          this.showToast(`Focused track: ${this.selectedVessel.vessel_name}`, 'info');
+        } else if (this.selectedVessel.full_trajectory && this.selectedVessel.full_trajectory.length > 0) {
+          const pt = this.selectedVessel.full_trajectory[0];
+          this.map.setView([pt.lat, pt.lon], 12);
+          this.showToast(`Focused track: ${this.selectedVessel.vessel_name}`, 'info');
+        }
+      });
+    }
+
+    if (this.btnSuspectCounterfactual) {
+      this.btnSuspectCounterfactual.addEventListener('click', () => {
+        if (!this.selectedVessel) {
+          this.showToast('Run AIS Attribution first to select a candidate vessel', 'warning');
+          return;
+        }
+        const stage4Card = document.getElementById('stage4Card') || document.getElementById('counterfactualCard');
+        if (stage4Card) {
+          stage4Card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          stage4Card.style.boxShadow = '0 0 25px rgba(0, 242, 254, 0.4)';
+          setTimeout(() => { stage4Card.style.boxShadow = ''; }, 2000);
+        }
+        this.runCounterfactualVerification(this.selectedVessel);
+      });
+    }
+
+    // Intel Navigation Rail Handlers (AlgoRise Stitch Theme C2 Pattern)
+    const rail1 = document.getElementById('railStage1');
+    const rail2 = document.getElementById('railStage2');
+    const rail3 = document.getElementById('railStage3');
+    const rail4 = document.getElementById('railStage4');
+    const rail5 = document.getElementById('railStage5');
+    const railTraffic = document.getElementById('railToolTraffic');
+    const railStress = document.getElementById('railToolStress');
+    const railBayesian = document.getElementById('railToolBayesian');
+    const railTimeline = document.getElementById('railToolTimeline');
+    const railIngestion = document.getElementById('railToolIngestion');
+    const railAutoRun = document.getElementById('railBtnAutoRun');
+
+    if (rail1) rail1.addEventListener('click', () => {
+      this.panelLeft?.classList.remove('collapsed');
+      const detTab = document.querySelector('.dock-tab[data-tab="tab-detection"]');
+      detTab?.click();
+      this.btnDetectSAR?.click();
+    });
+
+    if (rail2) rail2.addEventListener('click', () => {
+      this.panelLeft?.classList.remove('collapsed');
+      const hydroTab = document.querySelector('.dock-tab[data-tab="tab-hydro"]');
+      hydroTab?.click();
+      this.btnRunDrift?.click();
+    });
+
+    if (rail3) rail3.addEventListener('click', () => {
+      this.panelRight?.classList.remove('collapsed');
+      this.btnCorrelateAIS?.click();
+      const suspectCard = document.getElementById('suspectBanner');
+      suspectCard?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+
+    if (rail4) rail4.addEventListener('click', () => {
+      this.panelRight?.classList.remove('collapsed');
+      this.btnStepCounterfactual?.click();
+    });
+
+    if (rail5) rail5.addEventListener('click', () => {
+      this.btnDownloadDossier?.click();
+    });
+
+    if (railTraffic) railTraffic.addEventListener('click', () => {
+      this.panelRight?.classList.remove('collapsed');
+      const trafficCard = document.querySelector('.traffic-table-card');
+      if (trafficCard) {
+        trafficCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        trafficCard.style.boxShadow = '0 0 25px rgba(0, 242, 254, 0.4)';
+        setTimeout(() => { trafficCard.style.boxShadow = ''; }, 2000);
+      }
+    });
+
+    if (railStress) railStress.addEventListener('click', () => {
+      this.panelRight?.classList.remove('collapsed');
+      const stressCard = document.getElementById('cardFalsification');
+      if (stressCard) {
+        stressCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        stressCard.style.boxShadow = '0 0 25px rgba(0, 242, 254, 0.4)';
+        setTimeout(() => { stressCard.style.boxShadow = ''; }, 2000);
+      }
+    });
+
+    if (railBayesian) railBayesian.addEventListener('click', () => {
+      this.panelRight?.classList.remove('collapsed');
+      const bayesCard = document.getElementById('cardBayesianGate');
+      if (bayesCard) {
+        bayesCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        bayesCard.style.boxShadow = '0 0 25px rgba(245, 158, 11, 0.4)';
+        setTimeout(() => { bayesCard.style.boxShadow = ''; }, 2000);
+      }
+    });
+
+    if (railTimeline) railTimeline.addEventListener('click', () => {
+      const timelineDock = document.querySelector('.floating-timeline-dock');
+      if (timelineDock) {
+        timelineDock.style.boxShadow = '0 0 30px rgba(0, 242, 254, 0.5)';
+        setTimeout(() => { timelineDock.style.boxShadow = ''; }, 2000);
+      }
+      this.btnPlayPause?.click();
+    });
+
+    if (railIngestion) railIngestion.addEventListener('click', () => {
+      this.btnOpenLiveIngestion?.click();
+    });
+
+    if (railAutoRun) railAutoRun.addEventListener('click', () => {
+      this.runAutoInvestigation();
+    });
 
     // Tactical Map Legend Hover & Click Toggle
     const legendDock = document.getElementById('mapLegendDock');
@@ -1349,6 +1506,13 @@ class OceanShieldApp {
       // Update HUD & Map
       document.getElementById('hudSectorName').innerText = this.scenarioData.region;
       document.getElementById('sarMissionTag').innerText = this.scenarioData.satellite_metadata.mission;
+      if (this.incidentCaseId) {
+        const cleanId = (this.scenarioData.scenario_id || scenarioId).toUpperCase().replace(/_/g, '-');
+        this.incidentCaseId.innerText = `#OS-${cleanId}`;
+      }
+      if (this.incidentCaseStatus) {
+        this.incidentCaseStatus.innerText = 'ACTIVE C2 SCREENING';
+      }
       this.map.setView([this.scenarioData.center.lat, this.scenarioData.center.lon], 10);
 
       // Met-Ocean cards
@@ -1454,6 +1618,8 @@ class OceanShieldApp {
     }
     if (this.leadCandidateRank) this.leadCandidateRank.innerText = 'Lead 1 of --';
     if (this.suspectVesselName) this.suspectVesselName.innerText = 'AWAITING AIS';
+    if (this.suspectSilhouetteChip) this.suspectSilhouetteChip.innerText = '🚢 COMMERCIAL VESSEL';
+    if (this.suspectFlagChip) this.suspectFlagChip.innerText = '🏳️ UNK';
     if (this.suspectIMO) this.suspectIMO.innerText = '--';
     if (this.suspectMMSI) this.suspectMMSI.innerText = '--';
     if (this.suspectFlag) this.suspectFlag.innerText = '--';
@@ -1462,6 +1628,11 @@ class OceanShieldApp {
     if (this.suspectSummary) this.suspectSummary.innerText = 'Source AIS and a validated conditional transport scenario are required before ranking review leads.';
     if (this.execSuspectName) this.execSuspectName.innerText = '—';
     if (this.execSuspectDetails) this.execSuspectDetails.innerText = 'Awaiting AIS correlation';
+
+    for (let s = 1; s <= 5; s++) {
+      const rail = document.getElementById(`railStage${s}`);
+      if (rail) rail.classList.toggle('active', s === 1);
+    }
 
     for (const item of [this.barProx, this.barTime, this.barSpeed, this.barType]) {
       if (item) item.style.width = '0%';
@@ -1884,6 +2055,11 @@ class OceanShieldApp {
     if (this.btnCorrelateAIS) this.btnCorrelateAIS.classList.toggle('active', step >= 3);
     if (this.btnStepCounterfactual) this.btnStepCounterfactual.classList.toggle('active', step >= 4);
     if (this.btnStepDossier) this.btnStepDossier.classList.toggle('active', step >= 5);
+
+    for (let s = 1; s <= 5; s++) {
+      const rail = document.getElementById(`railStage${s}`);
+      if (rail) rail.classList.toggle('active', step >= s);
+    }
   }
 
   renderSarResponse(data) {
@@ -1901,6 +2077,8 @@ class OceanShieldApp {
         this[key]?.clearLayers();
       }
       if (this.suspectVesselName) this.suspectVesselName.innerText = 'AWAITING AIS RERUN';
+      if (this.suspectSilhouetteChip) this.suspectSilhouetteChip.innerText = '🚢 AWAITING AIS';
+      if (this.suspectFlagChip) this.suspectFlagChip.innerText = '🏳️ --';
       if (this.suspectIMO) this.suspectIMO.innerText = '--';
       if (this.suspectMMSI) this.suspectMMSI.innerText = '--';
       if (this.suspectFlag) this.suspectFlag.innerText = '--';
@@ -2455,6 +2633,10 @@ class OceanShieldApp {
       const culprit = data.primary_review_lead || (data.ranked_suspects && data.ranked_suspects[0]);
       if (culprit) {
         this.suspectVesselName.innerText = culprit.vessel_name;
+        const sil = getVesselSilhouette(culprit.vessel_type);
+        const flg = getFlagBadge(culprit.flag_state);
+        if (this.suspectSilhouetteChip) this.suspectSilhouetteChip.innerText = `${sil.icon} ${sil.label}`;
+        if (this.suspectFlagChip) this.suspectFlagChip.innerText = `${flg.flag} ${flg.code}`;
         this.suspectIMO.innerText = culprit.imo;
         this.suspectMMSI.innerText = culprit.mmsi;
         this.suspectFlag.innerText = culprit.flag_state;
@@ -2496,6 +2678,8 @@ class OceanShieldApp {
       } else {
         this.selectedVessel = null;
         this.suspectVesselName.innerText = 'NO REVIEW LEAD';
+        if (this.suspectSilhouetteChip) this.suspectSilhouetteChip.innerText = '🚢 NO LEAD';
+        if (this.suspectFlagChip) this.suspectFlagChip.innerText = '🏳️ --';
         this.suspectIMO.innerText = '--';
         this.suspectMMSI.innerText = '--';
         this.suspectFlag.innerText = '--';
@@ -2641,6 +2825,10 @@ class OceanShieldApp {
     this.selectedVessel = vessel;
 
     this.suspectVesselName.innerText = vessel.vessel_name;
+    const sil = getVesselSilhouette(vessel.vessel_type);
+    const flg = getFlagBadge(vessel.flag_state);
+    if (this.suspectSilhouetteChip) this.suspectSilhouetteChip.innerText = `${sil.icon} ${sil.label}`;
+    if (this.suspectFlagChip) this.suspectFlagChip.innerText = `${flg.flag} ${flg.code}`;
     this.suspectIMO.innerText = vessel.imo || '--';
     this.suspectMMSI.innerText = vessel.mmsi || '--';
     this.suspectFlag.innerText = vessel.flag_state || '--';
