@@ -188,6 +188,7 @@ class OceanShieldApp {
     this.btnExpertView = document.getElementById('btnExpertView');
     this.btnToggleExpertMode = document.getElementById('btnToggleExpertMode');
     this.btnExecAutoRun = document.getElementById('btnExecAutoRun');
+    this.btnTopAutoRun = document.getElementById('btnTopAutoRun');
     this.btnExecDownloadPDF = document.getElementById('btnExecDownloadPDF');
     this.execAreaVal = document.getElementById('execAreaVal');
     this.execVolumeSub = document.getElementById('execVolumeSub');
@@ -693,6 +694,7 @@ class OceanShieldApp {
     this.btnExpertView?.addEventListener('click', () => this.setSimpleMode(false));
     this.btnToggleExpertMode?.addEventListener('click', () => this.toggleExpertMode());
     this.btnExecAutoRun?.addEventListener('click', () => this.runAutoInvestigation());
+    this.btnTopAutoRun?.addEventListener('click', () => this.runAutoInvestigation());
     this.btnExecDownloadPDF?.addEventListener('click', () => this.downloadDossier());
 
     // Tactical Map Legend Hover & Click Toggle
@@ -1365,7 +1367,13 @@ class OceanShieldApp {
       this.srPreviewUrl = data.sr_preview_url || null;
       this.toggleSuperResolution();
 
-      // Benchmark scenarios remain opt-in. Rendering their precomputed output on
+      // Render baseline corridor vessel tracks immediately on scenario load
+      if (Array.isArray(this.scenarioData.ais_vessels) && this.scenarioData.ais_vessels.length > 0) {
+        this.renderVesselTracks(this.scenarioData.ais_vessels);
+        if (this.vesselCountTag) {
+          this.vesselCountTag.innerText = `${this.scenarioData.ais_vessels.length} CORRIDOR VESSELS`;
+        }
+      }
       // load made a local fixture look like a current maritime event.
       if (this.execAreaVal) this.execAreaVal.innerText = '—';
       if (this.execVolumeSub) this.execVolumeSub.innerText = 'Benchmark scene loaded — select an authentic SAR raster to analyse';
@@ -3317,19 +3325,22 @@ class OceanShieldApp {
     this.vesselsLayerGroup.clearLayers();
 
     (Array.isArray(vessels) ? vessels : []).forEach((v, idx) => {
-      const isTopLead = idx === 0;
+      const isTopLead = Number.isFinite(v.lead_priority_score) && idx === 0;
       const track = (Array.isArray(v.full_trajectory) ? v.full_trajectory : []).filter(p =>
         Number.isFinite(p?.lat) && Number.isFinite(p?.lon));
       if (track.length === 0) return;
       const pts = track.map(p => [p.lat, p.lon]);
-      const color = isTopLead ? '#ff3366' : (Number.isFinite(v.lead_priority_score) && v.lead_priority_score > 50 ? '#ffaa00' : '#05d6a0');
+      const color = isTopLead ? '#ff3366' : (Number.isFinite(v.lead_priority_score) ? (v.lead_priority_score > 50 ? '#ffaa00' : '#05d6a0') : '#38bdf8');
       const scoreText = screenNumber(v.lead_priority_score);
 
+      const titleText = isTopLead ? '🚨 HIGHEST-RANKED REVIEW LEAD' : (Number.isFinite(v.lead_priority_score) ? '🚢 OTHER AIS SCREENING LEAD' : '🚢 CORRIDOR AIS VESSEL');
+      const subText = isTopLead ? `Highest lead-priority screen; requires source-record review • Score: ${scoreText}/100` :
+                     (Number.isFinite(v.lead_priority_score) ? `Lower lead-priority screen (${scoreText}/100)` : `Navigational corridor telemetry • Click Step 3 to rank`);
       const tooltipHtml = `
         <div style="font-family:var(--font-sans); font-size:0.75rem; padding:4px 6px;">
-          <strong style="color:${color};">${isTopLead ? '🚨 HIGHEST-RANKED REVIEW LEAD' : '🚢 OTHER AIS SCREENING LEAD'}</strong><br>
+          <strong style="color:${color};">${titleText}</strong><br>
           <span style="color:#f8fafc; font-weight:700;">${v.vessel_name}</span> (${v.vessel_type})<br>
-          <span style="color:#94a3b8; font-size:0.68rem;">${isTopLead ? 'Highest lead-priority screen; requires source-record review • Score: ' + scoreText + '/100' : 'Lower lead-priority screen (' + scoreText + '/100)'}</span>
+          <span style="color:#94a3b8; font-size:0.68rem;">${subText}</span>
         </div>
       `;
 

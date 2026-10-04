@@ -249,6 +249,27 @@ html, body {
   border-color: var(--accent-cyan);
 }
 
+.step-btn.btn-autorun {
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.22), rgba(16, 185, 129, 0.20));
+  border: 1px solid rgba(0, 242, 254, 0.6);
+  color: var(--accent-cyan);
+  box-shadow: 0 0 14px rgba(0, 242, 254, 0.25);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.step-btn.btn-autorun:hover {
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.40), rgba(16, 185, 129, 0.35));
+  border-color: #00f2fe;
+  color: #ffffff;
+  box-shadow: 0 0 22px rgba(0, 242, 254, 0.55);
+  transform: translateY(-1px);
+}
+
+.step-btn.btn-autorun:active {
+  transform: translateY(0);
+}
+
 .step-connector {
   width: 12px;
   height: 1px;
@@ -661,11 +682,12 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 .card-box:hover {
-  border-color: var(--c2-border-light);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
 }
 
 .card-hazard-border {
@@ -909,6 +931,14 @@ input:checked + .switch-slider:before {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.metric-tile:hover {
+  background: rgba(16, 25, 46, 0.85);
+  border-color: rgba(0, 242, 254, 0.25);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 
 .tile-label {
