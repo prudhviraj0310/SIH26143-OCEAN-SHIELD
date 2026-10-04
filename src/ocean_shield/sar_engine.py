@@ -206,7 +206,7 @@ class SAREngine:
         # Assuming image center corresponds to (center_lat, center_lon)
         h, w = img_shape
         meters_per_deg_lat = 111320.0
-        meters_per_deg_lon = 111320.0 * math.cos(math.radians(center_lat))
+        meters_per_deg_lon = 111320.0 * max(1e-4, math.cos(math.radians(center_lat)))
 
         offset_x_m = (cx - w / 2.0) * pixel_size_m
         offset_y_m = (h / 2.0 - cy) * pixel_size_m  # Y inverted in image coords
@@ -215,10 +215,18 @@ class SAREngine:
         slick_lon = center_lon + (offset_x_m / meters_per_deg_lon)
 
         # Orientation & Elongation via PCA / MinAreaRect
+        elongation = 1.0
+        angle = 0.0
         if len(contour) >= 5:
-            ellipse = cv2.fitEllipse(contour)
-            (center, (axis_minor, axis_major), angle) = ellipse
-            elongation = max(axis_major / (axis_minor + 1e-4), 1.0)
+            try:
+                ellipse = cv2.fitEllipse(contour)
+                (center, (axis_minor, axis_major), angle) = ellipse
+                elongation = max(axis_major / (axis_minor + 1e-4), 1.0)
+            except cv2.error:
+                rect = cv2.minAreaRect(contour)
+                w_box, h_box = rect[1]
+                elongation = max(max(w_box, h_box) / (min(w_box, h_box) + 1e-4), 1.0)
+                angle = rect[2]
         else:
             rect = cv2.minAreaRect(contour)
             w_box, h_box = rect[1]
@@ -372,7 +380,7 @@ class SAREngine:
         if not self.model_loaded or self.unet_model is None:
             return self.predict_unet(gray, threshold=threshold)
 
-        if h <= tile_size and w <= tile_size:
+        if h < tile_size or w < tile_size:
             return self.predict_unet(gray, threshold=threshold)
 
         # Build 2D Hann window for smooth tile blending
@@ -384,13 +392,13 @@ class SAREngine:
         weight_accum = np.zeros((h, w), dtype=np.float32)
 
         # Sliding window coordinates
-        y_starts = list(range(0, h - tile_size + 1, stride))
+        y_starts = list(range(0, max(1, h - tile_size + 1), stride))
         if not y_starts or y_starts[-1] + tile_size < h:
-            y_starts.append(h - tile_size)
+            y_starts.append(max(0, h - tile_size))
 
-        x_starts = list(range(0, w - tile_size + 1, stride))
+        x_starts = list(range(0, max(1, w - tile_size + 1), stride))
         if not x_starts or x_starts[-1] + tile_size < w:
-            x_starts.append(w - tile_size)
+            x_starts.append(max(0, w - tile_size))
 
         self.unet_model.eval()
         for y in y_starts:
@@ -494,7 +502,7 @@ class SAREngine:
                 d_east_m = (cx - w / 2.0) * pixel_size_m
                 d_north_m = (h / 2.0 - cy) * pixel_size_m
                 target_lat = center_lat + (d_north_m / 111320.0)
-                target_lon = center_lon + (d_east_m / (111320.0 * math.cos(math.radians(center_lat))))
+                target_lon = center_lon + (d_east_m / (111320.0 * max(1e-4, math.cos(math.radians(center_lat)))))
 
                 # Calculate bounding box & estimated length
                 rect = cv2.minAreaRect(cnt)

@@ -470,7 +470,7 @@ class AISEngine:
         ranked_vessels = []
 
         for v in candidate_vessels:
-            cpa = v["closest_approach"]
+            cpa = v.get("closest_approach") or {}
             raw_dist = cpa.get("distance_nm", 999.0)
             raw_time = cpa.get("time_diff_h", 999.0)
             try:

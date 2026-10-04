@@ -747,6 +747,18 @@ class DriftEngine:
                 estimated_time_to_beach_hours = round(current_t_hours + (dt_sec / 3600.0), 1)
                 beaching_location = {"lat": round(centroid_lat, 5), "lon": round(centroid_lon, 5)}
 
+            # Sector-specific coastline / environmentally sensitive zone threshold check
+            if coastline_lat_threshold is not None and not beaching_detected:
+                crossed = False
+                if coastline_lat_threshold >= current_lat:
+                    crossed = (centroid_lat >= coastline_lat_threshold) or (np.sum(p_lat >= coastline_lat_threshold) > len(p_lat) * 0.25)
+                else:
+                    crossed = (centroid_lat <= coastline_lat_threshold) or (np.sum(p_lat <= coastline_lat_threshold) > len(p_lat) * 0.25)
+                if crossed:
+                    beaching_detected = True
+                    estimated_time_to_beach_hours = round(current_t_hours + (dt_sec / 3600.0), 1)
+                    beaching_location = {"lat": round(centroid_lat, 5), "lon": round(centroid_lon, 5)}
+
             current_t_hours += (dt_sec / 3600.0)
 
         # ADIOS Physical Weathering: Computed when initial_mass_tonnes or oil_profile is provided
@@ -1182,11 +1194,12 @@ class DriftEngine:
             lon = float(slick.get("center_lon", slick.get("lon", 69.0)))
             poly = slick.get("polygon", slick.get("coordinates", []))
             
+            slick_age = float(slick.get("estimated_age_hours", slick.get("target_age_hours", hindcast_hours)))
             hc = self.run_hindcast(
                 initial_lat=lat,
                 initial_lon=lon,
                 current_field=current_field,
-                target_slick_age_hours=hindcast_hours
+                target_slick_age_hours=slick_age
             )
             hindcast_results.append({
                 "spill_index": idx + 1,

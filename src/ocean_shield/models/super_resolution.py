@@ -103,16 +103,26 @@ def enhance_sar_deep_learning(
     if model is None:
         model = load_sar_super_resolution_model(device=device)
 
-    # Normalize image to float32 [0, 1]
-    if image.dtype == np.uint8:
-        norm_img = image.astype(np.float32) / 255.0
-    else:
-        norm_img = image.astype(np.float32)
-        if norm_img.max() > 1.0:
-            norm_img /= 255.0
+    if image is None or getattr(image, "size", 0) == 0:
+        return np.zeros((0, 0), dtype=np.uint8)
 
-    if len(norm_img.shape) == 3:
-        norm_img = norm_img[:, :, 0]
+    if len(image.shape) == 3:
+        img_2d = image[:, :, 0]
+    else:
+        img_2d = image
+
+    # Normalize image to float32 [0, 1]
+    if img_2d.dtype == np.uint8:
+        norm_img = img_2d.astype(np.float32) / 255.0
+    else:
+        norm_img = np.nan_to_num(img_2d.astype(np.float32), nan=0.0)
+        min_v = float(np.min(norm_img))
+        max_v = float(np.max(norm_img))
+        if min_v < 0.0 or max_v > 1.0:
+            if max_v > min_v:
+                norm_img = (norm_img - min_v) / (max_v - min_v)
+            else:
+                norm_img = np.zeros_like(norm_img)
 
     h, w = norm_img.shape
     tensor_in = torch.from_numpy(norm_img).unsqueeze(0).unsqueeze(0).to(device)

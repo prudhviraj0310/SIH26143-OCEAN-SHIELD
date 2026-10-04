@@ -142,14 +142,17 @@ class FalsificationAndAbstentionEngine:
                 "entropy_metrics": entropy_metrics
             }
 
+        top_name = top_cand.get("vessel_name") or top_cand.get("name") or str(top_cand.get("mmsi"))
         # 2. Check for Insufficient Separation Margin
         if len(ranked_candidates) > 1 and margin < cls.MIN_SEPARATION_MARGIN:
+            runner_up = ranked_candidates[1]
+            runner_name = runner_up.get("vessel_name") or runner_up.get("name") or str(runner_up.get("mmsi"))
             return {
                 "decision": "INSUFFICIENT_EVIDENCE",
                 "is_abstention": True,
                 "reason": (
-                    f"Separation margin between top candidate ({top_cand.get('name', top_cand.get('mmsi'))}) "
-                    f"and runner-up ({ranked_candidates[1].get('name', ranked_candidates[1].get('mmsi'))}) is "
+                    f"Separation margin between top candidate ({top_name}) "
+                    f"and runner-up ({runner_name}) is "
                     f"{margin:.2%}, below minimum defensible margin ({cls.MIN_SEPARATION_MARGIN:.0%})."
                 ),
                 "actionable_recommendation": (
@@ -185,7 +188,7 @@ class FalsificationAndAbstentionEngine:
             "decision": decision_label,
             "is_abstention": False,
             "reason": (
-                f"Candidate {top_cand.get('name', top_cand.get('mmsi'))} uniquely satisfies spatio-temporal co-location "
+                f"Candidate {top_name} uniquely satisfies spatio-temporal co-location "
                 f"with posterior priority weight {top_posterior:.1%} and clear separation margin {margin:.1%}."
             ),
             "actionable_recommendation": (
@@ -213,16 +216,24 @@ class FalsificationAndAbstentionEngine:
         3. GPS Position Jitter (+/- 1.0 nm AIS uncertainty)
         4. AIS Integrity / Spoofing Challenge
         """
-        cpa = candidate.get("closest_approach", {})
-        dist_nm = float(cpa.get("distance_nm", 99.0))
-        time_diff_h = float(cpa.get("time_diff_h", 99.0))
+        cpa = candidate.get("closest_approach") or {}
+        raw_dist = cpa.get("distance_nm")
+        raw_time = cpa.get("time_diff_h")
+        try:
+            dist_nm = float(raw_dist) if raw_dist is not None and math.isfinite(float(raw_dist)) else 99.0
+        except (ValueError, TypeError):
+            dist_nm = 99.0
+        try:
+            time_diff_h = float(raw_time) if raw_time is not None and math.isfinite(float(raw_time)) else 99.0
+        except (ValueError, TypeError):
+            time_diff_h = 99.0
 
         challenges = []
         passed_challenges = 0
 
         # Attack 1: Hydrodynamic Current Perturbation (+/- 20%)
         current_displacement_nm = current_speed_knots * cls.CURRENT_VARIATION_STRESS * max(1.0, time_diff_h)
-        c1_survived = (dist_nm - current_displacement_nm) < 3.0
+        c1_survived = (dist_nm + current_displacement_nm) <= 4.0
         challenges.append({
             "challenge_name": "Hydrodynamic Current Perturbation (+/- 20%)",
             "stress_parameter": f"+/-{cls.CURRENT_VARIATION_STRESS*100:.0f}% surface current ({current_speed_knots:.1f} kts)",
@@ -235,7 +246,7 @@ class FalsificationAndAbstentionEngine:
 
         # Attack 2: Wind Leeway Deflection (+/- 1% leeway)
         wind_displacement_nm = wind_speed_knots * 0.01 * max(1.0, time_diff_h)
-        c2_survived = (dist_nm - wind_displacement_nm) < 3.5
+        c2_survived = (dist_nm + wind_displacement_nm) <= 4.5
         challenges.append({
             "challenge_name": "Atmospheric Leeway Perturbation (+/- 1% wind drag)",
             "stress_parameter": f"+/-1.0% wind factor on {wind_speed_knots:.1f} kts wind",
@@ -260,23 +271,29 @@ class FalsificationAndAbstentionEngine:
             passed_challenges += 1
 
         # Attack 4: AIS Spoofing & Continuity Audit
-        spoof_audit = candidate.get("spoofing_audit", {})
-        has_critical_spoofing = spoof_audit.get("spoofing_detected", False) and spoof_audit.get("risk_level") in ["CRITICAL", "HIGH"]
-        c4_survived = not has_critical_spoofing
+        spoof_audit = candidate.get("spoofing_audit") or {}
+        has_anomalies = bool(spoof_audit.get("has_anomalies", False))
+        corridor_blackout = bool(spoof_audit.get("corridor_blackout", False))
+        mmsi_invalid = not bool(spoof_audit.get("mmsi_valid", True))
+        is_compromised = has_anomalies and (corridor_blackout or mmsi_invalid or spoof_audit.get("anomaly_count", 0) > 1)
+        c4_survived = not is_compromised
+        anomalies_list = spoof_audit.get("anomalies_detected") or []
+        flaw_msg = "; ".join(anomalies_list) if anomalies_list else "AIS transponder gaps / speed anomalies present."
         challenges.append({
             "challenge_name": "AIS Continuity & Anti-Spoofing Challenge",
             "stress_parameter": "Speed anomalies, teleportation jumps, MMSI duplication",
             "survived": c4_survived,
-            "rationale": "Vessel trajectory shows verified kinematic continuity." if c4_survived else f"FLAW DETECTED: {spoof_audit.get('summary', 'AIS transponder gaps / speed anomalies present.')}"
+            "rationale": "Vessel trajectory shows verified kinematic continuity." if c4_survived else f"FLAW DETECTED: {flaw_msg}"
         })
         if c4_survived:
             passed_challenges += 1
 
         robustness_score = round((passed_challenges / 4.0) * 100.0, 1)
+        v_name = candidate.get("vessel_name") or candidate.get("name") or "Suspect Vessel"
 
         return {
             "mmsi": candidate.get("mmsi"),
-            "name": candidate.get("name"),
+            "name": v_name,
             "challenges_tested": 4,
             "challenges_passed": passed_challenges,
             "adversarial_robustness_score": robustness_score,
