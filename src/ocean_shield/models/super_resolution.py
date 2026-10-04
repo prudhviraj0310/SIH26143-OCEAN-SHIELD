@@ -78,14 +78,17 @@ def load_sar_super_resolution_model(
                 model_path = p
                 break
 
+    model.weights_loaded = False
+    model.weights_path = None
     if model_path and os.path.exists(model_path):
         try:
             state = torch.load(model_path, map_location=device)
             model.load_state_dict(state)
             model.weights_loaded = True
             model.weights_path = model_path
-        except Exception:
-            pass
+        except Exception as e:
+            model.weights_loaded = False
+            model.weights_path = None
     model.to(device)
     model.eval()
     return model
@@ -125,6 +128,11 @@ def enhance_sar_deep_learning(
                 norm_img = np.zeros_like(norm_img)
 
     h, w = norm_img.shape
+    if not getattr(model, "weights_loaded", False):
+        # Truth in sensing: Untrained random weights are never used for scientific enhancement
+        # Deterministic bicubic interpolation preserves radiometric fidelity
+        return cv2.resize((norm_img * 255.0).astype(np.uint8), (w * 2, h * 2), interpolation=cv2.INTER_CUBIC)
+
     tensor_in = torch.from_numpy(norm_img).unsqueeze(0).unsqueeze(0).to(device)
 
     with torch.no_grad():

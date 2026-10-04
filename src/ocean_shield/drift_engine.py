@@ -413,16 +413,30 @@ class DriftEngine:
             if step == total_steps:
                 break
 
-            # Evaluate 4th-Order Runge-Kutta advection vector
+            # Evaluate 4th-Order Runge-Kutta advection vector at centroid
             u_net, v_net = self._rk4_advection_step(
                 current_field, centroid_lat, centroid_lon, current_t_hours,
                 dt_sec, meters_per_deg_lat, meters_per_deg_lon
             )
 
+            # Spatial velocity gradient for shear deformation across particle cloud
+            d_lat = 0.02
+            u_n, v_n = self._rk4_advection_step(current_field, centroid_lat + d_lat, centroid_lon, current_t_hours, dt_sec, meters_per_deg_lat, meters_per_deg_lon)
+            u_e, v_e = self._rk4_advection_step(current_field, centroid_lat, centroid_lon + d_lat, current_t_hours, dt_sec, meters_per_deg_lat, meters_per_deg_lon)
+            dudy = (u_n - u_net) / d_lat
+            dvdy = (v_n - v_net) / d_lat
+            dudx = (u_e - u_net) / d_lat
+            dvdx = (v_e - v_net) / d_lat
+
+            p_dlat = p_lat - centroid_lat
+            p_dlon = p_lon - centroid_lon
+            u_particles = u_net + (dudx * p_dlon + dudy * p_dlat)
+            v_particles = v_net + (dvdx * p_dlon + dvdy * p_dlat)
+
             prev_p_lat = p_lat.copy()
             prev_p_lon = p_lon.copy()
-            p_lat += (v_net * dt_sec) / meters_per_deg_lat
-            p_lon += (u_net * dt_sec) / meters_per_deg_lon
+            p_lat += (v_particles * dt_sec) / meters_per_deg_lat
+            p_lon += (u_particles * dt_sec) / meters_per_deg_lon
 
             # Coastline boundary clamping: revert particles that drift onto land
             for pi in range(len(p_lat)):
@@ -719,11 +733,25 @@ class DriftEngine:
             if step == total_steps:
                 break
 
-            # Forward advection using 4th-Order Runge-Kutta
+            # Forward advection using 4th-Order Runge-Kutta with spatial shear
             u_net, v_net = self._rk4_advection_step(
                 current_field, centroid_lat, centroid_lon, current_t_hours,
                 dt_sec, meters_per_deg_lat, meters_per_deg_lon
             )
+
+            # Spatial velocity gradient for shear deformation across particle cloud
+            d_lat = 0.02
+            u_n, v_n = self._rk4_advection_step(current_field, centroid_lat + d_lat, centroid_lon, current_t_hours, dt_sec, meters_per_deg_lat, meters_per_deg_lon)
+            u_e, v_e = self._rk4_advection_step(current_field, centroid_lat, centroid_lon + d_lat, current_t_hours, dt_sec, meters_per_deg_lat, meters_per_deg_lon)
+            dudy = (u_n - u_net) / d_lat
+            dvdy = (v_n - v_net) / d_lat
+            dudx = (u_e - u_net) / d_lat
+            dvdx = (v_e - v_net) / d_lat
+
+            p_dlat = p_lat - centroid_lat
+            p_dlon = p_lon - centroid_lon
+            u_particles = u_net + (dudx * p_dlon + dudy * p_dlat)
+            v_particles = v_net + (dvdx * p_dlon + dvdy * p_dlat)
 
             # Stochastic horizontal turbulent diffusion
             sigma_diff = math.sqrt(2.0 * self.diffusion_coeff * dt_sec)
@@ -732,8 +760,8 @@ class DriftEngine:
 
             prev_p_lat = p_lat.copy()
             prev_p_lon = p_lon.copy()
-            p_lat += (v_net * dt_sec + rand_dy) / meters_per_deg_lat
-            p_lon += (u_net * dt_sec + rand_dx) / meters_per_deg_lon
+            p_lat += (v_particles * dt_sec + rand_dy) / meters_per_deg_lat
+            p_lon += (u_particles * dt_sec + rand_dx) / meters_per_deg_lon
 
             # Coastline boundary clamping: revert particles that drift onto land
             beached_count = 0
@@ -847,7 +875,7 @@ class DriftEngine:
         # 3. Mass and volume balance. Water uptake raises emulsion mass, but mass
         # ratio is not volume ratio; use constituent densities explicitly.
         remaining_pure_oil_tonnes = initial_mass_tonnes * (1.0 - f_evap)
-        emulsion_mass_tonnes = remaining_pure_oil_tonnes / max(1.0 - y_w, 0.28)
+        emulsion_mass_tonnes = remaining_pure_oil_tonnes / max(1.0 - y_w, 0.25)
         absorbed_water_tonnes = max(emulsion_mass_tonnes - remaining_pure_oil_tonnes, 0.0)
         oil_density_kg_m3, water_density_kg_m3 = 880.0, 1025.0
         initial_volume_m3 = initial_mass_tonnes * 1000.0 / oil_density_kg_m3

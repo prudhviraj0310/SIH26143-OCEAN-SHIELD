@@ -94,22 +94,28 @@ class FalsificationAndAbstentionEngine:
             }
 
 
-        # Softmax calibration for Bayesian likelihoods
+        # Softmax calibration with explicit unobserved/unknown-source prior hypothesis
         scores = []
         for c in ranked_candidates:
             s_raw = c.get("composite_score", 0.0)
             try:
-                s_val = float(s_raw)
+                s_val = float(s_raw) if s_raw is not None else 0.0
                 if math.isnan(s_val) or math.isinf(s_val) or s_val < 0:
                     s_val = 0.0
             except (ValueError, TypeError):
                 s_val = 0.0
             scores.append(s_val)
 
-        max_s = max(scores) if scores else 0.0
-        exp_scores = [math.exp((s - max_s) / cls.TEMPERATURE) for s in scores]
+        # Baseline score representing an unobserved, dark, or non-vessel hypothesis
+        s_unobserved = 45.0 if unknown_source_hypothesis else 0.0
+        all_eval_scores = list(scores)
+        if len(scores) == 1 and unknown_source_hypothesis:
+            all_eval_scores.append(s_unobserved)
+
+        max_s = max(all_eval_scores) if all_eval_scores else 0.0
+        exp_scores = [math.exp((s - max_s) / cls.TEMPERATURE) for s in all_eval_scores]
         sum_exp = sum(exp_scores)
-        posteriors = [e / sum_exp for e in exp_scores]
+        posteriors = [e / sum_exp for e in exp_scores[:len(scores)]]
 
         for i, c in enumerate(ranked_candidates):
             c["lead_priority_weight"] = round(posteriors[i], 4)
@@ -119,7 +125,12 @@ class FalsificationAndAbstentionEngine:
 
         top_cand = ranked_candidates[0]
         top_posterior = posteriors[0]
-        runner_up_posterior = posteriors[1] if len(posteriors) > 1 else 0.0
+        if len(posteriors) > 1:
+            runner_up_posterior = posteriors[1]
+        elif len(all_eval_scores) > 1:
+            runner_up_posterior = exp_scores[1] / sum_exp
+        else:
+            runner_up_posterior = 0.0
         margin = top_posterior - runner_up_posterior
 
         # 1. Check for High Information Entropy (Uniform Distribution / Ambiguity)
@@ -182,20 +193,31 @@ class FalsificationAndAbstentionEngine:
                 "entropy_metrics": entropy_metrics
             }
 
-        # 4. Valid Lead
-        decision_label = "DEFINITIVE_LEAD" if (top_cand.get("composite_score", 0) >= 80 and margin >= 0.25) else "PROBABLE_LEAD"
+        # 4. Lead attribution conditioned on AIS receiver / satellite coverage validation
+        if not coverage_validated:
+            decision_label = "PROVISIONAL_SCREENING_LEAD"
+            conf_score = min(68.0, round(top_posterior * 100, 1))
+            action_rec = (
+                "Maintain advisory screening hold: AIS satellite/terrestrial receiver coverage is unvalidated. "
+                "Definitive legal attribution withheld pending dark-vessel radar cross-correlation and port bilge audit."
+            )
+        else:
+            decision_label = "DEFINITIVE_LEAD" if (top_cand.get("composite_score", 0) >= 80 and margin >= 0.25) else "PROBABLE_LEAD"
+            conf_score = round(top_posterior * 100, 1)
+            action_rec = (
+                "Issue Maritime Law Enforcement Advisory Notice. Request bunker fuel sampling and ORB audit through competent authority."
+            )
+
         return {
             "decision": decision_label,
             "is_abstention": False,
             "reason": (
-                f"Candidate {top_name} uniquely satisfies spatio-temporal co-location "
-                f"with posterior priority weight {top_posterior:.1%} and clear separation margin {margin:.1%}."
+                f"Candidate {top_name} satisfies spatio-temporal screening corridor "
+                f"with priority weight {top_posterior:.1%} and separation margin {margin:.1%}."
             ),
-            "actionable_recommendation": (
-                "Issue Maritime Law Enforcement Advisory Notice. Request bunker fuel sampling and ORB audit through competent authority."
-            ),
+            "actionable_recommendation": action_rec,
             "leading_candidate_mmsi": top_cand.get("mmsi"),
-            "confidence_score": round(top_posterior * 100, 1),
+            "confidence_score": conf_score,
             "separation_margin": round(margin, 4),
             "entropy_metrics": entropy_metrics
         }
@@ -270,15 +292,21 @@ class FalsificationAndAbstentionEngine:
         if c3_survived:
             passed_challenges += 1
 
-        # Attack 4: AIS Spoofing & Continuity Audit
-        spoof_audit = candidate.get("spoofing_audit") or {}
-        has_anomalies = bool(spoof_audit.get("has_anomalies", False))
-        corridor_blackout = bool(spoof_audit.get("corridor_blackout", False))
-        mmsi_invalid = not bool(spoof_audit.get("mmsi_valid", True))
-        is_compromised = has_anomalies and (corridor_blackout or mmsi_invalid or spoof_audit.get("anomaly_count", 0) > 1)
-        c4_survived = not is_compromised
-        anomalies_list = spoof_audit.get("anomalies_detected") or []
-        flaw_msg = "; ".join(anomalies_list) if anomalies_list else "AIS transponder gaps / speed anomalies present."
+        # Attack 4: AIS Spoofing & Continuity Audit (Hard gate: Telemetry must be present and verified)
+        spoof_audit = candidate.get("spoofing_audit")
+        if not spoof_audit:
+            c4_survived = False
+            flaw_msg = "NOT_ASSESSED: AIS trajectory audit telemetry unavailable for transponder verification."
+        else:
+            has_anomalies = bool(spoof_audit.get("has_anomalies", False))
+            corridor_blackout = bool(spoof_audit.get("corridor_blackout", False))
+            mmsi_invalid = not bool(spoof_audit.get("mmsi_valid", True))
+            anomaly_cnt = spoof_audit.get("anomaly_count", 0)
+            is_compromised = has_anomalies and (corridor_blackout or mmsi_invalid or anomaly_cnt > 1)
+            c4_survived = not is_compromised
+            anomalies_list = spoof_audit.get("anomalies_detected") or []
+            flaw_msg = "; ".join(anomalies_list) if anomalies_list else "AIS transponder gaps / speed anomalies present."
+
         challenges.append({
             "challenge_name": "AIS Continuity & Anti-Spoofing Challenge",
             "stress_parameter": "Speed anomalies, teleportation jumps, MMSI duplication",
@@ -291,12 +319,22 @@ class FalsificationAndAbstentionEngine:
         robustness_score = round((passed_challenges / 4.0) * 100.0, 1)
         v_name = candidate.get("vessel_name") or candidate.get("name") or "Suspect Vessel"
 
+        # Hard Gate: If AIS integrity was breached/unassessed, vessel cannot be certified robust
+        if not c4_survived:
+            final_verdict = "FALSIFICATION_VULNERABLE (AIS_INTEGRITY_COMPROMISED)"
+        elif passed_challenges == 4:
+            final_verdict = "ADVERSARIAL_PHYSICS_ROBUST (SCREENING_GRADE)"
+        elif passed_challenges >= 3:
+            final_verdict = "CIRCUMSTANTIAL_PHYSICS_TOLERANT (SCREENING_GRADE)"
+        else:
+            final_verdict = "FALSIFICATION_VULNERABLE (CIRCUMSTANTIAL)"
+
         return {
             "mmsi": candidate.get("mmsi"),
             "name": v_name,
             "challenges_tested": 4,
             "challenges_passed": passed_challenges,
             "adversarial_robustness_score": robustness_score,
-            "verdict": "FALSIFICATION_RESISTANT (COURT-DEFENSIBLE)" if passed_challenges >= 3 else "FALSIFICATION_VULNERABLE (CIRCUMSTANTIAL)",
+            "verdict": final_verdict,
             "challenges": challenges
         }

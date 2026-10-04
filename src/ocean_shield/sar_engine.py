@@ -86,8 +86,13 @@ class SAREngine:
         """Lazy-load Super-Resolution ESPCN model on first call (saves ~50 MB at startup)."""
         if self._sr_loaded:
             return
-        self._sr_model = load_sar_super_resolution_model(device=str(self.device))
-        self._sr_loaded = True
+        sr = load_sar_super_resolution_model(device=str(self.device))
+        if getattr(sr, "weights_loaded", False):
+            self._sr_model = sr
+            self._sr_loaded = True
+        else:
+            self._sr_model = None
+            self._sr_loaded = False
 
     @property
     def sr_model(self):

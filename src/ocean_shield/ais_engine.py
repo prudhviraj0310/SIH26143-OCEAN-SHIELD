@@ -573,11 +573,14 @@ class AISEngine:
             for v in ranked_vessels:
                 v["abstention_verdict"] = abstention_verdict
                 # Run adversarial stress testing on candidate leads
-                v["adversarial_stress_test"] = FalsificationAndAbstentionEngine.run_adversarial_stress_test(
+                stress_res = FalsificationAndAbstentionEngine.run_adversarial_stress_test(
                     v, origin_lat, origin_lon, current_speed_knots=1.5, wind_speed_knots=12.0
                 )
+                v["adversarial_stress_test"] = stress_res
+                if "AIS_INTEGRITY_COMPROMISED" in stress_res.get("verdict", ""):
+                    v["lead_integrity_warning"] = "AIS transponder blackout or kinematic discontinuity detected under stress testing."
         except Exception as e:
-            pass
+            logger.warning(f"AISEngine: Forensic falsification or stress evaluation exception: {e}")
 
         return ranked_vessels
 
