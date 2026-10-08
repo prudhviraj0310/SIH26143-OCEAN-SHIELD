@@ -39,3 +39,12 @@ reports/benchmark_dossier.pdf
 # SSH Keys and secrets
 *.pem
 *.key
+
+# Internal agent caches and workspace mirrors
+.opencode/
+SIH26143_RESEARCH/
+SIH26175_RESEARCH/
+memory/
+scratch/
+reports/
+test_data/

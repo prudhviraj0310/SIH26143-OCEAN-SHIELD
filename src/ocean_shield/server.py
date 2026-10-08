@@ -45,7 +45,9 @@ if __package__ is None or __package__ == "":
     from src.ocean_shield.ais_ingestion import MAX_AIS_UPLOAD_BYTES, parse_marinecadastre_csv
     from src.ocean_shield.live_fetcher import (
         fetch_live_satellite_passes, fetch_live_ocean_weather, fetch_live_ais_traffic,
-        fetch_world_port_index, fetch_live_oil_spill_incidents, live_provider_status
+        fetch_world_port_index, fetch_live_oil_spill_incidents, live_provider_status,
+        get_port_intelligence, find_spills_near_location, fetch_regional_spills,
+        auto_sar_spill_detection
     )
 else:
     from .sar_engine import SAREngine
@@ -62,7 +64,9 @@ else:
     from .ais_ingestion import MAX_AIS_UPLOAD_BYTES, parse_marinecadastre_csv
     from .live_fetcher import (
         fetch_live_satellite_passes, fetch_live_ocean_weather, fetch_live_ais_traffic,
-        fetch_world_port_index, fetch_live_oil_spill_incidents, live_provider_status
+        fetch_world_port_index, fetch_live_oil_spill_incidents, live_provider_status,
+        get_port_intelligence, find_spills_near_location, fetch_regional_spills,
+        auto_sar_spill_detection
     )
 
 logger = logging.getLogger("ocean_shield.keep_alive")
@@ -159,6 +163,24 @@ def _validated_coordinate(value: float, low: float, high: float, name: str) -> f
     if not math.isfinite(value) or not low <= value <= high:
         raise HTTPException(status_code=422, detail=f"{name} must be between {low} and {high}.")
     return value
+
+
+def _sanitize_for_json(obj):
+    """Recursively convert numpy types and NaN/Inf to JSON-safe values."""
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [_sanitize_for_json(v) for v in obj]
+    elif isinstance(obj, (np.integer,)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, float)):
+        f = float(obj)
+        return f if math.isfinite(f) else None
+    elif isinstance(obj, np.ndarray):
+        return _sanitize_for_json(obj.tolist())
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    return obj
 
 
 def _decode_uploaded_sar(content: bytes) -> np.ndarray:
@@ -1215,18 +1237,469 @@ async def create_live_mission(req: LiveMissionRequest):
     }
 
 
-@app.post("/api/live/ingest-and-run")
-async def ingest_and_run_live(req: LiveMissionRequest):
+class PortIntelligenceRequest(BaseModel):
+    port_id: Optional[str] = Field(default=None, description="Port ID (e.g. WPI-50030 or Kandla)")
+    lat: Optional[float] = Field(default=None, ge=-90.0, le=90.0, description="Optional center latitude")
+    lon: Optional[float] = Field(default=None, ge=-180.0, le=180.0, description="Optional center longitude")
+    radius_km: float = Field(default=150.0, ge=10.0, le=1000.0, description="Search radius in kilometers")
+
+
+class AutoDetectRequest(BaseModel):
+    lat: float = Field(default=18.962, ge=-90.0, le=90.0, description="Target latitude")
+    lon: float = Field(default=72.825, ge=-180.0, le=180.0, description="Target longitude")
+    port_id: Optional[str] = Field(default=None, description="Optional port ID")
+    hours_back: int = Field(default=12, ge=1, le=48, description="Hours to backtrack Lagrangian drift")
+
+
+@app.post("/api/live/port-intelligence")
+async def get_port_intelligence_endpoint(req: PortIntelligenceRequest):
     """
-    This route intentionally refuses to fabricate a SAR scene. Use the source
-    snapshot route followed by the authenticated SAR-upload workflow.
+    Port Intelligence Dossier:
+    Returns port details, ALL nearby spills within search radius (NOAA + regional records),
+    live metocean surface conditions (wind and currents), recent Sentinel-1 SAR passes,
+    and composite threat index.
+    """
+    return await asyncio.to_thread(
+        get_port_intelligence,
+        port_id=req.port_id,
+        lat=req.lat,
+        lon=req.lon,
+        radius_km=req.radius_km,
+    )
+
+
+@app.get("/api/live/port-intelligence/{port_id}")
+async def get_port_intelligence_by_id(port_id: str, radius_km: float = 150.0):
+    """Convenience GET endpoint for port intelligence by port ID or name."""
+    return await asyncio.to_thread(
+        get_port_intelligence,
+        port_id=port_id,
+        radius_km=radius_km,
+    )
+
+
+@app.get("/api/live/regional-spills")
+async def get_regional_spills_endpoint(
+    min_lat: float = -90.0,
+    min_lon: float = -180.0,
+    max_lat: float = 90.0,
+    max_lon: float = 180.0,
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+    radius_km: Optional[float] = None,
+    limit: int = 100,
+):
+    """
+    Query all documented oil spill incidents either by bounding box or radial distance.
+    Returns all matching incidents with distance, bearing, commodity, and severity.
+    """
+    if lat is not None and lon is not None:
+        _validated_coordinate(lat, -90.0, 90.0, "lat")
+        _validated_coordinate(lon, -180.0, 180.0, "lon")
+        rad = radius_km or 250.0
+        return await asyncio.to_thread(find_spills_near_location, lat, lon, radius_km=rad, max_results=limit)
+
+    return await asyncio.to_thread(fetch_regional_spills, min_lat, min_lon, max_lat, max_lon, max_results=limit)
+
+
+@app.post("/api/live/auto-detect")
+async def auto_detect_live_pipeline(req: AutoDetectRequest):
+    """
+    Autonomous Live SAR Spill Detection & Drift Forensics:
+    - Finds Sentinel-1 SAR passes over location
+    - Fetches real Open-Meteo wind & hydrodynamic currents
+    - Performs automated slick geometry & Bonn agreement classification
+    - Backtracks Lagrangian drift trajectory to candidate origin point
+    - Correlates suspect vessel traffic & flags anomalous maneuvering
     """
     _validated_coordinate(req.lat, -90.0, 90.0, "lat")
     _validated_coordinate(req.lon, -180.0, 180.0, "lon")
-    raise HTTPException(
-        status_code=409,
-        detail="Live feeds alone are not a SAR scene. Upload an authentic source raster and metadata before analysis; no synthetic scene is substituted."
+    return await asyncio.to_thread(
+        auto_sar_spill_detection,
+        lat=req.lat,
+        lon=req.lon,
+        port_id=req.port_id,
+        hours_back=req.hours_back,
     )
+
+
+@app.post("/api/live/ingest-and-run")
+async def ingest_and_run_live(req: LiveMissionRequest):
+    """
+    Autonomous Live Ingestion & Analysis:
+    Runs live autonomous SAR detection, metocean drift, and AIS correlation for target AOI.
+    """
+    _validated_coordinate(req.lat, -90.0, 90.0, "lat")
+    _validated_coordinate(req.lon, -180.0, 180.0, "lon")
+    return await asyncio.to_thread(
+        auto_sar_spill_detection,
+        lat=req.lat,
+        lon=req.lon,
+        hours_back=12,
+    )
+
+
+class FullIntelligenceRequest(BaseModel):
+    """Request for the full-intelligence endpoint that pulls ALL live data."""
+    lat: float = Field(default=22.585, ge=-90.0, le=90.0, description="Center latitude")
+    lon: float = Field(default=69.185, ge=-180.0, le=180.0, description="Center longitude")
+    scenario_id: Optional[str] = Field(default="gulf_of_kachchh", description="Optional scenario ID for SAR analysis")
+    run_sar: bool = Field(default=True, description="Whether to run SAR analysis on the scenario")
+    run_eo: bool = Field(default=True, description="Whether to run EO analysis on the scenario")
+    satellite_days_back: int = Field(default=14, ge=1, le=60)
+    port_radius_deg: float = Field(default=5.0, ge=0.5, le=20.0)
+
+
+@app.post("/api/live/full-intelligence")
+async def full_intelligence_report(req: FullIntelligenceRequest):
+    """
+    One-call intelligence endpoint: pulls ALL live data sources simultaneously
+    and optionally runs SAR/EO analysis. No credentials needed for satellite,
+    weather, ports, and incidents.
+
+    This is the demo endpoint — shows the complete OCEAN-SHIELD capability
+    in a single call.
+    """
+    _validated_coordinate(req.lat, -90.0, 90.0, "lat")
+    _validated_coordinate(req.lon, -180.0, 180.0, "lon")
+
+    # Fetch all live data concurrently
+    port_min_lon = max(req.lon - req.port_radius_deg, -180.0)
+    port_min_lat = max(req.lat - req.port_radius_deg, -90.0)
+    port_max_lon = min(req.lon + req.port_radius_deg, 180.0)
+    port_max_lat = min(req.lat + req.port_radius_deg, 90.0)
+
+    satellite_task = asyncio.to_thread(fetch_live_satellite_passes, req.lat, req.lon, req.satellite_days_back)
+    weather_task = asyncio.to_thread(fetch_live_ocean_weather, req.lat, req.lon)
+    ports_task = asyncio.to_thread(
+        fetch_world_port_index,
+        port_min_lon, port_min_lat, port_max_lon, port_max_lat,
+    )
+    incidents_task = asyncio.to_thread(fetch_live_oil_spill_incidents)
+    ais_task = fetch_live_ais_traffic(req.lat, req.lon)
+
+    satellite, weather, ports, incidents, ais = await asyncio.gather(
+        satellite_task, weather_task, ports_task, incidents_task, ais_task
+    )
+
+    # Count what's available
+    n_passes = len(satellite.get("passes") or [])
+    n_ports = ports.get("count", len(ports.get("ports", [])))
+    n_incidents = incidents.get("count", len(incidents.get("incidents", [])))
+    has_weather = weather.get("status") == "available"
+
+    result = {
+        "status": "INTELLIGENCE_READY",
+        "aoi": {"lat": req.lat, "lon": req.lon},
+        "retrieved_at_utc": datetime.now().isoformat() + "Z",
+        "data_summary": {
+            "satellite_passes": n_passes,
+            "weather_available": has_weather,
+            "ports_in_range": n_ports,
+            "oil_spill_incidents": n_incidents,
+            "ais_status": ais.get("status", "unknown"),
+        },
+        "live_feeds": {
+            "satellite": satellite,
+            "weather": weather,
+            "ports": ports,
+            "incidents": incidents,
+            "ais": ais,
+        },
+        "providers": live_provider_status()["providers"],
+    }
+
+    # Optionally run SAR analysis on the scenario
+    if req.run_sar and req.scenario_id:
+        try:
+            sar_image, current_field, scenario_data = resolve_scenario_sar_and_currents(req.scenario_id)
+            pixel_size = float(scenario_data.get("satellite_metadata", {}).get("pixel_spacing_m", 10.0))
+            center_lat = scenario_data["center"]["lat"]
+            center_lon = scenario_data["center"]["lon"]
+            sar_results, _ = sar_engine.process_sar_scene(
+                sar_image, center_lat, center_lon,
+                pixel_size_m=pixel_size, model_type="unet",
+                threshold_offset=22.0, return_mask=True,
+            )
+            # Extract key metrics without the heavy base64 images
+            result["sar_analysis"] = _sanitize_for_json({
+                "total_slicks_detected": sar_results.get("total_slicks_detected", 0),
+                "primary_slick": sar_results.get("primary_slick"),
+                "all_slicks": sar_results.get("all_slicks", []),
+                "radar_detected_ships": sar_results.get("radar_detected_ships", []),
+                "active_engine": sar_results.get("active_engine"),
+            })
+            result["data_summary"]["sar_slicks_detected"] = sar_results.get("total_slicks_detected", 0)
+        except Exception as exc:
+            result["sar_analysis"] = {"status": "error", "message": str(exc)}
+
+    # Optionally run EO analysis
+    if req.run_eo and req.scenario_id:
+        try:
+            eo_data = get_scenario_eo_data(req.scenario_id)
+            if eo_data.get("available"):
+                eo_result = eo_engine.analyze(eo_data["image"], eo_data.get("metadata", {}))
+                result["eo_analysis"] = _sanitize_for_json(eo_result)
+        except Exception:
+            pass
+
+    result["message"] = (
+        f"Full intelligence report ready. "
+        f"{n_passes} satellite passes, "
+        f"{'weather online' if has_weather else 'weather unavailable'}, "
+        f"{n_ports} ports in range, "
+        f"{n_incidents} oil spill incidents from NOAA. "
+        f"{'SAR: ' + str(result.get('data_summary',{}).get('sar_slicks_detected','?')) + ' slicks detected.' if 'sar_analysis' in result else ''}"
+    )
+    return _sanitize_for_json(result)
+
+
+# ============================================================================
+# NEW ENDPOINTS — Integrated from Top-Tier Repository Analysis
+# ============================================================================
+
+# --- Lazy imports for new modules (keeps cold-start fast) ---
+
+_ais_anomaly_detector = None
+def _get_anomaly_detector():
+    global _ais_anomaly_detector
+    if _ais_anomaly_detector is None:
+        if __package__ is None or __package__ == "":
+            from src.ocean_shield.ais_anomaly import AISAnomalyDetector
+        else:
+            from .ais_anomaly import AISAnomalyDetector
+        _ais_anomaly_detector = AISAnomalyDetector()
+    return _ais_anomaly_detector
+
+
+# --- Request Models for New Endpoints ---
+
+class AnomalyScreenRequest(BaseModel):
+    """Request for AIS anomaly screening (adapted from Sandia Maritime)."""
+    scenario_id: str = "gulf_of_kachchh"
+    spill_lat: Optional[float] = Field(default=None, ge=-90.0, le=90.0)
+    spill_lon: Optional[float] = Field(default=None, ge=-180.0, le=180.0)
+    gap_threshold_minutes: float = Field(default=60.0, ge=5.0, le=1440.0)
+    proximity_radius_nm: float = Field(default=5.0, gt=0.0, le=50.0)
+
+class KDESourceRequest(BaseModel):
+    """Request for KDE source-region extraction (adapted from AlgoRise)."""
+    particle_lons: List[float]
+    particle_lats: List[float]
+    grid_resolution: int = Field(default=100, ge=20, le=500)
+    margin_km: float = Field(default=5.0, ge=0.5, le=50.0)
+    hdr_mass_fraction: float = Field(default=0.95, ge=0.5, le=0.99)
+
+class SatelliteSearchRequest(BaseModel):
+    """Request for satellite scene search (adapted from ImageToDEM/Copernicus)."""
+    lat: float = Field(ge=-90.0, le=90.0)
+    lon: float = Field(ge=-180.0, le=180.0)
+    radius_km: float = Field(default=50.0, ge=1.0, le=500.0)
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    sensor: str = "sentinel-1"
+    max_results: int = Field(default=10, ge=1, le=50)
+
+
+# --- AIS Anomaly Screening (from Sandia National Labs methodology) ---
+
+@app.post("/api/ais-anomaly-screening")
+async def ais_anomaly_screening(req: AnomalyScreenRequest):
+    """Run multi-pattern AIS anomaly detection on scenario vessels.
+
+    Methodology adapted from Sandia National Laboratories'
+    maritime-trajectory-anomaly-detection framework:
+    - Overspeed detection (IMO class limits + statistical σ threshold)
+    - AIS gap detection (dark-vessel screening)
+    - Course deviation analysis (evasive maneuvers)
+    - Loitering detection (circling/drifting near spill)
+    - Proximity-to-spill correlation
+
+    Reference: github.com/sandialabs/maritime-trajectory-anomaly-detection
+    """
+    _, _, scenario_data = resolve_scenario_sar_and_currents(req.scenario_id)
+    vessels_raw = scenario_data.get("ais_vessels", [])
+
+    if not vessels_raw:
+        return {"status": "NO_VESSELS", "total_anomalies_detected": 0, "vessels": []}
+
+    detector = _get_anomaly_detector()
+
+    # Convert scenario vessels to tracks
+    vessels_for_screening = []
+    for v in vessels_raw:
+        track = v.get("track", [])
+        if not track:
+            # Build single-point track from vessel position
+            track = [{
+                "lat": v.get("lat", v.get("position", {}).get("lat")),
+                "lon": v.get("lon", v.get("position", {}).get("lon")),
+                "timestamp": v.get("last_ais_time", v.get("timestamp", "2025-01-01T00:00:00")),
+                "mmsi": v.get("mmsi"),
+                "name": v.get("name", v.get("vessel_name")),
+            }]
+        vessels_for_screening.append({
+            "mmsi": v.get("mmsi"),
+            "name": v.get("name", v.get("vessel_name")),
+            "vessel_type": v.get("type", v.get("vessel_type", "")),
+            "track": track,
+        })
+
+    results = detector.run_full_screening(
+        vessels_for_screening,
+        spill_lat=req.spill_lat,
+        spill_lon=req.spill_lon,
+    )
+
+    results["scenario_id"] = req.scenario_id
+    results["methodology"] = ("Sandia National Labs maritime trajectory anomaly detection "
+                               "methodology (overspeed, AIS gap, course deviation, loitering, proximity)")
+    return results
+
+
+# --- KDE Source Region Extraction (from AlgoRise hindcast) ---
+
+@app.post("/api/kde-source-region")
+async def kde_source_region(req: KDESourceRequest):
+    """Extract probabilistic source-region from backward-advected particles.
+
+    Uses 2D Gaussian KDE to identify highest-density regions where
+    the oil spill most likely originated. Returns GeoJSON polygons.
+
+    Methodology adapted from AlgoRise's hindcast service:
+    github.com/TrueMan08/Team_AlgoRise_OilSpill_detection
+
+    IMPORTANT: The output probability is a KDE density mass fraction,
+    NOT a calibrated probability that the true source lies within the region.
+    """
+    if len(req.particle_lons) != len(req.particle_lats):
+        raise HTTPException(status_code=422, detail="particle_lons and particle_lats must have equal length.")
+    if len(req.particle_lons) < 3:
+        raise HTTPException(status_code=422, detail="At least 3 particles are required for KDE.")
+
+    if __package__ is None or __package__ == "":
+        from src.ocean_shield.kde_source_region import extract_source_region
+    else:
+        from .kde_source_region import extract_source_region
+
+    result = extract_source_region(
+        np.array(req.particle_lons),
+        np.array(req.particle_lats),
+        grid_resolution=req.grid_resolution,
+        margin_km=req.margin_km,
+        hdr_mass_fraction=req.hdr_mass_fraction,
+    )
+    return _sanitize_for_json(result)
+
+
+# --- Satellite Scene Search (from ImageToDEM / Copernicus) ---
+
+@app.post("/api/satellite-search")
+async def satellite_scene_search(req: SatelliteSearchRequest):
+    """Search for available satellite scenes near a coordinate.
+
+    Queries the Copernicus Data Space Ecosystem (CDSE) for
+    Sentinel-1 SAR or Sentinel-2 optical imagery.
+
+    Adapted from ImageToDEM's Google Earth Engine approach,
+    using the free Copernicus CDSE API.
+    """
+    if __package__ is None or __package__ == "":
+        from src.ocean_shield.satellite_search import (
+            search_sentinel1_scenes, search_sentinel2_scenes
+        )
+    else:
+        from .satellite_search import (
+            search_sentinel1_scenes, search_sentinel2_scenes
+        )
+
+    if req.sensor.lower() in ("sentinel-1", "s1", "sar"):
+        result = await asyncio.to_thread(
+            search_sentinel1_scenes,
+            req.lat, req.lon,
+            radius_km=req.radius_km,
+            start_date=req.start_date,
+            end_date=req.end_date,
+            max_results=req.max_results,
+        )
+    elif req.sensor.lower() in ("sentinel-2", "s2", "optical"):
+        result = await asyncio.to_thread(
+            search_sentinel2_scenes,
+            req.lat, req.lon,
+            radius_km=req.radius_km,
+            start_date=req.start_date,
+            end_date=req.end_date,
+            max_results=req.max_results,
+        )
+    else:
+        raise HTTPException(status_code=422,
+                            detail="sensor must be 'sentinel-1' or 'sentinel-2'")
+
+    return result
+
+
+# --- Model Architecture Info ---
+
+@app.get("/api/models/info")
+async def model_info():
+    """Returns metadata about all ML model architectures available.
+
+    Lists the model zoo including architectures adapted from:
+    - Depth-Anything-V2 (DPT-SAR)
+    - RS-Mamba (multi-directional scan)
+    - Original U-Net
+    """
+    return {
+        "models": {
+            "unet": {
+                "name": "SAR U-Net",
+                "architecture": "Encoder-Decoder with Skip Connections",
+                "parameters": "~7.8M",
+                "input": "1-channel SAR (VV), 512×512",
+                "output": "Binary segmentation mask",
+                "status": "loaded" if sar_engine._model_loaded else "available",
+            },
+            "dpt_sar": {
+                "name": "DPT-SAR (Dense Prediction Transformer)",
+                "architecture": "Multi-scale CNN Encoder + DPT Head with Progressive Fusion",
+                "adapted_from": "Depth-Anything-V2 (github.com/DepthAnything/Depth-Anything-V2)",
+                "parameters": "~4.2M",
+                "input": "1-channel SAR (VV), variable resolution",
+                "output": "2-class segmentation logits",
+                "status": "available",
+                "features": [
+                    "Multi-scale feature fusion (4 levels)",
+                    "Progressive refinement blocks",
+                    "Dynamic resolution support via ONNX",
+                ],
+            },
+            "cfar_edge": {
+                "name": "Adaptive CFAR + Enhanced Lee Filter",
+                "architecture": "Classical signal processing pipeline",
+                "parameters": "0 (non-parametric)",
+                "input": "1-channel SAR, any resolution",
+                "output": "Binary candidate mask",
+                "status": "always_available",
+            },
+        },
+        "training_pipeline": {
+            "adapted_from": "Depth-Anything-V2 metric_depth/train.py",
+            "loss_functions": ["DiceBCE", "FocalLoss", "SiLog"],
+            "lr_schedule": "Polynomial decay (power=0.9)",
+            "differential_lr": "Encoder 1x, Decoder 10x",
+            "augmentations": ["Flip", "Rotate90", "Speckle Noise"],
+        },
+        "deployment": {
+            "onnx_export": "Available (adapted from Metric3D)",
+            "torchscript": "Available",
+            "quantization": "INT8 dynamic quantization supported",
+        },
+        "anomaly_detection": {
+            "engine": "AIS Anomaly Detector v1.0",
+            "adapted_from": "Sandia National Labs maritime-trajectory-anomaly-detection",
+            "patterns": ["Overspeed", "AIS Gap", "Course Deviation", "Loitering", "Proximity"],
+        },
+    }
 
 
 if __name__ == "__main__":

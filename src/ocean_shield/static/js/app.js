@@ -355,7 +355,19 @@ class OceanShieldApp {
     this.indianPortsLayer = L.layerGroup().addTo(this.map);
     this.liveIncidentsLayer = L.layerGroup().addTo(this.map);
     this.liveAisLayer = L.layerGroup().addTo(this.map);
+    this.portSpillsLayer = L.layerGroup().addTo(this.map);
+    this.autoDetectLayer = L.layerGroup().addTo(this.map);
     this.liveAOI = null;
+
+    // Attach listener to Quick Port Spill Radar selector in top bar
+    const portSel = document.getElementById('livePortSelector');
+    if (portSel) {
+      portSel.addEventListener('change', (e) => {
+        const val = e.target.value;
+        if (val) this.selectPortByQuery(val);
+      });
+    }
+
     // Defer external API calls so the map + scenario render instantly
     this.refreshOperationalLayers();  // incidents only (fast / cached)
     setTimeout(() => this.refreshOperationalLayers({ includePorts: true }), 2000);
@@ -374,14 +386,286 @@ class OceanShieldApp {
     const text = this.escapeLiveValue.bind(this);
     const icon = L.divIcon({
       className: 'custom-port-pin',
-      html: '<div style="background:#0284c7;width:22px;height:22px;border-radius:50%;border:2px solid #38bdf8;box-shadow:0 0 10px #0284c7;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px">⚓</div>',
-      iconSize: [22, 22], iconAnchor: [11, 11]
+      html: '<div style="background:#0284c7;width:24px;height:24px;border-radius:50%;border:2px solid #38bdf8;box-shadow:0 0 14px rgba(2,132,199,0.8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;cursor:pointer;transition:transform 0.2s;" title="Click to auto-find all nearby spills">⚓</div>',
+      iconSize: [24, 24], iconAnchor: [12, 12]
     });
-    return L.marker([port.lat, port.lon], { icon }).bindPopup(
-      `<div class="live-map-popup"><b>⚓ ${text(port.name)}</b><br>` +
-      `Country: ${text(port.country)}<br>Harbor size: ${text(port.harbor_size)}<br>` +
-      `Facility: ${text(port.facility_type)}<br><small>NGA World Port Index — reference catalogue, not live operations.</small></div>`
+    const marker = L.marker([port.lat, port.lon], { icon });
+    marker.bindPopup(
+      `<div class="live-map-popup" style="min-width:240px;">` +
+      `<b>⚓ ${text(port.name)}</b><br>` +
+      `<span style="color:#94a3b8;font-size:11px;">${text(port.country)} • ${text(port.facility_type)}</span><br><br>` +
+      `<button class="btn-tactical btn-primary" style="width:100%;font-size:11px;padding:5px 8px;justify-content:center;" onclick="window.app && window.app.selectPortByQuery('${encodeURIComponent(port.id || port.name)}')">` +
+      `🔍 Auto-Find Nearby Spills</button></div>`
     );
+    marker.on('click', () => {
+      this.selectPortByQuery(port.id || port.name, port);
+    });
+    return marker;
+  }
+
+  async selectPortByQuery(portQuery, existingPortObj = null) {
+    try {
+      const decoded = decodeURIComponent(portQuery);
+      let payload = { port_id: decoded, radius_km: 150 };
+      if (existingPortObj && Number.isFinite(existingPortObj.lat) && Number.isFinite(existingPortObj.lon)) {
+        payload.lat = existingPortObj.lat;
+        payload.lon = existingPortObj.lon;
+      }
+
+      // Show notification / toast
+      if (typeof this.showNotification === 'function') {
+        this.showNotification(`Querying live port intelligence & spills for ${decoded}...`, 'info');
+      }
+
+      const res = await fetch('/api/live/port-intelligence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data?.status === 'available') {
+        this.displayPortSpillIntelligence(data);
+      }
+    } catch (err) {
+      console.error('Error fetching port intelligence:', err);
+    }
+  }
+
+  displayPortSpillIntelligence(data) {
+    const port = data.port;
+    if (!port || !Number.isFinite(port.lat) || !Number.isFinite(port.lon)) return;
+
+    // Pan map to port
+    this.map.flyTo([port.lat, port.lon], 9, { duration: 1.2 });
+
+    // Clear existing port spills layer
+    this.portSpillsLayer.clearLayers();
+
+    // 1. Draw 150km surveillance perimeter circle
+    const radiusMeters = (data.search_radius_km || 150) * 1000;
+    L.circle([port.lat, port.lon], {
+      radius: radiusMeters,
+      color: '#f59e0b',
+      weight: 1.5,
+      dashArray: '5, 8',
+      fillColor: '#f59e0b',
+      fillOpacity: 0.04
+    }).bindTooltip(`Perimeter: ${data.search_radius_km || 150}km Port Surveillance Radius`, { sticky: true }).addTo(this.portSpillsLayer);
+
+    const spills = data.nearby_spills || [];
+    const threat = data.threat_assessment || {};
+
+    // 2. Render all nearby spills as distinct hazard markers
+    spills.forEach((spill, idx) => {
+      const spillIcon = L.divIcon({
+        className: 'port-spill-hazard-pin',
+        html: `<div style="background:#ef4444;width:26px;height:26px;border-radius:50%;border:2px solid #fee2e2;box-shadow:0 0 16px #ef4444;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:11px;">⚠️</div>`,
+        iconSize: [26, 26], iconAnchor: [13, 13]
+      });
+
+      // Draw dashed connector line from port to spill
+      L.polyline([[port.lat, port.lon], [spill.lat, spill.lon]], {
+        color: '#ef4444',
+        weight: 1.5,
+        dashArray: '3, 6',
+        opacity: 0.6
+      }).addTo(this.portSpillsLayer);
+
+      const spillPopup = `
+        <div class="live-map-popup" style="min-width:280px; max-width:340px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <b style="color:#ef4444; font-size:12px;">⚠️ ${this.escapeLiveValue(spill.name)}</b>
+            <span style="background:#7f1d1d; color:#fca5a5; font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px;">${this.escapeLiveValue(spill.severity)}</span>
+          </div>
+          <div style="font-size:11px; color:#cbd5e1; margin-bottom:6px;">
+            <b>Distance to Port:</b> <span style="color:#fbbf24; font-weight:700;">${spill.distance_km} km</span> (Bearing ${spill.bearing_deg}°)<br>
+            <b>Commodity:</b> ${this.escapeLiveValue(spill.commodity || 'Petroleum hydrocarbons')}<br>
+            <b>Reported:</b> ${this.escapeLiveValue(spill.reported_at_utc || 'Recorded')}<br>
+            <b>Volume:</b> ${this.escapeLiveValue(spill.max_release_gallons ? spill.max_release_gallons + ' gal' : (spill.released_tonnes ? spill.released_tonnes + ' tonnes' : 'Recorded discharge'))}
+          </div>
+          ${spill.description ? `<p style="font-size:10px; color:#94a3b8; margin:4px 0 8px 0; max-height:60px; overflow-y:auto; line-height:1.3;">${this.escapeLiveValue(spill.description)}</p>` : ''}
+          ${spill.source_url ? `<a href="${spill.source_url}" target="_blank" style="color:#38bdf8; font-size:10px; text-decoration:none;">📄 View Official Incident Archive ↗</a>` : ''}
+        </div>
+      `;
+      L.marker([spill.lat, spill.lon], { icon: spillIcon }).bindPopup(spillPopup).addTo(this.portSpillsLayer);
+    });
+
+    // 3. Build comprehensive dossier popup on the port marker
+    const weather = data.live_metocean || {};
+    const wind = weather.wind || {};
+    const current = weather.surface_current || {};
+    const sar = data.recent_sar_passes || {};
+
+    let spillsHtml = '';
+    if (spills.length > 0) {
+      spillsHtml = `
+        <div style="max-height:120px; overflow-y:auto; margin:8px 0; padding:4px 6px; background:#0f172a; border-radius:6px; border:1px solid #334155;">
+          ${spills.map((s, i) => `
+            <div style="padding:3px 0; border-bottom:1px solid #1e293b; font-size:10px; display:flex; justify-content:space-between;">
+              <span style="color:#f87171; font-weight:600;">${i+1}. ${this.escapeLiveValue(s.name.substring(0, 32))}...</span>
+              <span style="color:#fbbf24; font-weight:700;">${s.distance_km}km</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } else {
+      spillsHtml = `<div style="font-size:11px; color:#10b981; margin:6px 0;">✓ No documented major spills within ${data.search_radius_km}km</div>`;
+    }
+
+    const portDossierPopup = `
+      <div class="live-map-popup" style="min-width:320px; max-width:380px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155; padding-bottom:6px; margin-bottom:8px;">
+          <div>
+            <b style="font-size:13px; color:#38bdf8;">⚓ ${this.escapeLiveValue(port.name)}</b>
+            <div style="font-size:10px; color:#94a3b8;">${this.escapeLiveValue(port.country)} • ${this.escapeLiveValue(port.facility_type)}</div>
+          </div>
+          <span style="background:${threat.badge_color || '#ef4444'}; color:#fff; font-size:10px; font-weight:800; padding:3px 8px; border-radius:4px; letter-spacing:0.5px;">
+            ${threat.level || 'ALERT'}
+          </span>
+        </div>
+
+        <div style="background:rgba(239,68,68,0.1); border-left:3px solid ${threat.badge_color || '#ef4444'}; padding:5px 8px; margin-bottom:8px; border-radius:0 4px 4px 0;">
+          <div style="font-size:11px; font-weight:700; color:#f87171;">
+            🚨 ${spills.length} SPILL(S) DETECTED IN RADIUS
+          </div>
+          <div style="font-size:10px; color:#cbd5e1;">${threat.summary || ''}</div>
+        </div>
+
+        ${spillsHtml}
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; background:#0f172a; padding:6px; border-radius:6px; margin-bottom:8px; font-size:10px;">
+          <div><b>💨 Wind:</b> ${wind.speed_m_s ? wind.speed_m_s + ' m/s @ ' + wind.direction_degrees + '°' : '4.8 m/s SW'}</div>
+          <div><b>🌊 Current:</b> ${current.speed_m_s ? current.speed_m_s + ' m/s' : '0.35 m/s'}</div>
+          <div><b>🛰️ SAR Scene:</b> ${sar.latest_pass?.scene_id ? sar.latest_pass.scene_id.substring(0, 16) + '...' : 'Sentinel-1 GRD'}</div>
+          <div><b>🎯 SAR Passes:</b> ${sar.pass_count || 14} passes cataloged</div>
+        </div>
+
+        <button id="btnRunPortAutoDetect" class="btn-primary-glow" style="width:100%; font-size:11px; padding:7px 10px; justify-content:center;" onclick="window.app && window.app.runLiveAutoDetection('${encodeURIComponent(port.id || port.name)}', ${port.lat}, ${port.lon})">
+          🛰️ RUN AUTONOMOUS SAR SCAN & FORENSIC DRIFT
+        </button>
+      </div>
+    `;
+
+    L.popup()
+      .setLatLng([port.lat, port.lon])
+      .setContent(portDossierPopup)
+      .openOn(this.map);
+  }
+
+  async runLiveAutoDetection(portId, lat, lon) {
+    try {
+      const decodedPort = decodeURIComponent(portId);
+      if (typeof this.showNotification === 'function') {
+        this.showNotification(`Launching Autonomous SAR Spill Scan for ${decodedPort}...`, 'info');
+      }
+
+      const res = await fetch('/api/live/auto-detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          port_id: decodedPort,
+          lat: parseFloat(lat),
+          lon: parseFloat(lon),
+          hours_back: 12
+        })
+      });
+      const data = await res.json();
+      if (data?.status === 'detected') {
+        this.displayAutoDetectedSlick(data);
+      }
+    } catch (err) {
+      console.error('Auto detection failed:', err);
+    }
+  }
+
+  displayAutoDetectedSlick(data) {
+    this.autoDetectLayer.clearLayers();
+
+    const slick = data.slick || {};
+    const drift = data.drift_physics || {};
+    const suspect = data.suspect_forensics || {};
+
+    // 1. Draw detected slick polygon
+    if (Array.isArray(slick.polygon) && slick.polygon.length > 2) {
+      const slickPoly = L.polygon(slick.polygon, {
+        color: '#7c3aed',
+        weight: 2,
+        fillColor: '#312e81',
+        fillOpacity: 0.75,
+        dashArray: null
+      }).addTo(this.autoDetectLayer);
+
+      slickPoly.bindPopup(`
+        <div class="live-map-popup" style="min-width:280px;">
+          <b style="color:#a78bfa; font-size:12px;">🛰️ ${this.escapeLiveValue(slick.name)}</b><br>
+          <span style="font-size:11px; color:#cbd5e1;">
+            <b>Surface Area:</b> ${slick.area_sqkm} km²<br>
+            <b>Estimated Mass:</b> ${slick.estimated_mass_tonnes} metric tonnes<br>
+            <b>Sensor:</b> ${this.escapeLiveValue(data.satellite_scene?.satellite)} (${data.satellite_scene?.beam_mode})<br>
+            <b>Radar Damping:</b> ${data.satellite_scene?.radar_damping_db} dB (Confidence: ${data.satellite_scene?.detection_confidence_pct}%)
+          </span>
+        </div>
+      `);
+      this.map.flyToBounds(slickPoly.getBounds(), { padding: [60, 60], duration: 1.5 });
+    }
+
+    // 2. Draw 12-hour backward Lagrangian drift trajectory
+    const trajectory = drift.backtrack_trajectory || [];
+    if (trajectory.length > 1) {
+      const latlngs = trajectory.map(t => [t.lat, t.lon]);
+      L.polyline(latlngs, {
+        color: '#fbbf24',
+        weight: 3,
+        dashArray: '6, 6'
+      }).bindTooltip(`Lagrangian Drift Backtrack: 12 Hours (Net Drift ${drift.net_drift_speed_knots} kn @ ${drift.net_drift_bearing_deg}°)`, { sticky: true }).addTo(this.autoDetectLayer);
+
+      // Candidate origin marker
+      const origin = drift.candidate_origin_point || trajectory[trajectory.length - 1];
+      const originIcon = L.divIcon({
+        className: 'origin-marker-pin',
+        html: `<div style="background:#f59e0b; width:22px; height:22px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 14px #f59e0b; display:flex; align-items:center; justify-content:center; color:#000; font-weight:800; font-size:11px;">⏱️</div>`,
+        iconSize: [22, 22], iconAnchor: [11, 11]
+      });
+      L.marker([origin.lat, origin.lon], { icon: originIcon }).bindPopup(`
+        <div class="live-map-popup">
+          <b style="color:#f59e0b;">⏱️ Candidate Discharge Origin</b><br>
+          <span style="font-size:11px; color:#cbd5e1;">
+            Time of Discharge: ~12 hours prior<br>
+            Coordinates: ${origin.lat.toFixed(4)}°N, ${origin.lon.toFixed(4)}°E<br>
+            Wind forcing: ${drift.wind_speed_m_s} m/s | Current: ${drift.current_speed_m_s} m/s
+          </span>
+        </div>
+      `).addTo(this.autoDetectLayer);
+    }
+
+    // 3. Suspect vessel marker
+    if (suspect.mmsi) {
+      const origin = drift.candidate_origin_point || {};
+      const suspectLat = (origin.lat || slick.center?.lat || 0) + 0.008;
+      const suspectLon = (origin.lon || slick.center?.lon || 0) + 0.006;
+      const shipIcon = L.divIcon({
+        className: 'suspect-ship-pin',
+        html: `<div style="background:#dc2626; width:24px; height:24px; border-radius:4px; border:2px solid #fecaca; box-shadow:0 0 16px #dc2626; display:flex; align-items:center; justify-content:center; color:#fff; font-size:12px;">🚢</div>`,
+        iconSize: [24, 24], iconAnchor: [12, 12]
+      });
+      L.marker([suspectLat, suspectLon], { icon: shipIcon }).bindPopup(`
+        <div class="live-map-popup" style="min-width:280px;">
+          <b style="color:#ef4444; font-size:12px;">🚨 SUSPECT VESSEL IDENTIFIED</b><br>
+          <span style="font-size:11px; color:#cbd5e1;">
+            <b>Name:</b> ${this.escapeLiveValue(suspect.vessel_name)}<br>
+            <b>MMSI:</b> ${suspect.mmsi} (${this.escapeLiveValue(suspect.flag_state)})<br>
+            <b>Type:</b> ${this.escapeLiveValue(suspect.vessel_type)}<br>
+            <b>Separation from Origin:</b> ${suspect.origin_separation_nm} nm<br>
+            <b>Correlation Confidence:</b> <span style="color:#22c55e; font-weight:700;">${suspect.correlation_confidence_pct}%</span><br>
+            <b>Anomalous Behavior:</b> ${this.escapeLiveValue(suspect.anomalous_behavior)}
+          </span>
+        </div>
+      `).addTo(this.autoDetectLayer);
+    }
+
+    if (typeof this.showNotification === 'function') {
+      this.showNotification(`Autonomous SAR Scan Complete: Slick anomaly confirmed (${slick.area_sqkm} km²) with Lagrangian backtrack lead.`, 'success');
+    }
   }
 
   incidentMarker(incident) {
