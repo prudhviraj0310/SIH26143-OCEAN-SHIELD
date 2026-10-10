@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="/static/vendor/leaflet.css">
   
   <!-- Custom Modern C2 Dashboard CSS -->
-  <link rel="stylesheet" href="/static/css/dashboard.css?v=6.2">
+  <link rel="stylesheet" href="/static/css/dashboard.css?v=6.3">
 </head>
 <body class="theme-c2 mode-simple">
 
@@ -190,12 +190,15 @@
           <span class="nib-tag">CYCLONIC</span>
         </button>
       </div>
-      <div class="nib-telemetry-cluster">
-        <span class="nib-telemetry-divider"></span>
-        <span class="nib-telemetry-tag" id="hudSectorName">Gulf of Kachchh</span>
-        <span class="nib-telemetry-item font-mono" id="hudCoords">22.5850° N, 69.1850° E</span>
-        <span class="nib-telemetry-badge cyan font-mono">1,000 PARTICLES</span>
-      </div>
+    </div>
+
+    <!-- Dedicated Tactical GIS Coordinates & Swarm HUD (Bottom-Right) -->
+    <div class="map-hud-telemetry" id="mapHudTelemetry">
+      <span class="mht-tag" id="hudSectorName">Gulf of Kachchh</span>
+      <span class="mht-divider"></span>
+      <span class="mht-coords font-mono" id="hudCoords">22.5850° N, 69.1850° E</span>
+      <span class="mht-divider"></span>
+      <span class="mht-badge cyan font-mono">1,000 PARTICLES</span>
     </div>
 
     <!-- Interactive Guided SIH Judge Demo Cockpit (DepthWizard Studio Parity) -->
@@ -247,7 +250,6 @@
         </div>
         <button id="btnJdNext" class="btn-jd-nav btn-jd-next">Next Stage &rarr;</button>
       </div>
-    </div>
     </div>
 
     <!-- FLOATING VISUAL MAP GUIDE & SYMBOL KEY (Expands on Hover / Click) -->
@@ -1841,6 +1843,6 @@ variables:
 
   <!-- Leaflet & App Scripts -->
   <script src="/static/vendor/leaflet.js"></script>
-  <script src="/static/js/app.js?v=6.2.0"></script>
+  <script src="/static/js/app.js?v=6.3.0"></script>
 </body>
 </html>
