@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="/static/vendor/leaflet.css">
   
   <!-- Custom Modern C2 Dashboard CSS -->
-  <link rel="stylesheet" href="/static/css/dashboard.css?v=5.1">
+  <link rel="stylesheet" href="/static/css/dashboard.css?v=6.2">
 </head>
 <body class="theme-c2 mode-simple">
 
@@ -30,7 +30,7 @@
 
   <!-- Top Tactical Command Navigation Bar -->
   <header class="top-nav">
-    <!-- Brand / Insignia -->
+    <!-- Brand / Insignia (Left) -->
     <div class="brand-section">
       <div class="icg-insignia" title="Independent research prototype; no agency affiliation or certification claimed">
         <svg viewBox="0 0 24 24" class="radar-shield-icon">
@@ -45,45 +45,39 @@
         </div>
         <div class="brand-sub">INDEPENDENT RESEARCH &bull; NOT CERTIFIED</div>
       </div>
-    </div>
 
-    <!-- Incident Case Queue Badge (AlgoRise Stitch Header Pattern) -->
-    <div class="incident-case-capsule" id="incidentCaseCapsule" title="Operational Case Docket">
-      <span class="incident-pulse-dot"></span>
-      <div class="incident-meta-text">
-        <div class="incident-id-row">
-          <span class="incident-prefix">CASE</span>
-          <span class="incident-id font-mono" id="incidentCaseId">#OS-2026-0904</span>
-        </div>
-        <span class="incident-status" id="incidentCaseStatus">ACTIVE C2 SCREENING</span>
+      <!-- Compact Incident Case Badge -->
+      <div class="incident-case-capsule" id="incidentCaseCapsule" title="Operational Case Docket">
+        <span class="incident-pulse-dot"></span>
+        <span class="incident-id font-mono" id="incidentCaseId">#OS-KACHCHH</span>
       </div>
     </div>
 
-    <!-- Central Interactive Pipeline Stepper (Full 5-Stage Closed-Loop) -->
+    <!-- Central Interactive Pipeline Stepper (Compact 5-Stage Closed-Loop) -->
     <nav class="pipeline-stepper" aria-label="Investigation Pipeline Stepper">
       <button id="btnDetectSAR" class="step-btn active" title="Stage 1: Sentinel-1 SAR Segmentation">
         <span class="step-num">1</span>
-        <span class="step-label">SAR Slick</span>
+        <span class="step-label">SAR</span>
       </button>
       <div class="step-connector"></div>
-      <button id="btnRunDrift" class="step-btn" title="Stage 2: Lagrangian RK4 Hindcast &amp; KDE HDR Envelopes">
+      <button id="btnRunDrift" class="step-btn" title="Stage 2: Lagrangian RK4 Hindcast">
         <span class="step-num">2</span>
-        <span class="step-label">Hindcast</span>
+        <span class="step-label">Drift</span>
       </button>
       <div class="step-connector"></div>
-      <button id="btnCorrelateAIS" class="step-btn btn-step-correlate" title="Stage 3: AIS Attribution &amp; TOPSIS MCDA Ranking">
+      <button id="btnCorrelateAIS" class="step-btn btn-step-correlate" title="Stage 3: AIS Attribution &amp; TOPSIS">
         <span class="step-num">3</span>
-        <span class="step-label">Rank AIS</span>
+        <span class="step-label">AIS</span>
       </button>
       <div class="step-connector"></div>
-      <button id="btnStepCounterfactual" class="step-btn" title="Stage 4: Forward Counterfactual Physical Falsification">
+      <button id="btnStepCounterfactual" class="step-btn" title="Stage 4: Forward Counterfactual Falsification">
         <span class="step-num">4</span>
-        <span class="step-label">Counterfactual</span>
+        <span class="step-label">Verify</span>
       </button>
       <div class="step-connector"></div>
-      <button id="btnStepDossier" class="step-btn" title="Stage 5: Generate an analyst-review screening summary, not a legal finding">
+      <button id="btnStepDossier" class="step-btn" title="Stage 5: Generate Forensic Case Summary">
         <span class="step-num">5</span>
-        <span class="step-label">Case Summary</span>
+        <span class="step-label">Dossier</span>
       </button>
       <div class="step-connector"></div>
       <button id="btnTopAutoRun" class="step-btn btn-autorun" title="Automatically execute full 5-stage closed-loop investigation">
@@ -92,54 +86,32 @@
       </button>
     </nav>
 
-    <!-- Right Controls: Sector, Mode, Export & Heartbeat -->
+    <!-- Right Controls: Judge Tour, Sector, Mode & Quick Tools -->
     <div class="nav-controls">
+      <!-- High-Impact Judge Demo Tour Button -->
+      <button id="btnJudgeTour" class="btn-tactical btn-judge-tour" title="Launch Interactive Guided SIH Judge Demo Tour">
+        <span class="pulse-dot-cyan"></span>
+        <span class="nav-btn-text">🎯 JUDGE TOUR</span>
+      </button>
+
       <!-- Active Sector Dropdown -->
       <div class="sector-dropdown-wrap">
         <label for="scenarioSelector" class="sector-label">SECTOR</label>
-        <select id="scenarioSelector" class="styled-select">
-          <option value="gulf_of_kachchh" selected>Gulf of Kachchh (Vadinar)</option>
-          <option value="mumbai_high">Mumbai High Offshore</option>
-          <option value="great_nicobar">Great Nicobar Channel</option>
-          <option value="zenodo_sentinel1_real">Sentinel-1 Benchmark</option>
-          <option value="lakshadweep_sea">Lakshadweep Sea</option>
-          <option value="palk_strait">Palk Strait</option>
+        <select id="scenarioSelector" class="styled-select" title="Select Maritime AOI / Incident Sector">
+          <option value="gulf_of_kachchh" selected>Kachchh (Vadinar)</option>
+          <option value="mumbai_high">Mumbai High</option>
+          <option value="chennai_ennore">Chennai–Ennore</option>
+          <option value="great_nicobar">Great Nicobar</option>
           <option value="paradip_odisha">Paradip Port</option>
+          <option value="zenodo_sentinel1_real">Sentinel-1 Benchmark</option>
+          <option value="lakshadweep_sea">Lakshadweep</option>
+          <option value="palk_strait">Palk Strait</option>
           <option value="visakhapatnam_offshore">Visakhapatnam</option>
           <option value="kochi_channel">Kochi Channel</option>
           <option value="sundarbans_delta">Sundarbans Delta</option>
-          <option value="mangalore_port">New Mangalore Port</option>
-          <option value="chennai_ennore">Chennai–Ennore</option>
+          <option value="mangalore_port">New Mangalore</option>
           <option value="goa_mormugao">Goa (Mormugao)</option>
           <option value="tuticorin_gulf_mannar">Tuticorin (Mannar)</option>
-        </select>
-      </div>
-
-      <!-- Live Port Spill Intelligence Radar (Zero-Upload Auto-Find) -->
-      <div class="sector-dropdown-wrap" style="border-left:1px solid #334155; padding-left:10px;">
-        <label for="livePortSelector" class="sector-label" style="color:#38bdf8; display:flex; align-items:center; gap:4px;">
-          <span>⚓ PORT SPILL RADAR</span>
-          <span style="font-size:9px; background:#0284c7; color:#fff; border-radius:3px; padding:1px 4px; font-weight:700;">LIVE</span>
-        </label>
-        <select id="livePortSelector" class="styled-select" style="border-color:#0284c7; color:#e0f2fe; background:#0b192c;">
-          <option value="" disabled selected>⚡ Auto-Find Spills by Port...</option>
-          <option value="Mumbai">🇮🇳 Mumbai Port & JNPT (2 Spills)</option>
-          <option value="Kandla">🇮🇳 Kandla / Deendayal Port (1 Spill)</option>
-          <option value="Mundra">🇮🇳 Mundra Port & Kachchh Fairway</option>
-          <option value="Ennore">🇮🇳 Kamarajar / Ennore Port (Catastrophic Collision)</option>
-          <option value="Chennai">🇮🇳 Chennai Port Approach</option>
-          <option value="Cochin">🇮🇳 Cochin (BPCL SPM Subsea Leak)</option>
-          <option value="Goa">🇮🇳 Mormugao Port (Nu-Shi Nalini Naphtha)</option>
-          <option value="Visakhapatnam">🇮🇳 Visakhapatnam Port Outer Harbour</option>
-          <option value="Paradip">🇮🇳 Paradip Port Crude Bunkering SPM</option>
-          <option value="Haldia">🇮🇳 Haldia Dock Complex</option>
-          <option value="Kolkata">🇮🇳 Kolkata Port (SMP)</option>
-          <option value="Mangalore">🇮🇳 New Mangalore Port (MRPL)</option>
-          <option value="Tuticorin">🇮🇳 V.O. Chidambaranar (Tuticorin)</option>
-          <option value="Port Blair">🇮🇳 Port Blair (Andamans Corridor)</option>
-          <option value="Colombo">🇱🇰 Colombo Port (MV X-Press Pearl Disaster)</option>
-          <option value="Salalah">🇴🇲 Port of Salalah (Arabian Sea)</option>
-          <option value="Jebel Ali">🇦🇪 Port of Jebel Ali (Mega Hub)</option>
         </select>
       </div>
 
@@ -151,28 +123,22 @@
 
       <!-- Tactical Action Tools Capsule -->
       <div class="nav-action-capsule">
-        <button id="btnJudgeTour" class="btn-tactical btn-judge-tour" title="Launch Interactive Guided SIH Judge Demo Tour">
-          <span class="pulse-dot-cyan"></span>
-          <span class="nav-btn-text">🎯 JUDGE TOUR</span>
+        <button id="btnDownloadDossier" class="btn-tactical btn-hazard" title="Generate Forensic Verification Dossier PDF">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          <span class="nav-btn-text">PDF</span>
         </button>
 
-        <button id="btnDownloadDossier" class="btn-tactical btn-hazard" title="Generate Forensic Verification Dossier PDF">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-          <span class="nav-btn-text">PDF</span>
+        <button id="btnOpenDatasetVault" class="btn-tactical btn-vault" title="Inspect Authoritative Datasets &amp; Forensic Chamber">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          <span class="nav-btn-text">Vault</span>
         </button>
 
         <button id="btnOpenLiveIngestion" class="btn-tactical btn-live-pulse" title="Trigger Automated Real-Time Data Ingestion">
           <span class="pulse-dot-cyan"></span>
-          <span class="nav-btn-text">Live Ingestion</span>
+          <span class="nav-btn-text">Live</span>
         </button>
 
-        <button id="btnOpenDatasetVault" class="btn-tactical btn-vault" title="Inspect Authoritative Datasets & Forensic Chamber">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-          <span class="nav-btn-text">Datasets</span>
-        </button>
-
-        <a href="/techstack" target="_blank" class="btn-tactical btn-techstack" title="View Full System Architecture & Tech Stack">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        <a href="/techstack" target="_blank" class="btn-tactical btn-techstack" title="View Full System Architecture &amp; Tech Stack">
           <span class="nav-btn-text">Tech</span>
         </a>
       </div>
@@ -191,17 +157,17 @@
     <!-- Edge-to-Edge Tactical GIS Map -->
     <div id="tacticalMap" class="tactical-map"></div>
 
-    <!-- 1-Click National Incident Presets Bar (DepthWizard Parity) -->
+    <!-- 1-Click National Incident Presets & Tactical Telemetry Ribbon -->
     <div class="national-incidents-bar" id="nationalIncidentsBar">
       <div class="nib-label">
         <span class="nib-pulse"></span>
-        <span>NATIONAL PRESETS</span>
+        <span>INCIDENTS</span>
       </div>
       <div class="nib-pills-row">
         <button class="nib-pill active" data-sector="gulf_of_kachchh" title="Gulf of Kachchh SPM Deepwater Crude Oil Fairway">
           <span class="nib-dot"></span>
-          <span>Kachchh Gulf</span>
-          <span class="nib-tag">VLCC SPM</span>
+          <span>Kachchh</span>
+          <span class="nib-tag">VLCC</span>
         </button>
         <button class="nib-pill" data-sector="mumbai_high" title="Mumbai High Offshore Production Platform B-303 Pipeline">
           <span class="nib-dot"></span>
@@ -210,19 +176,25 @@
         </button>
         <button class="nib-pill" data-sector="chennai_ennore" title="Ennore Kamarajar Port Heavy Bunker Fuel Oil Collision Disaster">
           <span class="nib-dot"></span>
-          <span>Ennore Collision</span>
+          <span>Ennore</span>
           <span class="nib-tag">BUNKER-C</span>
         </button>
         <button class="nib-pill" data-sector="great_nicobar" title="Great Nicobar Six Degree Channel International Malacca Strait Lane">
           <span class="nib-dot"></span>
-          <span>Great Nicobar</span>
-          <span class="nib-tag">MALACCA SL</span>
+          <span>Nicobar</span>
+          <span class="nib-tag">MALACCA</span>
         </button>
         <button class="nib-pill" data-sector="paradip_odisha" title="Paradip Port Crude Bunkering SPM Bay of Bengal Corridor">
           <span class="nib-dot"></span>
-          <span>Paradip Port</span>
+          <span>Paradip</span>
           <span class="nib-tag">CYCLONIC</span>
         </button>
+      </div>
+      <div class="nib-telemetry-cluster">
+        <span class="nib-telemetry-divider"></span>
+        <span class="nib-telemetry-tag" id="hudSectorName">Gulf of Kachchh</span>
+        <span class="nib-telemetry-item font-mono" id="hudCoords">22.5850° N, 69.1850° E</span>
+        <span class="nib-telemetry-badge cyan font-mono">1,000 PARTICLES</span>
       </div>
     </div>
 
@@ -276,23 +248,6 @@
         <button id="btnJdNext" class="btn-jd-nav btn-jd-next">Next Stage &rarr;</button>
       </div>
     </div>
-
-    <!-- Floating Top-Center HUD Badge -->
-    <div class="map-hud-top">
-      <div class="hud-item">
-        <span class="hud-tag">SECTOR</span>
-        <strong id="hudSectorName">Gulf of Kachchh</strong>
-      </div>
-      <div class="hud-divider"></div>
-      <div class="hud-item">
-        <span class="hud-tag">COORDINATES</span>
-        <strong id="hudCoords" class="font-mono">22.5850° N, 69.1850° E</strong>
-      </div>
-      <div class="hud-divider"></div>
-      <div class="hud-item">
-        <span class="hud-tag">SWARM</span>
-        <strong class="cyan font-mono">1,000 PARTICLES</strong>
-      </div>
     </div>
 
     <!-- FLOATING VISUAL MAP GUIDE & SYMBOL KEY (Expands on Hover / Click) -->
@@ -1886,6 +1841,6 @@ variables:
 
   <!-- Leaflet & App Scripts -->
   <script src="/static/vendor/leaflet.js"></script>
-  <script src="/static/js/app.js?v=6.0.0"></script>
+  <script src="/static/js/app.js?v=6.2.0"></script>
 </body>
 </html>

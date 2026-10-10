@@ -103,6 +103,7 @@ class OceanShieldApp {
     this.bindEvents();
     this.initJudgeDemoTour();
     this.loadScenario(this.activeScenarioId);
+    this.setSimpleMode(true, true);
   }
 
   initElements() {
@@ -2016,7 +2017,7 @@ class OceanShieldApp {
     }
   }
 
-  setSimpleMode(isSimple) {
+  setSimpleMode(isSimple, silent = false) {
     this.isSimpleMode = isSimple;
     if (isSimple) {
       document.body.classList.add('mode-simple');
@@ -2024,14 +2025,14 @@ class OceanShieldApp {
       this.btnSimpleView?.classList.add('active');
       this.btnExpertView?.classList.remove('active');
       if (this.expertModeBtnText) this.expertModeBtnText.innerText = '🔬 SHOW FULL FORENSICS';
-      this.showToast('⚡ Simple View: Map unobstructed with 3-card operational summary', 'info');
+      if (!silent) this.showToast('⚡ Simple View: Map unobstructed with 3-card operational summary', 'info');
     } else {
       document.body.classList.remove('mode-simple', 'expert-open');
       document.body.classList.add('mode-expert');
       this.btnSimpleView?.classList.remove('active');
       this.btnExpertView?.classList.add('active');
       if (this.expertModeBtnText) this.expertModeBtnText.innerText = '⚡ HIDE FORENSICS';
-      this.showToast('🔬 Expert View: Advanced telemetry, timeline dock, and sliders revealed', 'info');
+      if (!silent) this.showToast('🔬 Expert View: Advanced telemetry, timeline dock, and sliders revealed', 'info');
     }
     setTimeout(() => this.map?.invalidateSize(), 350);
   }

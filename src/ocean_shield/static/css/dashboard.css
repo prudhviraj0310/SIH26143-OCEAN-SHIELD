@@ -90,16 +90,17 @@ html, body {
   left: 0;
   right: 0;
   z-index: 1200;
-  background: rgba(7, 11, 22, 0.92);
+  background: rgba(7, 11, 22, 0.94);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border-bottom: 1px solid var(--c2-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 16px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
-  overflow-x: hidden;
+  overflow: visible;
+  gap: 10px;
 }
 
 /* Brand & Insignia */
@@ -264,10 +265,10 @@ html, body {
   align-items: center;
   gap: 4px;
   background: rgba(14, 22, 42, 0.65);
-  padding: 3px 5px;
+  padding: 3px 6px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--c2-border);
-  flex-shrink: 1;
+  flex-shrink: 0;
 }
 
 .step-btn {
@@ -497,6 +498,7 @@ html, body {
 }
 
 @media (max-width: 1366px) {
+  .nib-telemetry-cluster { display: none !important; }
   .pipeline-stepper .step-btn { padding: 4px 7px; }
   .pipeline-stepper .step-label { display: none; }
   .nav-action-capsule .btn-tactical { padding: 4px 7px; font-size: 0.70rem; }
@@ -4295,7 +4297,7 @@ body.mode-expert .map-legend-dock {
    ══════════════════════════════════════════════════════════════════ */
 .national-incidents-bar {
   position: absolute;
-  top: 68px;
+  top: 14px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1050;
@@ -4307,11 +4309,10 @@ body.mode-expert .map-legend-dock {
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 30px;
-  padding: 5px 12px;
+  padding: 5px 14px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 242, 254, 0.1);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   max-width: 95vw;
-  overflow-x: auto;
   white-space: nowrap;
 }
 
@@ -4360,6 +4361,7 @@ body.mode-expert .map-legend-dock {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .nib-pill:hover {
@@ -4404,6 +4406,50 @@ body.mode-expert .map-legend-dock {
   color: #00f2fe;
 }
 
+.nib-telemetry-cluster {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 6px;
+}
+
+.nib-telemetry-divider {
+  width: 1px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.15);
+  margin: 0 2px;
+}
+
+.nib-telemetry-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.nib-telemetry-item {
+  font-size: 10px;
+  color: #94a3b8;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.nib-telemetry-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 12px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.nib-telemetry-badge.cyan {
+  background: rgba(0, 242, 254, 0.12);
+  border: 1px solid rgba(0, 242, 254, 0.4);
+  color: #00f2fe;
+}
+
 /* ══════════════════════════════════════════════════════════════════
    INTERACTIVE GUIDED JUDGE DEMO COCKPIT (DepthWizard Parity)
    ══════════════════════════════════════════════════════════════════ */
@@ -4421,7 +4467,7 @@ body.mode-expert .map-legend-dock {
 
 .judge-demo-dock {
   position: absolute;
-  top: 120px;
+  top: 65px;
   left: 50%;
   transform: translateX(-50%);
   width: 640px;
