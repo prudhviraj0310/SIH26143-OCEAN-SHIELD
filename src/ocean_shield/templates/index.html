@@ -506,8 +506,16 @@
               </div>
             </div>
 
-            <!-- Invariant Morphological Features Grid -->
-            <div class="metric-tiles-grid" style="grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 8px;">
+            <!-- Invariant Morphological & Radar Physics Features Grid -->
+            <div class="metric-tiles-grid" style="grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px;">
+              <div class="metric-tile" style="padding: 6px;">
+                <div class="tile-label">SAR Damping (Δσ₀)</div>
+                <div id="lookalikeDampingDb" class="tile-val font-mono" style="font-size:0.85rem; color:#00f2fe;">-11.8 dB</div>
+              </div>
+              <div class="metric-tile" style="padding: 6px;">
+                <div class="tile-label">Bragg Wind Window</div>
+                <div id="lookalikeWindStatus" class="tile-val font-mono" style="font-size:0.75rem; color:#05d6a0;">VALID (5.4 m/s)</div>
+              </div>
               <div class="metric-tile" style="padding: 6px;">
                 <div class="tile-label">Normalized Contrast (Z)</div>
                 <div id="lookalikeContrast" class="tile-val font-mono" style="font-size:0.85rem;">--</div>

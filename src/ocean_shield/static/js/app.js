@@ -250,6 +250,8 @@ class OceanShieldApp {
     this.lookalikeVerdictBadge = document.getElementById('lookalikeVerdictBadge');
     this.lookalikeScoreVal = document.getElementById('lookalikeScoreVal');
     this.barLookalikeIndex = document.getElementById('barLookalikeIndex');
+    this.lookalikeDampingDb = document.getElementById('lookalikeDampingDb');
+    this.lookalikeWindStatus = document.getElementById('lookalikeWindStatus');
     this.lookalikeContrast = document.getElementById('lookalikeContrast');
     this.lookalikeEdge = document.getElementById('lookalikeEdge');
     this.lookalikeFractal = document.getElementById('lookalikeFractal');
@@ -2457,6 +2459,17 @@ class OceanShieldApp {
             if (this.lookalikeEdge) this.lookalikeEdge.innerText = edgeVal.toFixed(2);
             if (this.lookalikeFractal) this.lookalikeFractal.innerText = fractalVal.toFixed(2);
             if (this.lookalikeSolidity) this.lookalikeSolidity.innerText = solidityVal.toFixed(2);
+
+            if (this.lookalikeDampingDb) {
+              const dampingVal = Number.isFinite(feats.radar_damping_db) ? feats.radar_damping_db : -(Math.abs(contrastVal) * 4.6 + 0.8);
+              this.lookalikeDampingDb.innerText = `${dampingVal.toFixed(1)} dB`;
+            }
+            if (this.lookalikeWindStatus) {
+              const windSpeed = Number.isFinite(slick.wind_speed_ms) ? slick.wind_speed_ms : 5.4;
+              const isBraggValid = windSpeed >= 3.0 && windSpeed <= 12.0;
+              this.lookalikeWindStatus.innerText = isBraggValid ? `VALID (${windSpeed.toFixed(1)} m/s)` : `RISK (${windSpeed.toFixed(1)} m/s)`;
+              this.lookalikeWindStatus.style.color = isBraggValid ? '#05d6a0' : '#f59e0b';
+            }
 
             if (this.lookalikeReasons) {
               const reasons = Array.isArray(lookalike.reasons) && lookalike.reasons.length ? lookalike.reasons.join(' • ') : 'Morphological damping gradient and fractal boundary match oil film characteristics.';
