@@ -15,7 +15,7 @@
   <!-- Custom Modern C2 Dashboard CSS -->
   <link rel="stylesheet" href="/static/css/dashboard.css?v=5.1">
 </head>
-<body class="theme-c2 mode-expert">
+<body class="theme-c2 mode-simple">
 
 <!-- Instant splash screen — visible before any JS/CSS loads, fades when app ready -->
 <div id="appSplash" style="position:fixed;inset:0;z-index:99999;background:#0a0e1a;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 0.4s ease">
@@ -145,12 +145,17 @@
 
       <!-- UI Mode Switcher (Simple Executive vs Forensic Expert) -->
       <div class="view-mode-toggle-wrap">
-        <button id="btnSimpleView" class="btn-mode-toggle" title="Switch to Simple Executive View">⚡ Simple</button>
-        <button id="btnExpertView" class="btn-mode-toggle active" title="Switch to Full Forensic View">🔬 Expert</button>
+        <button id="btnSimpleView" class="btn-mode-toggle active" title="Switch to Simple Executive View">⚡ Simple</button>
+        <button id="btnExpertView" class="btn-mode-toggle" title="Switch to Full Forensic View">🔬 Expert</button>
       </div>
 
       <!-- Tactical Action Tools Capsule -->
       <div class="nav-action-capsule">
+        <button id="btnJudgeTour" class="btn-tactical btn-judge-tour" title="Launch Interactive Guided SIH Judge Demo Tour">
+          <span class="pulse-dot-cyan"></span>
+          <span class="nav-btn-text">🎯 JUDGE TOUR</span>
+        </button>
+
         <button id="btnDownloadDossier" class="btn-tactical btn-hazard" title="Generate Forensic Verification Dossier PDF">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
           <span class="nav-btn-text">PDF</span>
@@ -185,6 +190,92 @@
     
     <!-- Edge-to-Edge Tactical GIS Map -->
     <div id="tacticalMap" class="tactical-map"></div>
+
+    <!-- 1-Click National Incident Presets Bar (DepthWizard Parity) -->
+    <div class="national-incidents-bar" id="nationalIncidentsBar">
+      <div class="nib-label">
+        <span class="nib-pulse"></span>
+        <span>NATIONAL PRESETS</span>
+      </div>
+      <div class="nib-pills-row">
+        <button class="nib-pill active" data-sector="gulf_of_kachchh" title="Gulf of Kachchh SPM Deepwater Crude Oil Fairway">
+          <span class="nib-dot"></span>
+          <span>Kachchh Gulf</span>
+          <span class="nib-tag">VLCC SPM</span>
+        </button>
+        <button class="nib-pill" data-sector="mumbai_high" title="Mumbai High Offshore Production Platform B-303 Pipeline">
+          <span class="nib-dot"></span>
+          <span>Mumbai High</span>
+          <span class="nib-tag">OFFSHORE</span>
+        </button>
+        <button class="nib-pill" data-sector="chennai_ennore" title="Ennore Kamarajar Port Heavy Bunker Fuel Oil Collision Disaster">
+          <span class="nib-dot"></span>
+          <span>Ennore Collision</span>
+          <span class="nib-tag">BUNKER-C</span>
+        </button>
+        <button class="nib-pill" data-sector="great_nicobar" title="Great Nicobar Six Degree Channel International Malacca Strait Lane">
+          <span class="nib-dot"></span>
+          <span>Great Nicobar</span>
+          <span class="nib-tag">MALACCA SL</span>
+        </button>
+        <button class="nib-pill" data-sector="paradip_odisha" title="Paradip Port Crude Bunkering SPM Bay of Bengal Corridor">
+          <span class="nib-dot"></span>
+          <span>Paradip Port</span>
+          <span class="nib-tag">CYCLONIC</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Interactive Guided SIH Judge Demo Cockpit (DepthWizard Studio Parity) -->
+    <div id="judgeDemoHud" class="judge-demo-dock" style="display: none;">
+      <div class="jd-header">
+        <div class="jd-header-title">
+          <span style="font-size: 16px;">⚖️</span>
+          <span class="jd-title-text">SIH EVALUATION TOUR &bull; EXECUTIVE C2 WALKTHROUGH</span>
+        </div>
+        <div class="jd-header-actions">
+          <button id="btnJdAutoPlay" class="btn-jd-action" title="Auto-advance walkthrough every 7s">▶ Auto-Play</button>
+          <button id="btnJdClose" class="btn-jd-close" title="Exit Judge Tour">&times;</button>
+        </div>
+      </div>
+
+      <div class="jd-stepper-track">
+        <div class="jd-step-pill active" data-step="1">
+          <span class="jd-step-num">1</span>
+          <span class="jd-step-name">SAR Spill Detection</span>
+        </div>
+        <div class="jd-connector"></div>
+        <div class="jd-step-pill" data-step="2">
+          <span class="jd-step-num">2</span>
+          <span class="jd-step-name">Drift Hindcast</span>
+        </div>
+        <div class="jd-connector"></div>
+        <div class="jd-step-pill" data-step="3">
+          <span class="jd-step-num">3</span>
+          <span class="jd-step-name">Dark AIS Attribution</span>
+        </div>
+        <div class="jd-connector"></div>
+        <div class="jd-step-pill" data-step="4">
+          <span class="jd-step-num">4</span>
+          <span class="jd-step-name">Legal Dossier</span>
+        </div>
+      </div>
+
+      <div class="jd-body" id="jdBody">
+        <!-- Dynamic Content Injected by OceanShieldApp.renderJudgeStep() -->
+      </div>
+
+      <div class="jd-footer">
+        <button id="btnJdPrev" class="btn-jd-nav" disabled>&larr; Previous</button>
+        <div class="jd-progress-dots">
+          <span class="jd-dot active" data-step="1"></span>
+          <span class="jd-dot" data-step="2"></span>
+          <span class="jd-dot" data-step="3"></span>
+          <span class="jd-dot" data-step="4"></span>
+        </div>
+        <button id="btnJdNext" class="btn-jd-nav btn-jd-next">Next Stage &rarr;</button>
+      </div>
+    </div>
 
     <!-- Floating Top-Center HUD Badge -->
     <div class="map-hud-top">
